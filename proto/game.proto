@@ -1,0 +1,30 @@
+syntax = "proto3";
+package game;
+
+service Game {
+  rpc CreateGame (CreateGameRequest) returns (CreateGameReply);
+  rpc MakeTurn (MakeTurnRequest) returns (MakeTurnReply);
+}
+
+enum GameType {
+  TicTacToe = 0;
+}
+
+message CreateGameRequest {
+  GameType type = 1;
+  repeated uint64 player_ids = 2;
+}
+
+message CreateGameReply {
+  uint64 game_id = 1;
+}
+
+message MakeTurnRequest {
+  uint64 game_id = 1;
+  uint64 player_id = 2;
+  string turn_data = 3;
+}
+
+message MakeTurnReply {
+  uint64 next_player_id = 1;
+}
