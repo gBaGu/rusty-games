@@ -10,7 +10,7 @@ pub enum TicTacToeError {
     #[error("invalid column (expected: 1-3, found: {0})")]
     InvalidFieldCol(usize),
     #[error("cell ({}, {}) is occupied", .0.row, .0.col)]
-    CellIsOccupied(TurnData),
+    CellIsOccupied(FieldCoordinates),
     #[error("can't make turn on a finished game")]
     GameIsFinished,
     #[error("other player's turn (expected: {expected}, found: {found}")]
@@ -49,6 +49,10 @@ pub struct Player {
 impl Player {
     pub fn new(id: PlayerId, sign: Sign) -> Player {
         Self { id, sign }
+    }
+
+    pub fn get_id(&self) -> PlayerId {
+        self.id
     }
 }
 
@@ -138,13 +142,13 @@ impl From<FieldCol> for usize {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TurnData {
+pub struct FieldCoordinates {
     row: FieldRow,
     col: FieldCol,
 }
 
-impl TurnData {
-    pub fn new(row: FieldRow, col: FieldCol) -> TurnData {
+impl FieldCoordinates {
+    pub fn new(row: FieldRow, col: FieldCol) -> FieldCoordinates {
         Self { row, col }
     }
 }
@@ -177,7 +181,7 @@ impl TicTacToe {
     pub fn make_turn(
         &mut self,
         player: PlayerId,
-        coordinates: TurnData,
+        coordinates: FieldCoordinates,
     ) -> Result<GameState, TicTacToeError> {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(TicTacToeError::GameIsFinished);

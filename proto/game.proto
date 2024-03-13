@@ -11,7 +11,7 @@ enum GameType {
 }
 
 message CreateGameRequest {
-  GameType type = 1;
+  GameType game_type = 1;
   repeated uint64 player_ids = 2;
 }
 
@@ -20,9 +20,11 @@ message CreateGameReply {
 }
 
 message MakeTurnRequest {
-  uint64 game_id = 1;
-  uint64 player_id = 2;
-  string turn_data = 3;
+  GameType game_type = 1;
+  uint64 game_id = 2;
+  uint64 player_id = 3;
+  uint32 row = 4;
+  uint32 col = 5;
 }
 
 message MakeTurnReply {

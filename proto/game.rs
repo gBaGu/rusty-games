@@ -2,7 +2,7 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CreateGameRequest {
     #[prost(enumeration = "GameType", tag = "1")]
-    pub r#type: i32,
+    pub game_type: i32,
     #[prost(uint64, repeated, tag = "2")]
     pub player_ids: ::prost::alloc::vec::Vec<u64>,
 }
@@ -15,12 +15,16 @@ pub struct CreateGameReply {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MakeTurnRequest {
-    #[prost(uint64, tag = "1")]
-    pub game_id: u64,
+    #[prost(enumeration = "GameType", tag = "1")]
+    pub game_type: i32,
     #[prost(uint64, tag = "2")]
+    pub game_id: u64,
+    #[prost(uint64, tag = "3")]
     pub player_id: u64,
-    #[prost(string, tag = "3")]
-    pub turn_data: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "4")]
+    pub row: u32,
+    #[prost(uint32, tag = "5")]
+    pub col: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
