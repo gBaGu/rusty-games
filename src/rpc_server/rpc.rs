@@ -1,5 +1,5 @@
 pub mod game_proto {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/proto/game.rs"));
+    tonic::include_proto!("game");
 }
 
 use std::collections::HashMap;
