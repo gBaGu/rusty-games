@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum TicTacToeError {
     #[error("player id's are the same")]
     SamePlayers,
+    #[error("player not found")]
+    PlayerNotFound,
     #[error("invalid row (expected: 1-3, found: {0})")]
     InvalidFieldRow(usize),
     #[error("invalid column (expected: 1-3, found: {0})")]
@@ -40,7 +42,7 @@ impl Display for Sign {
 
 pub type PlayerId = u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Player {
     id: PlayerId,
     sign: Sign,
@@ -58,14 +60,13 @@ impl Player {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FinishedState {
-    Win(Sign),
+    Win(PlayerId),
     Draw,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameState {
-    NotStarted,
-    Started,
+    Turn(PlayerId),
     Finished(FinishedState),
 }
 
@@ -166,16 +167,22 @@ impl TicTacToe {
         if id1 == id2 {
             return Err(TicTacToeError::SamePlayers);
         }
+        let p1 = Player::new(id1, Sign::X);
+        let p2 = Player::new(id2, Sign::O);
         Ok(Self {
-            players: [Player::new(id1, Sign::X), Player::new(id2, Sign::O)],
+            players: [p1, p2],
             current_player_id: 0,
-            state: GameState::NotStarted,
+            state: GameState::Turn(p1.id),
             field: Default::default(), // TODO: switch to Field::empty()
         })
     }
 
     pub fn get_current_player(&self) -> &Player {
         &self.players[self.current_player_id]
+    }
+
+    pub fn get_player_by_sign(&self, sign: Sign) -> Option<&Player> {
+        self.players.iter().find(|player| player.sign == sign)
     }
 
     pub fn make_turn(
@@ -202,24 +209,11 @@ impl TicTacToe {
         }
         *cell = Some(sign);
 
-        if self.state == GameState::NotStarted {
-            self.state = GameState::Started;
-        } else if let Some(finished) = self.check_if_finished() {
-            self.state = GameState::Finished(finished);
-        }
-        self.switch_player();
+        self.update_state()?;
         Ok(self.state)
     }
 
-    fn switch_player(&mut self) {
-        self.current_player_id = match self.current_player_id {
-            0 => 1,
-            1 => 0,
-            _ => unreachable!(),
-        }
-    }
-
-    fn check_if_finished(&self) -> Option<FinishedState> {
+    fn update_state(&mut self) -> Result<(), TicTacToeError> {
         for i in 0..3 {
             let row = self.field[i];
             if let Some(first_sign) = *row.first().unwrap() {
@@ -227,7 +221,7 @@ impl TicTacToe {
                     .iter()
                     .all(|sign| matches!(*sign, Some(s) if s == first_sign))
                 {
-                    return Some(FinishedState::Win(first_sign));
+                    return self.set_winner(first_sign);
                 }
             }
             if let Some(first_sign) = self.field.first().unwrap()[i] {
@@ -236,28 +230,47 @@ impl TicTacToe {
                     .iter()
                     .all(|row| matches!(row[i], Some(s) if s == first_sign))
                 {
-                    return Some(FinishedState::Win(first_sign));
+                    return self.set_winner(first_sign);
                 }
             }
         }
-        if let (Some(e1), Some(e2), Some(e3)) =
+        // check diagonals
+        if let (Some(sign1), Some(sign2), Some(sign3)) =
             (self.field[0][0], self.field[1][1], self.field[2][2])
         {
-            if e1 == e2 && e2 == e3 {
-                return Some(FinishedState::Win(e1));
+            if sign1 == sign2 && sign2 == sign3 {
+                return self.set_winner(sign1);
             }
         }
-        if let (Some(e1), Some(e2), Some(e3)) =
+        if let (Some(sign1), Some(sign2), Some(sign3)) =
             (self.field[0][2], self.field[1][1], self.field[2][0])
         {
-            if e1 == e2 && e2 == e3 {
-                return Some(FinishedState::Win(e1));
+            if sign1 == sign2 && sign2 == sign3 {
+                return self.set_winner(sign1);
             }
         }
 
         if self.field.iter().all(|row| row.iter().all(|s| s.is_some())) {
-            return Some(FinishedState::Draw);
+            self.state = GameState::Finished(FinishedState::Draw);
+            return Ok(());
         }
-        None
+
+        self.switch_player();
+        return Ok(());
+    }
+
+    fn set_winner(&mut self, sign: Sign) -> Result<(), TicTacToeError> {
+        let player = self.get_player_by_sign(sign).ok_or(TicTacToeError::PlayerNotFound)?;
+        self.state = GameState::Finished(FinishedState::Win(player.id));
+        return Ok(());
+    }
+
+    fn switch_player(&mut self) {
+        self.current_player_id = match self.current_player_id {
+            0 => 1,
+            1 => 0,
+            _ => unreachable!(),
+        };
+        self.state = GameState::Turn(self.get_current_player().id);
     }
 }
