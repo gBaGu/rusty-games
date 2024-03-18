@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use tonic::{Request, Response, Status};
 
-use crate::game::tic_tac_toe::{FieldCol, FieldCoordinates, FieldRow, PlayerId, TicTacToe};
+use crate::game::tic_tac_toe::{FieldCol, FieldCoordinates, FieldRow, FinishedState, GameState, PlayerId, TicTacToe};
 use game_proto::game_server::Game;
 use game_proto::{CreateGameReply, CreateGameRequest, MakeTurnReply, MakeTurnRequest};
 
@@ -69,12 +69,16 @@ impl Game for GameService {
         let col = FieldCol::try_from(request.get_ref().col as usize)
             .map_err(|e| Status::internal(e.to_string()))?;
         let coords = FieldCoordinates::new(row, col);
-        game.make_turn(request.get_ref().player_id, coords)
+        let game_state = game.make_turn(request.get_ref().player_id, coords)
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let reply = MakeTurnReply {
-            next_player_id: game.get_current_player().get_id(),
-        };
+
+        let mut reply = MakeTurnReply::default();
+        match game_state {
+            GameState::Turn(id) => reply.next_player_id = Some(id),
+            GameState::Finished(FinishedState::Win(id)) => reply.winner = Some(id),
+            _ => (),
+        }
         Ok(Response::new(reply))
     }
 }

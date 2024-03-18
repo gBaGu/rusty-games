@@ -29,5 +29,6 @@ message MakeTurnRequest {
 }
 
 message MakeTurnReply {
-  uint64 next_player_id = 1;
+  optional uint64 next_player_id = 1;
+  optional uint64 winner = 2;
 }
