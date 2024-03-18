@@ -3,21 +3,20 @@ pub mod game_proto {
     pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
 }
 
-use std::collections::HashMap;
+use std::collections::hash_map::{Entry, HashMap};
 use std::sync::Mutex;
 
 use tonic::{Request, Response, Status};
 
-use crate::game::tic_tac_toe::{FieldCol, FieldCoordinates, FieldRow, TicTacToe};
+use crate::game::tic_tac_toe::{FieldCol, FieldCoordinates, FieldRow, PlayerId, TicTacToe};
 use game_proto::game_server::Game;
 use game_proto::{CreateGameReply, CreateGameRequest, MakeTurnReply, MakeTurnRequest};
 
-pub type GameId = u64;
 pub type RpcResult<T> = Result<Response<T>, Status>;
 
 #[derive(Debug, Default)]
 pub struct GameService {
-    games: Mutex<HashMap<GameId, TicTacToe>>,
+    games: Mutex<HashMap<PlayerId, TicTacToe>>,
 }
 
 #[tonic::async_trait]
@@ -32,19 +31,31 @@ impl Game for GameService {
         }
         let player1 = request.get_ref().player_ids[0];
         let player2 = request.get_ref().player_ids[1];
-        let game = TicTacToe::new(player1, player2).map_err(|e| Status::internal(e.to_string()))?;
-        self.games
+        let mut games_guard = self
+            .games
             .lock()
-            .map_err(|e| Status::internal(e.to_string()))?
-            .insert(0, game);
+            .map_err(|e| Status::internal(e.to_string()))?;
+        match games_guard.entry(player1) {
+            Entry::Vacant(e) => {
+                let game = TicTacToe::new(player1, player2)
+                    .map_err(|e| Status::internal(e.to_string()))?;
+                e.insert(game);
+            }
+            Entry::Occupied(_) => {
+                return Err(Status::invalid_argument(
+                    "this player already has an active game",
+                ));
+            }
+        }
+        drop(games_guard);
 
-        let reply = CreateGameReply { game_id: 0 };
-        Ok(Response::new(reply))
+        Ok(Response::new(CreateGameReply { game_id: player1 }))
     }
 
     async fn make_turn(&self, request: Request<MakeTurnRequest>) -> RpcResult<MakeTurnReply> {
         println!("Got request {:?}", request);
 
+        // For now, it's a creator id
         let game_id = request.get_ref().game_id;
         let mut game_lock = self
             .games

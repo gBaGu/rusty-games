@@ -12,6 +12,7 @@ enum GameType {
 
 message CreateGameRequest {
   GameType game_type = 1;
+  // The first one is the one who initiates the call
   repeated uint64 player_ids = 2;
 }
 
