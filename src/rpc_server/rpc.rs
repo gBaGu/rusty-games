@@ -8,7 +8,10 @@ use std::sync::Mutex;
 
 use tonic::{Request, Response, Status};
 
-use crate::game::tic_tac_toe::{FieldCol, FieldCoordinates, FieldRow, FinishedState, GameState, PlayerId, TicTacToe};
+use crate::game::tic_tac_toe::{
+    FieldCol, FieldCoordinates, FieldRow, FinishedState, GameState, PlayerId, TicTacToe,
+};
+use crate::rpc_server::rpc::game_proto::{DeleteGameReply, DeleteGameRequest};
 use game_proto::game_server::Game;
 use game_proto::{CreateGameReply, CreateGameRequest, MakeTurnReply, MakeTurnRequest};
 
@@ -69,9 +72,9 @@ impl Game for GameService {
         let col = FieldCol::try_from(request.get_ref().col as usize)
             .map_err(|e| Status::internal(e.to_string()))?;
         let coords = FieldCoordinates::new(row, col);
-        let game_state = game.make_turn(request.get_ref().player_id, coords)
+        let game_state = game
+            .make_turn(request.get_ref().player_id, coords)
             .map_err(|e| Status::internal(e.to_string()))?;
-
 
         let mut reply = MakeTurnReply::default();
         match game_state {
@@ -80,5 +83,25 @@ impl Game for GameService {
             _ => (),
         }
         Ok(Response::new(reply))
+    }
+
+    async fn delete_game(&self, request: Request<DeleteGameRequest>) -> RpcResult<DeleteGameReply> {
+        println!("Got request {:?}", request);
+
+        // For now, it's a creator id
+        let game_id = request.get_ref().game_id;
+        let mut game_lock = self
+            .games
+            .lock()
+            .map_err(|e| Status::internal(e.to_string()))?;
+        if let Entry::Occupied(e) = game_lock.entry(game_id) {
+            if !e.get().is_finished() {
+                return Err(Status::failed_precondition("game is not finished"));
+            }
+            e.remove();
+        }
+        drop(game_lock);
+
+        Ok(Response::new(DeleteGameReply {}))
     }
 }

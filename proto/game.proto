@@ -4,6 +4,7 @@ package game;
 service Game {
   rpc CreateGame (CreateGameRequest) returns (CreateGameReply);
   rpc MakeTurn (MakeTurnRequest) returns (MakeTurnReply);
+  rpc DeleteGame (DeleteGameRequest) returns (DeleteGameReply);
 }
 
 enum GameType {
@@ -31,4 +32,13 @@ message MakeTurnRequest {
 message MakeTurnReply {
   optional uint64 next_player_id = 1;
   optional uint64 winner = 2;
+}
+
+message DeleteGameRequest {
+  GameType game_type = 1;
+  uint64 game_id = 2;
+}
+
+message DeleteGameReply {
+
 }

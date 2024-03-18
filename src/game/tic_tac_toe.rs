@@ -1,7 +1,6 @@
 use std::fmt::{Display, Formatter, Write};
-use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum TicTacToeError {
     #[error("player id's are the same")]
     SamePlayers,
@@ -15,7 +14,7 @@ pub enum TicTacToeError {
     CellIsOccupied(FieldCoordinates),
     #[error("can't make turn on a finished game")]
     GameIsFinished,
-    #[error("other player's turn (expected: {expected}, found: {found}")]
+    #[error("other player's turn (expected: {expected}, found: {found})")]
     NotYourTurn { expected: PlayerId, found: PlayerId },
 }
 
@@ -185,6 +184,14 @@ impl TicTacToe {
         self.players.iter().find(|player| player.sign == sign)
     }
 
+    pub fn get_state(&self) -> &GameState {
+        &self.state
+    }
+
+    pub fn is_finished(&self) -> bool {
+        matches!(self.state, GameState::Finished(_))
+    }
+
     pub fn make_turn(
         &mut self,
         player: PlayerId,
@@ -260,7 +267,9 @@ impl TicTacToe {
     }
 
     fn set_winner(&mut self, sign: Sign) -> Result<(), TicTacToeError> {
-        let player = self.get_player_by_sign(sign).ok_or(TicTacToeError::PlayerNotFound)?;
+        let player = self
+            .get_player_by_sign(sign)
+            .ok_or(TicTacToeError::PlayerNotFound)?;
         self.state = GameState::Finished(FinishedState::Win(player.id));
         return Ok(());
     }
