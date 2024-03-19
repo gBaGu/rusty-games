@@ -1,18 +1,21 @@
 extern crate mp_game;
 
-use mp_game::rpc_server::rpc::{game_proto::{game_server::GameServer, FILE_DESCRIPTOR_SET}, GameService};
+use mp_game::rpc_server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
-    let game_service = GameService::default();
-    let reflect_service = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
-        .build()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.len() != 1 {
+        println!("no port provided");
+        return Ok(());
+    }
+    let port = &args[0];
+    let addr = format!("[::1]:{}", port).parse()?;
+    println!("listening for connections on {}", addr);
 
     tonic::transport::Server::builder()
-        .add_service(GameServer::new(game_service))
-        .add_service(reflect_service)
+        .add_service(rpc_server::spec_service()?)
+        .add_service(rpc_server::game_service())
         .serve(addr)
         .await?;
 

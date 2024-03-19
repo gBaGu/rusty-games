@@ -11,19 +11,21 @@ use tonic::{Request, Response, Status};
 use crate::game::tic_tac_toe::{
     FieldCol, FieldCoordinates, FieldRow, FinishedState, GameState, PlayerId, TicTacToe,
 };
-use crate::rpc_server::rpc::game_proto::{DeleteGameReply, DeleteGameRequest};
 use game_proto::game_server::Game;
-use game_proto::{CreateGameReply, CreateGameRequest, MakeTurnReply, MakeTurnRequest};
+use game_proto::{
+    CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest, MakeTurnReply,
+    MakeTurnRequest,
+};
 
 pub type RpcResult<T> = Result<Response<T>, Status>;
 
 #[derive(Debug, Default)]
-pub struct GameService {
+pub struct GameImpl {
     games: Mutex<HashMap<PlayerId, TicTacToe>>,
 }
 
 #[tonic::async_trait]
-impl Game for GameService {
+impl Game for GameImpl {
     async fn create_game(&self, request: Request<CreateGameRequest>) -> RpcResult<CreateGameReply> {
         println!("Got request {:?}", request);
 
