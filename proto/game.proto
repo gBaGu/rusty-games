@@ -4,6 +4,7 @@ package game;
 service Game {
   rpc CreateGame (CreateGameRequest) returns (CreateGameReply);
   rpc MakeTurn (MakeTurnRequest) returns (MakeTurnReply);
+  rpc MakeTurnStreaming (stream MakeTurnRequest) returns (stream MakeTurnReply);
   rpc DeleteGame (DeleteGameRequest) returns (DeleteGameReply);
 }
 
