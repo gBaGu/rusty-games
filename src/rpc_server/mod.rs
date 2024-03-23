@@ -2,6 +2,7 @@ use tonic_reflection::server::{Error, ServerReflection, ServerReflectionServer};
 use rpc::game_proto::game_server::{Game, GameServer};
 
 pub mod rpc;
+mod game_storage;
 
 pub fn spec_service() -> Result<ServerReflectionServer<impl ServerReflection>, Error> {
     let spec = tonic_reflection::server::Builder::configure()

@@ -1,18 +1,33 @@
 pub mod game_proto {
+    use crate::game::tic_tac_toe::{FinishedState, GameState};
+
     tonic::include_proto!("game");
     pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
+
+    impl MakeTurnReply {
+        pub fn from_game_state(state: GameState) -> Self {
+            match state {
+                GameState::Turn(id) => Self {
+                    next_player_id: Some(id),
+                    ..Default::default()
+                },
+                GameState::Finished(FinishedState::Win(id)) => Self {
+                    winner: Some(id),
+                    ..Default::default()
+                },
+                GameState::Finished(FinishedState::Draw) => Self::default(),
+            }
+        }
+    }
 }
 
-use std::collections::hash_map::{Entry, HashMap};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 
-use crate::game::tic_tac_toe::{
-    FieldCol, FieldCoordinates, FieldRow, FinishedState, GameState, PlayerId, TicTacToe,
-    TicTacToeError,
-};
+use crate::game::tic_tac_toe::{FieldCol, FieldCoordinates, FieldRow};
+use crate::rpc_server::game_storage::GameStorage;
 use game_proto::game_server::Game;
 use game_proto::{
     CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest, MakeTurnReply,
@@ -21,21 +36,9 @@ use game_proto::{
 
 pub type RpcResult<T> = Result<Response<T>, Status>;
 
-// TODO: create separate object that will handle this kind of operations
-fn update_game(
-    games: &Arc<Mutex<HashMap<PlayerId, TicTacToe>>>,
-    game_id: PlayerId,
-    player_id: PlayerId,
-    coords: FieldCoordinates,
-) -> Result<GameState, TicTacToeError> {
-    let mut games_guard = games.lock().unwrap();
-    let game = games_guard.get_mut(&game_id).unwrap();
-    game.make_turn(player_id, coords)
-}
-
 #[derive(Debug, Default)]
 pub struct GameImpl {
-    games: Arc<Mutex<HashMap<PlayerId, TicTacToe>>>,
+    games: Arc<GameStorage>,
 }
 
 #[tonic::async_trait]
@@ -50,23 +53,9 @@ impl Game for GameImpl {
         }
         let player1 = request.get_ref().player_ids[0];
         let player2 = request.get_ref().player_ids[1];
-        let mut games_guard = self
-            .games
-            .lock()
+        self.games
+            .create_game(player1, player2)
             .map_err(|e| Status::internal(e.to_string()))?;
-        match games_guard.entry(player1) {
-            Entry::Vacant(e) => {
-                let game = TicTacToe::new(player1, player2)
-                    .map_err(|e| Status::internal(e.to_string()))?;
-                e.insert(game);
-            }
-            Entry::Occupied(_) => {
-                return Err(Status::invalid_argument(
-                    "this player already has an active game",
-                ));
-            }
-        }
-        drop(games_guard);
 
         Ok(Response::new(CreateGameReply { game_id: player1 }))
     }
@@ -77,28 +66,16 @@ impl Game for GameImpl {
         // For now, it's a creator id
         let game_id = request.get_ref().game_id;
         let row = FieldRow::try_from(request.get_ref().row as usize)
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
         let col = FieldCol::try_from(request.get_ref().col as usize)
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
         let coords = FieldCoordinates::new(row, col);
-        let mut games_guard = self
+        let game_state = self
             .games
-            .lock()
-            .map_err(|e| Status::internal(e.to_string()))?;
-        let game = games_guard
-            .get_mut(&game_id)
-            .ok_or_else(|| Status::invalid_argument("game not found"))?;
-        let game_state = game
-            .make_turn(request.get_ref().player_id, coords)
+            .update_game(game_id, request.get_ref().player_id, coords)
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let mut reply = MakeTurnReply::default();
-        match game_state {
-            GameState::Turn(id) => reply.next_player_id = Some(id),
-            GameState::Finished(FinishedState::Win(id)) => reply.winner = Some(id),
-            _ => (),
-        }
-        Ok(Response::new(reply))
+        Ok(Response::new(MakeTurnReply::from_game_state(game_state)))
     }
 
     type MakeTurnStreamingStream =
@@ -123,20 +100,14 @@ impl Game for GameImpl {
                 // For now, it's a creator id
                 let game_id = req.game_id;
                 let row = FieldRow::try_from(req.row as usize)
-                    .map_err(|e| Status::internal(e.to_string()))?;
+                    .map_err(|e| Status::invalid_argument(e.to_string()))?;
                 let col = FieldCol::try_from(req.col as usize)
-                    .map_err(|e| Status::internal(e.to_string()))?;
+                    .map_err(|e| Status::invalid_argument(e.to_string()))?;
                 let coords = FieldCoordinates::new(row, col);
-                let game_state = update_game(&games, game_id, req.player_id, coords)
+                let game_state = games.update_game(game_id, req.player_id, coords)
                     .map_err(|e| Status::internal(e.to_string()))?;
 
-                let mut reply = MakeTurnReply::default();
-                match game_state {
-                    GameState::Turn(id) => reply.next_player_id = Some(id),
-                    GameState::Finished(FinishedState::Win(id)) => reply.winner = Some(id),
-                    _ => (),
-                }
-                yield reply;
+                yield MakeTurnReply::from_game_state(game_state);
             }
         };
 
@@ -148,17 +119,9 @@ impl Game for GameImpl {
 
         // For now, it's a creator id
         let game_id = request.get_ref().game_id;
-        let mut games_guard = self
-            .games
-            .lock()
+        self.games
+            .delete_game(game_id)
             .map_err(|e| Status::internal(e.to_string()))?;
-        if let Entry::Occupied(e) = games_guard.entry(game_id) {
-            if !e.get().is_finished() {
-                return Err(Status::failed_precondition("game is not finished"));
-            }
-            e.remove();
-        }
-        drop(games_guard);
 
         Ok(Response::new(DeleteGameReply {}))
     }
