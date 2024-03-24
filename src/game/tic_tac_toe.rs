@@ -153,6 +153,17 @@ impl FieldCoordinates {
     }
 }
 
+impl TryFrom<(usize, usize)> for FieldCoordinates {
+    type Error = TicTacToeError;
+
+    // Conversion from a pair of usize where first usize is row and the second is col
+    fn try_from(value: (usize, usize)) -> Result<Self, Self::Error> {
+        let row = FieldRow::try_from(value.0)?;
+        let col = FieldCol::try_from(value.1)?;
+        Ok(Self::new(row, col))
+    }
+}
+
 #[derive(Debug)]
 pub struct TicTacToe {
     players: [Player; 2], // TODO: move to PlayerPool to separate switch turn logic
