@@ -1,5 +1,6 @@
+use crate::game::error::GameError;
 use crate::game::player_pool::PlayerId;
-use crate::game::tic_tac_toe::{FieldCoordinates, GameState, TicTacToe, TicTacToeError};
+use crate::game::tic_tac_toe::{FieldCoordinates, GameState, TicTacToe};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -15,7 +16,7 @@ pub enum GameStorageError {
     #[error("failed to lock inner mutex: {}", .description)]
     MutexPoisonError { description: String },
     #[error(transparent)]
-    TicTacToeError(#[from] TicTacToeError),
+    GameErrorError(#[from] GameError),
 }
 
 impl<T> From<PoisonError<T>> for GameStorageError {
