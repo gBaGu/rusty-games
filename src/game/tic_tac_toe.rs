@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter, Write};
 
+use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
+
 #[derive(thiserror::Error, Debug)]
 pub enum TicTacToeError {
     #[error("player id's are the same")]
@@ -16,6 +18,8 @@ pub enum TicTacToeError {
     GameIsFinished,
     #[error("other player's turn (expected: {expected}, found: {found})")]
     NotYourTurn { expected: PlayerId, found: PlayerId },
+    #[error("failed to switch players in the pool")]
+    PlayerPoolCorrupted,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,8 +43,6 @@ impl Display for Sign {
     }
 }
 
-pub type PlayerId = u64;
-
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
     id: PlayerId,
@@ -51,8 +53,10 @@ impl Player {
     pub fn new(id: PlayerId, sign: Sign) -> Player {
         Self { id, sign }
     }
+}
 
-    pub fn get_id(&self) -> PlayerId {
+impl WithPlayerId for Player {
+    fn get_id(&self) -> PlayerId {
         self.id
     }
 }
@@ -166,8 +170,7 @@ impl TryFrom<(usize, usize)> for FieldCoordinates {
 
 #[derive(Debug)]
 pub struct TicTacToe {
-    players: [Player; 2], // TODO: move to PlayerPool to separate switch turn logic
-    current_player_id: usize,
+    players: PlayerPool<Player>,
     state: GameState,
     field: [[Option<Sign>; 3]; 3], // TODO: move to Field to hide arrays and indexing
 }
@@ -180,19 +183,18 @@ impl TicTacToe {
         let p1 = Player::new(id1, Sign::X);
         let p2 = Player::new(id2, Sign::O);
         Ok(Self {
-            players: [p1, p2],
-            current_player_id: 0,
+            players: PlayerPool::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
             field: Default::default(), // TODO: switch to Field::empty()
         })
     }
 
-    pub fn get_current_player(&self) -> &Player {
-        &self.players[self.current_player_id]
+    pub fn get_current_player(&mut self) -> Result<&Player, TicTacToeError> {
+        self.players.get_current().ok_or(TicTacToeError::PlayerPoolCorrupted)
     }
 
     pub fn get_player_by_sign(&self, sign: Sign) -> Option<&Player> {
-        self.players.iter().find(|player| player.sign == sign)
+        self.players.find(|player| player.sign == sign)
     }
 
     pub fn get_state(&self) -> &GameState {
@@ -211,27 +213,34 @@ impl TicTacToe {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(TicTacToeError::GameIsFinished);
         }
-        if player != self.get_current_player().id {
+        if player != self.get_current_player()?.id {
             return Err(TicTacToeError::NotYourTurn {
-                expected: self.get_current_player().id,
+                expected: self.get_current_player()?.id,
                 found: player,
             });
         }
 
-        let row: usize = coordinates.row.into();
-        let col: usize = coordinates.col.into();
-        let sign = self.get_current_player().sign;
-        let cell = self.field.get_mut(row).unwrap().get_mut(col).unwrap();
+        let sign = self.get_current_player()?.sign;
+        let cell = self.get_cell(coordinates);
         if cell.is_some() {
             return Err(TicTacToeError::CellIsOccupied(coordinates));
         }
         *cell = Some(sign);
 
-        self.update_state()?;
-        Ok(self.state)
+        self.update_state()
     }
 
-    fn update_state(&mut self) -> Result<(), TicTacToeError> {
+    fn get_cell(&mut self, coordinates: FieldCoordinates) -> &mut Option<Sign> {
+        let row: usize = coordinates.row.into();
+        let col: usize = coordinates.col.into();
+        // SAFETY: can't get out of bounds with FieldCoordinates
+        self.field
+            .get_mut(row)
+            .and_then(|row| row.get_mut(col))
+            .unwrap_or_else(|| unreachable!())
+    }
+
+    fn update_state(&mut self) -> Result<GameState, TicTacToeError> {
         for i in 0..3 {
             let row = self.field[i];
             if let Some(first_sign) = *row.first().unwrap() {
@@ -270,27 +279,26 @@ impl TicTacToe {
 
         if self.field.iter().all(|row| row.iter().all(|s| s.is_some())) {
             self.state = GameState::Finished(FinishedState::Draw);
-            return Ok(());
+            return Ok(self.state);
         }
 
-        self.switch_player();
-        return Ok(());
+        self.switch_player()
     }
 
-    fn set_winner(&mut self, sign: Sign) -> Result<(), TicTacToeError> {
+    fn set_winner(&mut self, sign: Sign) -> Result<GameState, TicTacToeError> {
         let player = self
             .get_player_by_sign(sign)
             .ok_or(TicTacToeError::PlayerNotFound)?;
         self.state = GameState::Finished(FinishedState::Win(player.id));
-        return Ok(());
+        Ok(self.state)
     }
 
-    fn switch_player(&mut self) {
-        self.current_player_id = match self.current_player_id {
-            0 => 1,
-            1 => 0,
-            _ => unreachable!(),
-        };
-        self.state = GameState::Turn(self.get_current_player().id);
+    fn switch_player(&mut self) -> Result<GameState, TicTacToeError> {
+        let next_player = self
+            .players
+            .next()
+            .ok_or(TicTacToeError::PlayerPoolCorrupted)?;
+        self.state = GameState::Turn(next_player.id);
+        Ok(self.state)
     }
 }

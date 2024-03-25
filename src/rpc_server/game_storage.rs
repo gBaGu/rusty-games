@@ -1,4 +1,5 @@
-use crate::game::tic_tac_toe::{FieldCoordinates, GameState, PlayerId, TicTacToe, TicTacToeError};
+use crate::game::player_pool::PlayerId;
+use crate::game::tic_tac_toe::{FieldCoordinates, GameState, TicTacToe, TicTacToeError};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
