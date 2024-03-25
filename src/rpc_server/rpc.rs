@@ -3,13 +3,13 @@ use std::sync::Arc;
 use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 
-use crate::game::tic_tac_toe::FieldCoordinates;
-use crate::rpc_server::game_storage::GameStorage;
 use super::game_proto::game_server::Game;
 use super::game_proto::{
     CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest, MakeTurnReply,
     MakeTurnRequest,
 };
+use crate::game::tic_tac_toe::FieldCoordinates;
+use crate::rpc_server::game_storage::GameStorage;
 
 pub type RpcResult<T> = Result<Response<T>, Status>;
 
