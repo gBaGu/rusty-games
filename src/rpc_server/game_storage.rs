@@ -1,9 +1,15 @@
-use crate::game::error::GameError;
-use crate::game::player_pool::PlayerId;
-use crate::game::tic_tac_toe::{FieldCoordinates, GameState, TicTacToe};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::num::TryFromIntError;
 use std::sync::{Mutex, PoisonError};
+
+use crate::game::{
+    error::GameError,
+    grid::GridIndex,
+    player_pool::PlayerId,
+    tic_tac_toe::{self, GameState, TicTacToe},
+};
+use crate::rpc_server::game_proto::GameType;
 
 #[derive(thiserror::Error, Debug)]
 pub enum GameStorageError {
@@ -17,6 +23,8 @@ pub enum GameStorageError {
     MutexPoisonError { description: String },
     #[error(transparent)]
     GameErrorError(#[from] GameError),
+    #[error(transparent)]
+    CoordinatesNumericConversion(#[from] TryFromIntError),
 }
 
 impl<T> From<PoisonError<T>> for GameStorageError {
@@ -35,14 +43,19 @@ pub struct GameStorage {
 impl GameStorage {
     pub fn create_game(
         &self,
+        game_type: GameType,
         player1: PlayerId,
         player2: PlayerId,
     ) -> Result<(), GameStorageError> {
         let mut games_guard = self.games.lock()?;
         match games_guard.entry(player1) {
             Entry::Vacant(e) => {
-                let game = TicTacToe::new(player1, player2)?;
-                e.insert(game);
+                match game_type {
+                    GameType::TicTacToe => {
+                        let game = TicTacToe::new(player1, player2)?;
+                        e.insert(game);
+                    }
+                }
             }
             Entry::Occupied(_) => return Err(GameStorageError::DuplicateGame),
         };
@@ -51,18 +64,31 @@ impl GameStorage {
 
     pub fn update_game(
         &self,
+        game_type: GameType,
         game_id: PlayerId,
         player_id: PlayerId,
-        coords: FieldCoordinates,
+        coords: (u32, u32),
     ) -> Result<GameState, GameStorageError> {
+        let row: usize = usize::try_from(coords.0)?;
+        let col: usize = usize::try_from(coords.1)?;
         let mut games_guard = self.games.lock()?;
-        let game = games_guard
-            .get_mut(&game_id)
-            .ok_or(GameStorageError::NoSuchGame { id: game_id })?;
-        Ok(game.make_turn(player_id, coords)?)
+        match game_type {
+            GameType::TicTacToe => {
+                let row = tic_tac_toe::FieldRow::try_from(row)?;
+                let col = tic_tac_toe::FieldCol::try_from(col)?;
+                let game = games_guard
+                    .get_mut(&game_id)
+                    .ok_or(GameStorageError::NoSuchGame { id: game_id })?;
+                Ok(game.make_turn(player_id, GridIndex::new(row, col))?)
+            }
+        }
     }
 
-    pub fn delete_game(&self, game_id: PlayerId) -> Result<(), GameStorageError> {
+    pub fn delete_game(
+        &self,
+        _: GameType,
+        game_id: PlayerId,
+    ) -> Result<(), GameStorageError> {
         let mut games_guard = self.games.lock()?;
         if let Entry::Occupied(e) = games_guard.entry(game_id) {
             if !e.get().is_finished() {

@@ -3,12 +3,10 @@ use std::sync::Arc;
 use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 
-use super::game_proto::game_server::Game;
 use super::game_proto::{
-    CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest, MakeTurnReply,
-    MakeTurnRequest,
+    game_server::Game, CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest,
+    GameType, MakeTurnReply, MakeTurnRequest,
 };
-use crate::game::tic_tac_toe::FieldCoordinates;
 use crate::rpc_server::game_storage::GameStorage;
 
 pub type RpcResult<T> = Result<Response<T>, Status>;
@@ -29,10 +27,12 @@ impl Game for GameImpl {
                 "invalid number of players (expected 2)",
             ));
         }
+        let game_type = GameType::try_from(request.game_type)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
         let player1 = request.player_ids[0];
         let player2 = request.player_ids[1];
         self.games
-            .create_game(player1, player2)
+            .create_game(game_type, player1, player2)
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateGameReply { game_id: player1 }))
@@ -42,13 +42,14 @@ impl Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
+        let game_type = GameType::try_from(request.game_type)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
         // For now, it's a creator id
         let game_id = request.game_id;
-        let coords = FieldCoordinates::try_from((request.row as usize, request.col as usize))
-            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let coords = (request.row, request.col);
         let game_state = self
             .games
-            .update_game(game_id, request.player_id, coords)
+            .update_game(game_type, game_id, request.player_id, coords)
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(MakeTurnReply::from_game_state(game_state)))
@@ -73,11 +74,12 @@ impl Game for GameImpl {
                     request.game_id, request.player_id, request.row, request.col
                 );
 
+                let game_type = GameType::try_from(request.game_type)
+                    .map_err(|e| Status::invalid_argument(e.to_string()))?;
                 // For now, it's a creator id
                 let game_id = request.game_id;
-                let coords = FieldCoordinates::try_from((request.row as usize, request.col as usize))
-                    .map_err(|e| Status::invalid_argument(e.to_string()))?;
-                let game_state = games.update_game(game_id, request.player_id, coords)
+                let coords = (request.row, request.col);
+                let game_state = games.update_game(game_type, game_id, request.player_id, coords)
                     .map_err(|e| Status::internal(e.to_string()))?;
 
                 yield MakeTurnReply::from_game_state(game_state);
@@ -91,10 +93,12 @@ impl Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
+        let game_type = GameType::try_from(request.game_type)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
         // For now, it's a creator id
         let game_id = request.game_id;
         self.games
-            .delete_game(game_id)
+            .delete_game(game_type, game_id)
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(DeleteGameReply {}))

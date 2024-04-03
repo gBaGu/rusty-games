@@ -1,7 +1,11 @@
+use generic_array::typenum::Unsigned;
 use std::fmt::{Display, Formatter, Write};
 
-use crate::game::error::GameError;
-use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
+use crate::game::{
+    error::GameError,
+    grid::{Grid, GridIndex, WithMaxValue},
+    player_pool::{PlayerId, PlayerPool, WithPlayerId},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Sign {
@@ -61,10 +65,9 @@ pub enum FieldRow {
     R3,
 }
 
-impl Display for FieldRow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", <FieldRow as Into<usize>>::into(*self))
-    }
+// TODO: use derive macro instead
+impl WithMaxValue for FieldRow {
+    type MaxValue = generic_array::typenum::U3;
 }
 
 impl TryFrom<usize> for FieldRow {
@@ -72,10 +75,13 @@ impl TryFrom<usize> for FieldRow {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(Self::R1),
-            2 => Ok(Self::R2),
-            3 => Ok(Self::R3),
-            _ => Err(Self::Error::InvalidFieldRow(value)),
+            0 => Ok(Self::R1),
+            1 => Ok(Self::R2),
+            2 => Ok(Self::R3),
+            _ => Err(Self::Error::InvalidGridRow {
+                max_expected: <Self as WithMaxValue>::MaxValue::to_usize(),
+                found: value,
+            }),
         }
     }
 }
@@ -97,10 +103,9 @@ pub enum FieldCol {
     C3,
 }
 
-impl Display for FieldCol {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", <FieldCol as Into<usize>>::into(*self))
-    }
+// TODO: use derive macro instead
+impl WithMaxValue for FieldCol {
+    type MaxValue = generic_array::typenum::U3;
 }
 
 impl TryFrom<usize> for FieldCol {
@@ -108,10 +113,13 @@ impl TryFrom<usize> for FieldCol {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(Self::C1),
-            2 => Ok(Self::C2),
-            3 => Ok(Self::C3),
-            _ => Err(Self::Error::InvalidFieldCol(value)),
+            0 => Ok(Self::C1),
+            1 => Ok(Self::C2),
+            2 => Ok(Self::C3),
+            _ => Err(Self::Error::InvalidGridCol {
+                max_expected: <Self as WithMaxValue>::MaxValue::to_usize(),
+                found: value,
+            }),
         }
     }
 }
@@ -126,42 +134,11 @@ impl From<FieldCol> for usize {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FieldCoordinates {
-    row: FieldRow,
-    col: FieldCol,
-}
-
-impl FieldCoordinates {
-    pub fn new(row: FieldRow, col: FieldCol) -> FieldCoordinates {
-        Self { row, col }
-    }
-
-    pub fn get_col(&self) -> FieldCol {
-        self.col
-    }
-
-    pub fn get_row(&self) -> FieldRow {
-        self.row
-    }
-}
-
-impl TryFrom<(usize, usize)> for FieldCoordinates {
-    type Error = GameError;
-
-    // Conversion from a pair of usize where first usize is row and the second is col
-    fn try_from(value: (usize, usize)) -> Result<Self, Self::Error> {
-        let row = FieldRow::try_from(value.0)?;
-        let col = FieldCol::try_from(value.1)?;
-        Ok(Self::new(row, col))
-    }
-}
-
 #[derive(Debug)]
 pub struct TicTacToe {
     players: PlayerPool<Player>,
     state: GameState,
-    field: [[Option<Sign>; 3]; 3], // TODO: move to Field to hide arrays and indexing
+    field: Grid<Option<Sign>, FieldRow, FieldCol>,
 }
 
 impl TicTacToe {
@@ -174,7 +151,7 @@ impl TicTacToe {
         Ok(Self {
             players: PlayerPool::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
-            field: Default::default(), // TODO: switch to Field::empty()
+            field: Grid::empty(),
         })
     }
 
@@ -199,7 +176,7 @@ impl TicTacToe {
     pub fn make_turn(
         &mut self,
         player: PlayerId,
-        coordinates: FieldCoordinates,
+        coordinates: GridIndex<FieldRow, FieldCol>,
     ) -> Result<GameState, GameError> {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(GameError::GameIsFinished);
@@ -214,26 +191,23 @@ impl TicTacToe {
         let sign = self.get_current_player()?.sign;
         let cell = self.get_cell(coordinates);
         if cell.is_some() {
-            return Err(GameError::CellIsOccupied(coordinates));
+            return Err(GameError::CellIsOccupied {
+                row: coordinates.get_row(),
+                col: coordinates.get_col(),
+            });
         }
         *cell = Some(sign);
 
         self.update_state()
     }
 
-    fn get_cell(&mut self, coordinates: FieldCoordinates) -> &mut Option<Sign> {
-        let row: usize = coordinates.row.into();
-        let col: usize = coordinates.col.into();
-        // SAFETY: can't get out of bounds with FieldCoordinates
-        self.field
-            .get_mut(row)
-            .and_then(|row| row.get_mut(col))
-            .unwrap_or_else(|| unreachable!())
+    fn get_cell(&mut self, coordinates: GridIndex<FieldRow, FieldCol>) -> &mut Option<Sign> {
+        self.field.get_mut_ref(coordinates)
     }
 
     fn update_state(&mut self) -> Result<GameState, GameError> {
         for i in 0..3 {
-            let row = self.field[i];
+            let row = &self.field[i];
             if let Some(first_sign) = *row.first().unwrap() {
                 if row
                     .iter()
