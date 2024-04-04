@@ -1,5 +1,5 @@
 tonic::include_proto!("game");
-use crate::game::tic_tac_toe::{FinishedState, GameState};
+use crate::game::state::{FinishedState, GameState};
 
 pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
 

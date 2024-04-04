@@ -1,31 +1,16 @@
 use generic_array::typenum::Unsigned;
-use std::fmt::{Display, Formatter, Write};
 
 use crate::game::{
     error::GameError,
     grid::{Grid, GridIndex, WithMaxValue},
     player_pool::{PlayerId, PlayerPool, WithPlayerId},
+    state::{GameState, FinishedState},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Sign {
     X,
     O,
-}
-
-impl From<Sign> for char {
-    fn from(value: Sign) -> Self {
-        match value {
-            Sign::O => 'O',
-            Sign::X => 'X',
-        }
-    }
-}
-
-impl Display for Sign {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_char((*self).into())
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -46,19 +31,7 @@ impl WithPlayerId for Player {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FinishedState {
-    Win(PlayerId),
-    Draw,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum GameState {
-    Turn(PlayerId),
-    Finished(FinishedState),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum FieldRow {
     R1,
     R2,
@@ -96,7 +69,7 @@ impl From<FieldRow> for usize {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum FieldCol {
     C1,
     C2,
@@ -134,11 +107,13 @@ impl From<FieldCol> for usize {
     }
 }
 
+type Cell = Option<Sign>;
+
 #[derive(Debug)]
 pub struct TicTacToe {
     players: PlayerPool<Player>,
     state: GameState,
-    field: Grid<Option<Sign>, FieldRow, FieldCol>,
+    field: Grid<Cell, FieldRow, FieldCol>,
 }
 
 impl TicTacToe {
@@ -201,7 +176,7 @@ impl TicTacToe {
         self.update_state()
     }
 
-    fn get_cell(&mut self, coordinates: GridIndex<FieldRow, FieldCol>) -> &mut Option<Sign> {
+    fn get_cell(&mut self, coordinates: GridIndex<FieldRow, FieldCol>) -> &mut Cell {
         self.field.get_mut_ref(coordinates)
     }
 

@@ -7,7 +7,8 @@ use crate::game::{
     error::GameError,
     grid::GridIndex,
     player_pool::PlayerId,
-    tic_tac_toe::{self, GameState, TicTacToe},
+    tic_tac_toe::{self, TicTacToe},
+    state::GameState,
 };
 use crate::rpc_server::game_proto::GameType;
 
