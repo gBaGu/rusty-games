@@ -1,0 +1,42 @@
+syntax = "proto3";
+package game;
+
+import public "game.proto";
+
+service Game {
+  rpc CreateGame (CreateGameRequest) returns (CreateGameReply);
+  rpc MakeTurn (MakeTurnRequest) returns (MakeTurnReply);
+  rpc MakeTurnStreaming (stream MakeTurnRequest) returns (stream MakeTurnReply);
+  rpc DeleteGame (DeleteGameRequest) returns (DeleteGameReply);
+}
+
+message CreateGameRequest {
+  GameType game_type = 1;
+  // The first one is the one who initiates the call
+  repeated uint64 player_ids = 2;
+}
+
+message CreateGameReply {
+  uint64 game_id = 1;
+}
+
+message MakeTurnRequest {
+  GameType game_type = 1;
+  uint64 game_id = 2;
+  uint64 player_id = 3;
+  bytes turn_data = 4;
+}
+
+message MakeTurnReply {
+  optional uint64 next_player_id = 1;
+  optional uint64 winner = 2;
+}
+
+message DeleteGameRequest {
+  GameType game_type = 1;
+  uint64 game_id = 2;
+}
+
+message DeleteGameReply {
+
+}

@@ -6,6 +6,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Protobuf files will be compiled to: {}", out_dir);
     tonic_build::configure()
         .file_descriptor_set_path(PathBuf::from(out_dir).join("game_descriptor.bin"))
-        .compile(&["proto/game.proto"], &["proto/"])?;
+        .compile(&["proto/game.proto", "proto/rpc.proto"], &["proto/"])?;
     Ok(())
 }

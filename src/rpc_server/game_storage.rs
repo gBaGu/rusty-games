@@ -1,3 +1,4 @@
+use prost::Message;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::num::TryFromIntError;
@@ -7,10 +8,10 @@ use crate::game::{
     error::GameError,
     grid::GridIndex,
     player_pool::PlayerId,
-    tic_tac_toe::{self, TicTacToe},
     state::GameState,
+    tic_tac_toe::{self, TicTacToe},
 };
-use crate::rpc_server::game_proto::GameType;
+use crate::rpc_server::game_proto::{Coordinates, GameType};
 
 #[derive(thiserror::Error, Debug)]
 pub enum GameStorageError {
@@ -26,6 +27,8 @@ pub enum GameStorageError {
     GameErrorError(#[from] GameError),
     #[error(transparent)]
     CoordinatesNumericConversion(#[from] TryFromIntError),
+    #[error(transparent)]
+    ProstError(#[from] prost::DecodeError),
 }
 
 impl<T> From<PoisonError<T>> for GameStorageError {
@@ -50,14 +53,12 @@ impl GameStorage {
     ) -> Result<(), GameStorageError> {
         let mut games_guard = self.games.lock()?;
         match games_guard.entry(player1) {
-            Entry::Vacant(e) => {
-                match game_type {
-                    GameType::TicTacToe => {
-                        let game = TicTacToe::new(player1, player2)?;
-                        e.insert(game);
-                    }
+            Entry::Vacant(e) => match game_type {
+                GameType::TicTacToe => {
+                    let game = TicTacToe::new(player1, player2)?;
+                    e.insert(game);
                 }
-            }
+            },
             Entry::Occupied(_) => return Err(GameStorageError::DuplicateGame),
         };
         Ok(())
@@ -68,13 +69,14 @@ impl GameStorage {
         game_type: GameType,
         game_id: PlayerId,
         player_id: PlayerId,
-        coords: (u32, u32),
+        turn_data: &[u8],
     ) -> Result<GameState, GameStorageError> {
-        let row: usize = usize::try_from(coords.0)?;
-        let col: usize = usize::try_from(coords.1)?;
         let mut games_guard = self.games.lock()?;
         match game_type {
             GameType::TicTacToe => {
+                let coords = Coordinates::decode(turn_data)?;
+                let row: usize = usize::try_from(coords.row)?;
+                let col: usize = usize::try_from(coords.col)?;
                 let row = tic_tac_toe::FieldRow::try_from(row)?;
                 let col = tic_tac_toe::FieldCol::try_from(col)?;
                 let game = games_guard
@@ -85,11 +87,7 @@ impl GameStorage {
         }
     }
 
-    pub fn delete_game(
-        &self,
-        _: GameType,
-        game_id: PlayerId,
-    ) -> Result<(), GameStorageError> {
+    pub fn delete_game(&self, _: GameType, game_id: PlayerId) -> Result<(), GameStorageError> {
         let mut games_guard = self.games.lock()?;
         if let Entry::Occupied(e) = games_guard.entry(game_id) {
             if !e.get().is_finished() {

@@ -46,10 +46,9 @@ impl Game for GameImpl {
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
         // For now, it's a creator id
         let game_id = request.game_id;
-        let coords = (request.row, request.col);
         let game_state = self
             .games
-            .update_game(game_type, game_id, request.player_id, coords)
+            .update_game(game_type, game_id, request.player_id, &request.turn_data)
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(MakeTurnReply::from_game_state(game_state)))
@@ -69,17 +68,13 @@ impl Game for GameImpl {
         let out_stream = async_stream::try_stream! {
             while let Some(req) = input_stream.next().await {
                 let request = req?;
-                println!(
-                    "Got request game={}, player={}, row={}, col={}",
-                    request.game_id, request.player_id, request.row, request.col
-                );
+                println!("Got request game={}, player={}", request.game_id, request.player_id);
 
                 let game_type = GameType::try_from(request.game_type)
                     .map_err(|e| Status::invalid_argument(e.to_string()))?;
                 // For now, it's a creator id
                 let game_id = request.game_id;
-                let coords = (request.row, request.col);
-                let game_state = games.update_game(game_type, game_id, request.player_id, coords)
+                let game_state = games.update_game(game_type, game_id, request.player_id, &request.turn_data)
                     .map_err(|e| Status::internal(e.to_string()))?;
 
                 yield MakeTurnReply::from_game_state(game_state);
