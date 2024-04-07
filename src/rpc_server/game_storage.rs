@@ -19,6 +19,8 @@ pub enum GameStorageError {
     DeleteActiveGameFailed,
     #[error("this player already has an active game")]
     DuplicateGame,
+    #[error("unrecognized game type")]
+    InvalidGameType,
     #[error("game with this id doesn't exist: {}", .id)]
     NoSuchGame { id: PlayerId },
     #[error("failed to lock inner mutex: {}", .description)]
@@ -58,6 +60,7 @@ impl GameStorage {
                     let game = TicTacToe::new(player1, player2)?;
                     e.insert(game);
                 }
+                GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
             },
             Entry::Occupied(_) => return Err(GameStorageError::DuplicateGame),
         };
@@ -84,6 +87,7 @@ impl GameStorage {
                     .ok_or(GameStorageError::NoSuchGame { id: game_id })?;
                 Ok(game.make_turn(player_id, GridIndex::new(row, col))?)
             }
+            GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
         }
     }
 

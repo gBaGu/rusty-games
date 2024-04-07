@@ -2,7 +2,8 @@ syntax = "proto3";
 package game;
 
 enum GameType {
-  TicTacToe = 0;
+  GAME_TYPE_UNSPECIFIED = 0;
+  GAME_TYPE_TIC_TAC_TOE = 1;
 }
 
 message Coordinates {
