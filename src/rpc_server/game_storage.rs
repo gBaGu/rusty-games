@@ -11,7 +11,8 @@ use crate::game::{
     state::GameState,
     tic_tac_toe::{self, TicTacToe},
 };
-use crate::rpc_server::game_proto::{Coordinates, GameType};
+use crate::game::chess::{self, Chess};
+use crate::rpc_server::game_proto::{Coordinates, CoordinatesPair, GameType};
 
 #[derive(thiserror::Error, Debug)]
 pub enum GameStorageError {
@@ -21,21 +22,23 @@ pub enum GameStorageError {
     DuplicateGame,
     #[error("unrecognized game type")]
     InvalidGameType,
-    #[error("game with this id doesn't exist: {}", .id)]
+    #[error("game with this id doesn't exist: {id}")]
     NoSuchGame { id: PlayerId },
-    #[error("failed to lock inner mutex: {}", .description)]
-    MutexPoisonError { description: String },
+    #[error("turn data has missing field: {missing_field}")]
+    TurnDataMissing { missing_field: String },
+    #[error("failed to lock inner mutex: {description}")]
+    MutexPoison { description: String },
     #[error(transparent)]
-    GameErrorError(#[from] GameError),
+    GameError(#[from] GameError),
     #[error(transparent)]
-    CoordinatesNumericConversion(#[from] TryFromIntError),
+    TurnDataConversion(#[from] TryFromIntError),
     #[error(transparent)]
-    ProstError(#[from] prost::DecodeError),
+    ProstDecodeError(#[from] prost::DecodeError),
 }
 
 impl<T> From<PoisonError<T>> for GameStorageError {
     fn from(value: PoisonError<T>) -> Self {
-        Self::MutexPoisonError {
+        Self::MutexPoison {
             description: value.to_string(),
         }
     }
@@ -43,7 +46,8 @@ impl<T> From<PoisonError<T>> for GameStorageError {
 
 #[derive(Debug, Default)]
 pub struct GameStorage {
-    games: Mutex<HashMap<PlayerId, TicTacToe>>,
+    tic_tac_toe: Mutex<HashMap<PlayerId, TicTacToe>>,
+    chess: Mutex<HashMap<PlayerId, Chess>>,
 }
 
 impl GameStorage {
@@ -53,17 +57,29 @@ impl GameStorage {
         player1: PlayerId,
         player2: PlayerId,
     ) -> Result<(), GameStorageError> {
-        let mut games_guard = self.games.lock()?;
-        match games_guard.entry(player1) {
-            Entry::Vacant(e) => match game_type {
-                GameType::TicTacToe => {
-                    let game = TicTacToe::new(player1, player2)?;
-                    e.insert(game);
+        match game_type {
+            GameType::TicTacToe => {
+                let mut games_guard = self.tic_tac_toe.lock()?;
+                match games_guard.entry(player1) {
+                    Entry::Vacant(e) => {
+                        let game = TicTacToe::new(player1, player2)?;
+                        e.insert(game);
+                    }
+                    Entry::Occupied(_) => return Err(GameStorageError::DuplicateGame),
                 }
-                GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
-            },
-            Entry::Occupied(_) => return Err(GameStorageError::DuplicateGame),
-        };
+            }
+            GameType::Chess => {
+                let mut games_guard = self.chess.lock()?;
+                match games_guard.entry(player1) {
+                    Entry::Vacant(e) => {
+                        let game = Chess::new(player1, player2)?;
+                        e.insert(game);
+                    }
+                    Entry::Occupied(_) => return Err(GameStorageError::DuplicateGame),
+                }
+            }
+            GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
+        }
         Ok(())
     }
 
@@ -74,7 +90,6 @@ impl GameStorage {
         player_id: PlayerId,
         turn_data: &[u8],
     ) -> Result<GameState, GameStorageError> {
-        let mut games_guard = self.games.lock()?;
         match game_type {
             GameType::TicTacToe => {
                 let coords = Coordinates::decode(turn_data)?;
@@ -82,23 +97,52 @@ impl GameStorage {
                 let col: usize = usize::try_from(coords.col)?;
                 let row = tic_tac_toe::FieldRow::try_from(row)?;
                 let col = tic_tac_toe::FieldCol::try_from(col)?;
+                let mut games_guard = self.tic_tac_toe.lock()?;
                 let game = games_guard
                     .get_mut(&game_id)
                     .ok_or(GameStorageError::NoSuchGame { id: game_id })?;
                 Ok(game.make_turn(player_id, GridIndex::new(row, col))?)
             }
+            GameType::Chess => {
+                let turn_data = CoordinatesPair::decode(turn_data)?;
+                let first = turn_data.first.ok_or_else(|| GameStorageError::TurnDataMissing { missing_field: "first".to_string() })?;
+                let second = turn_data.second.ok_or_else(|| GameStorageError::TurnDataMissing { missing_field: "second".to_string() })?;
+                let turn_data= chess::TurnData::new(
+                    GridIndex::new(chess::Row(usize::try_from(first.row)?), chess::Col(usize::try_from(first.col)?)),
+                    GridIndex::new(chess::Row(usize::try_from(second.row)?), chess::Col(usize::try_from(second.col)?))
+                );
+                let mut games_guard = self.chess.lock()?;
+                let game = games_guard
+                    .get_mut(&game_id)
+                    .ok_or(GameStorageError::NoSuchGame { id: game_id })?;
+                Ok(game.make_turn(player_id, turn_data)?)
+            }
             GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
         }
     }
 
-    pub fn delete_game(&self, _: GameType, game_id: PlayerId) -> Result<(), GameStorageError> {
-        let mut games_guard = self.games.lock()?;
-        if let Entry::Occupied(e) = games_guard.entry(game_id) {
-            if !e.get().is_finished() {
-                return Err(GameStorageError::DeleteActiveGameFailed);
+    pub fn delete_game(&self, game_type: GameType, game_id: PlayerId) -> Result<(), GameStorageError> {
+        match game_type {
+            GameType::TicTacToe => {
+                let mut games_guard = self.tic_tac_toe.lock()?;
+                if let Entry::Occupied(e) = games_guard.entry(game_id) {
+                    if !e.get().is_finished() {
+                        return Err(GameStorageError::DeleteActiveGameFailed);
+                    }
+                    e.remove();
+                };
             }
-            e.remove();
-        };
+            GameType::Chess => {
+                let mut games_guard = self.chess.lock()?;
+                if let Entry::Occupied(e) = games_guard.entry(game_id) {
+                    if !e.get().is_finished() {
+                        return Err(GameStorageError::DeleteActiveGameFailed);
+                    }
+                    e.remove();
+                };
+            }
+            GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
+        }
         Ok(())
     }
 }
