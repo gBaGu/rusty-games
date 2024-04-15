@@ -1,11 +1,10 @@
 pub mod rpc;
 
-mod game_proto;
 mod game_storage;
 
 use tonic_reflection::server::{Builder, Error, ServerReflection, ServerReflectionServer};
 
-use game_proto::{
+use crate::proto::{
     game_server::{Game, GameServer},
     FILE_DESCRIPTOR_SET,
 };

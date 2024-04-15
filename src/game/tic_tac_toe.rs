@@ -1,11 +1,15 @@
 use generic_array::typenum::Unsigned;
+use prost::Message;
 
+use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameResult};
 use crate::game::{
     error::GameError,
     grid::{Grid, GridIndex, WithMaxValue},
     player_pool::{PlayerId, PlayerPool, WithPlayerId},
-    state::{GameState, FinishedState},
+    state::{FinishedState, GameState},
+    tic_tac_toe,
 };
+use crate::proto::Coordinates;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Sign {
@@ -44,7 +48,7 @@ impl WithMaxValue for FieldRow {
 }
 
 impl TryFrom<usize> for FieldRow {
-    type Error = GameError;
+    type Error = FromProtobufError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
@@ -82,7 +86,7 @@ impl WithMaxValue for FieldCol {
 }
 
 impl TryFrom<usize> for FieldCol {
-    type Error = GameError;
+    type Error = FromProtobufError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
@@ -116,8 +120,29 @@ pub struct TicTacToe {
     field: Grid<Cell, FieldRow, FieldCol>,
 }
 
-impl TicTacToe {
-    pub fn new(id1: PlayerId, id2: PlayerId) -> Result<Self, GameError> {
+type TurnData = GridIndex<FieldRow, FieldCol>;
+
+impl FromProtobuf for TurnData {
+    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
+        let coords = Coordinates::decode(buf)?;
+        let row: usize = usize::try_from(coords.row)?;
+        let col: usize = usize::try_from(coords.col)?;
+        let row = tic_tac_toe::FieldRow::try_from(row)?;
+        let col = tic_tac_toe::FieldCol::try_from(col)?;
+        Ok(Self::new(row, col))
+    }
+}
+
+impl Game for TicTacToe {
+    type TurnData = TurnData;
+
+    fn new(players: &[PlayerId]) -> GameResult<Self> {
+        let [id1, id2]: [_; 2] = players
+            .try_into()
+            .map_err(|_| GameError::InvalidPlayersNumber {
+                expected: 2,
+                found: players.len(),
+            })?;
         if id1 == id2 {
             return Err(GameError::DuplicatePlayerId);
         }
@@ -130,7 +155,38 @@ impl TicTacToe {
         })
     }
 
-    pub fn get_current_player(&mut self) -> Result<&Player, GameError> {
+    fn is_finished(&self) -> bool {
+        matches!(self.state, GameState::Finished(_))
+    }
+
+    fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
+        if matches!(self.state, GameState::Finished(_)) {
+            return Err(GameError::GameIsFinished);
+        }
+        if player != self.get_current_player()?.id {
+            return Err(GameError::NotYourTurn {
+                expected: self.get_current_player()?.id,
+                found: player,
+            });
+        }
+
+        let sign = self.get_current_player()?.sign;
+        let cell = self.get_cell(data);
+        if cell.is_some() {
+            return Err(GameError::CellIsOccupied {
+                row: data.get_row(),
+                col: data.get_col(),
+            });
+        }
+        *cell = Some(sign);
+
+        self.update_state()
+    }
+}
+
+impl TicTacToe {
+
+    pub fn get_current_player(&mut self) -> GameResult<&Player> {
         self.players
             .get_current()
             .ok_or(GameError::PlayerPoolCorrupted)
@@ -144,43 +200,11 @@ impl TicTacToe {
         &self.state
     }
 
-    pub fn is_finished(&self) -> bool {
-        matches!(self.state, GameState::Finished(_))
-    }
-
-    pub fn make_turn(
-        &mut self,
-        player: PlayerId,
-        coordinates: GridIndex<FieldRow, FieldCol>,
-    ) -> Result<GameState, GameError> {
-        if matches!(self.state, GameState::Finished(_)) {
-            return Err(GameError::GameIsFinished);
-        }
-        if player != self.get_current_player()?.id {
-            return Err(GameError::NotYourTurn {
-                expected: self.get_current_player()?.id,
-                found: player,
-            });
-        }
-
-        let sign = self.get_current_player()?.sign;
-        let cell = self.get_cell(coordinates);
-        if cell.is_some() {
-            return Err(GameError::CellIsOccupied {
-                row: coordinates.get_row(),
-                col: coordinates.get_col(),
-            });
-        }
-        *cell = Some(sign);
-
-        self.update_state()
-    }
-
     fn get_cell(&mut self, coordinates: GridIndex<FieldRow, FieldCol>) -> &mut Cell {
         self.field.get_mut_ref(coordinates)
     }
 
-    fn update_state(&mut self) -> Result<GameState, GameError> {
+    fn update_state(&mut self) -> GameResult<GameState> {
         for i in 0..3 {
             let row = &self.field[i];
             if let Some(first_sign) = *row.first().unwrap() {
@@ -225,7 +249,7 @@ impl TicTacToe {
         self.switch_player()
     }
 
-    fn set_winner(&mut self, sign: Sign) -> Result<GameState, GameError> {
+    fn set_winner(&mut self, sign: Sign) -> GameResult<GameState> {
         let player = self
             .get_player_by_sign(sign)
             .ok_or(GameError::PlayerNotFound)?;
@@ -233,7 +257,7 @@ impl TicTacToe {
         Ok(self.state)
     }
 
-    fn switch_player(&mut self) -> Result<GameState, GameError> {
+    fn switch_player(&mut self) -> GameResult<GameState> {
         let next_player = self.players.next().ok_or(GameError::PlayerPoolCorrupted)?;
         self.state = GameState::Turn(next_player.id);
         Ok(self.state)

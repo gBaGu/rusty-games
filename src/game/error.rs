@@ -6,10 +6,8 @@ pub enum GameError {
     DuplicatePlayerId,
     #[error("player not found")]
     PlayerNotFound,
-    #[error("invalid row (expected: 1-{max_expected}, found: {found})")]
-    InvalidGridRow { max_expected: usize, found: usize },
-    #[error("invalid column (expected: 1-{max_expected}, found: {found})")]
-    InvalidGridCol { max_expected: usize, found: usize },
+    #[error("invalid player number (expected: {expected}, found: {found})")]
+    InvalidPlayersNumber { expected: usize, found: usize },
     #[error("cell ({row}, {col}) is occupied")]
     CellIsOccupied { row: usize, col: usize },
     #[error("can't make turn on a finished game")]

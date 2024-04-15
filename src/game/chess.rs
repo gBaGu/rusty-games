@@ -1,7 +1,11 @@
+use prost::Message;
+
 use crate::game::error::GameError;
+use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameResult};
 use crate::game::grid::{Grid, GridIndex, WithMaxValue};
 use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
-use crate::game::state::{GameState, FinishedState};
+use crate::game::state::{FinishedState, GameState};
+use crate::proto::CoordinatesPair;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
@@ -74,6 +78,33 @@ impl TurnData {
     }
 }
 
+impl FromProtobuf for TurnData {
+    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
+        let coords = CoordinatesPair::decode(buf)?;
+        let first = coords
+            .first
+            .ok_or_else(|| FromProtobufError::TurnDataMissing {
+                missing_field: "first".to_string(),
+            })?;
+        let second = coords
+            .second
+            .ok_or_else(|| FromProtobufError::TurnDataMissing {
+                missing_field: "second".to_string(),
+            })?;
+        let turn_data = TurnData::new(
+            GridIndex::new(
+                Row(usize::try_from(first.row)?),
+                Col(usize::try_from(first.col)?),
+            ),
+            GridIndex::new(
+                Row(usize::try_from(second.row)?),
+                Col(usize::try_from(second.col)?),
+            ),
+        );
+        Ok(turn_data)
+    }
+}
+
 #[derive(Debug)]
 pub struct Chess {
     players: PlayerPool<Player>,
@@ -81,8 +112,17 @@ pub struct Chess {
     board: Grid<Cell, Row, Col>,
 }
 
-impl Chess {
-    pub fn new(id1: PlayerId, id2: PlayerId) -> Result<Self, GameError> {
+impl Game for Chess {
+    type TurnData = TurnData;
+
+    fn new(players: &[PlayerId]) -> GameResult<Self> {
+        let [id1, id2]: [_; 2] =
+            players
+                .try_into()
+                .map_err(|_| GameError::InvalidPlayersNumber {
+                    expected: 2,
+                    found: players.len(),
+                })?;
         if id1 == id2 {
             return Err(GameError::DuplicatePlayerId);
         }
@@ -95,7 +135,17 @@ impl Chess {
         })
     }
 
-    pub fn get_current_player(&mut self) -> Result<&Player, GameError> {
+    fn is_finished(&self) -> bool {
+        matches!(self.state, GameState::Finished(_))
+    }
+
+    fn update(&mut self, _player: PlayerId, _data: Self::TurnData) -> GameResult<GameState> {
+        todo!()
+    }
+}
+
+impl Chess {
+    pub fn get_current_player(&mut self) -> GameResult<&Player> {
         self.players
             .get_current()
             .ok_or(GameError::PlayerPoolCorrupted)
@@ -105,34 +155,22 @@ impl Chess {
         &self.state
     }
 
-    pub fn is_finished(&self) -> bool {
-        matches!(self.state, GameState::Finished(_))
-    }
-
-    pub fn make_turn(
-        &mut self,
-        _player: PlayerId,
-        _turn_data: TurnData,
-    ) -> Result<GameState, GameError> {
-        todo!()
-    }
-
     fn get_cell(&mut self, coordinates: GridIndex<Row, Col>) -> &mut Cell {
         self.board.get_mut_ref(coordinates)
     }
 
-    fn set_winner(&mut self, player: PlayerId) -> Result<GameState, GameError> {
+    fn set_winner(&mut self, player: PlayerId) -> GameResult<GameState> {
         self.state = GameState::Finished(FinishedState::Win(player));
         Ok(self.state)
     }
 
-    fn switch_player(&mut self) -> Result<GameState, GameError> {
+    fn switch_player(&mut self) -> GameResult<GameState> {
         let next_player = self.players.next().ok_or(GameError::PlayerPoolCorrupted)?;
         self.state = GameState::Turn(next_player.id);
         Ok(self.state)
     }
 
-    fn update_state(&mut self) -> Result<GameState, GameError> {
+    fn update_state(&mut self) -> GameResult<GameState> {
         todo!()
     }
 }

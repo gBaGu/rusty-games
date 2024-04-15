@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 
-use super::game_proto::{
+use crate::proto::{
     game_server::Game, CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest,
     GameType, MakeTurnReply, MakeTurnRequest,
 };
@@ -22,17 +22,16 @@ impl Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
-        if request.player_ids.len() != 2 {
-            return Err(Status::invalid_argument(
-                "invalid number of players (expected 2)",
-            ));
-        }
         let game_type = GameType::try_from(request.game_type)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
-        let player1 = request.player_ids[0];
-        let player2 = request.player_ids[1];
+
+        let player1 = request
+            .player_ids
+            .first()
+            .cloned()
+            .ok_or_else(|| Status::invalid_argument("player ids missing"))?;
         self.games
-            .create_game(game_type, player1, player2)
+            .create_game(game_type, player1, &request.player_ids)
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateGameReply { game_id: player1 }))
