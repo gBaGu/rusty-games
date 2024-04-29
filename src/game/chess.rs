@@ -1,9 +1,10 @@
 use generic_array::typenum::Unsigned;
 use prost::Message;
+use std::ops::{Add, Sub};
 
 use crate::game::error::GameError;
 use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameResult};
-use crate::game::grid::{Grid, GridIndex, WithMaxValue};
+use crate::game::grid::{Grid, GridIndex, WithGridIndex, WithMaxValue};
 use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
 use crate::game::state::{FinishedState, GameState};
 use crate::proto::CoordinatesPair;
@@ -25,10 +26,32 @@ impl WithPlayerId for Player {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Row(pub usize);
 impl WithMaxValue for Row {
     type MaxValue = generic_array::typenum::U8;
+}
+
+impl Add<usize> for Row {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        Self(self.0.add(rhs))
+    }
+}
+
+impl Sub<usize> for Row {
+    type Output = Self;
+
+    fn sub(self, rhs: usize) -> Self::Output {
+        Self(self.0.sub(rhs))
+    }
+}
+
+impl From<usize> for Row {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
 }
 
 impl From<Row> for usize {
@@ -37,10 +60,32 @@ impl From<Row> for usize {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Col(pub usize);
 impl WithMaxValue for Col {
     type MaxValue = generic_array::typenum::U8;
+}
+
+impl Add<usize> for Col {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        Self(self.0.add(rhs))
+    }
+}
+
+impl Sub<usize> for Col {
+    type Output = Self;
+
+    fn sub(self, rhs: usize) -> Self::Output {
+        Self(self.0.sub(rhs))
+    }
+}
+
+impl From<usize> for Col {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
 }
 
 impl From<Col> for usize {
@@ -49,13 +94,13 @@ impl From<Col> for usize {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 enum Direction {
     Up,
     Down,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum PieceKind {
     Pawn(Direction),
     Bishop,
@@ -65,10 +110,58 @@ pub enum PieceKind {
     King,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Piece {
     kind: PieceKind,
     owner: PlayerId,
+}
+
+impl Piece {
+    fn create_pawn(owner: PlayerId, direction: Direction) -> Self {
+        Self {
+            kind: PieceKind::Pawn(direction),
+            owner,
+        }
+    }
+
+    fn create_bishop(owner: PlayerId) -> Self {
+        Self {
+            kind: PieceKind::Bishop,
+            owner,
+        }
+    }
+
+    fn create_knight(owner: PlayerId) -> Self {
+        Self {
+            kind: PieceKind::Knight,
+            owner,
+        }
+    }
+
+    fn create_rook(owner: PlayerId) -> Self {
+        Self {
+            kind: PieceKind::Rook,
+            owner,
+        }
+    }
+
+    fn create_queen(owner: PlayerId) -> Self {
+        Self {
+            kind: PieceKind::Queen,
+            owner,
+        }
+    }
+
+    fn create_king(owner: PlayerId) -> Self {
+        Self {
+            kind: PieceKind::King,
+            owner,
+        }
+    }
+
+    fn is_enemy(&self, player: PlayerId) -> bool {
+        self.owner != player
+    }
 }
 
 type Cell = Option<Piece>;
@@ -118,13 +211,11 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     let last_col = Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1);
     // init pawns
     for i in 0..<Col as WithMaxValue>::MaxValue::to_usize() {
-        let mut pawn_row = <Row as Into<usize>>::into(last_row) - 1;
-        *board.get_mut_ref(GridIndex::new(Row(pawn_row), Col(i))) = Some(Piece {
+        *board.get_mut_ref(GridIndex::new(last_row - 1, Col(i))) = Some(Piece {
             kind: PieceKind::Pawn(Direction::Up),
             owner: player1,
         });
-        pawn_row = 1;
-        *board.get_mut_ref(GridIndex::new(Row(pawn_row), Col(i))) = Some(Piece {
+        *board.get_mut_ref(GridIndex::new(Row(1), Col(i))) = Some(Piece {
             kind: PieceKind::Pawn(Direction::Down),
             owner: player2,
         });
@@ -151,10 +242,7 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
         kind: PieceKind::Knight,
         owner: player1,
     });
-    *board.get_mut_ref(GridIndex::new(
-        last_row,
-        Col(<Col as Into<usize>>::into(last_col) - 1),
-    )) = Some(Piece {
+    *board.get_mut_ref(GridIndex::new(last_row, last_col - 1)) = Some(Piece {
         kind: PieceKind::Knight,
         owner: player1,
     });
@@ -162,10 +250,7 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
         kind: PieceKind::Knight,
         owner: player2,
     });
-    *board.get_mut_ref(GridIndex::new(
-        Row(0),
-        Col(<Col as Into<usize>>::into(last_col) - 1),
-    )) = Some(Piece {
+    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 1)) = Some(Piece {
         kind: PieceKind::Knight,
         owner: player2,
     });
@@ -174,10 +259,7 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
         kind: PieceKind::Bishop,
         owner: player1,
     });
-    *board.get_mut_ref(GridIndex::new(
-        last_row,
-        Col(<Col as Into<usize>>::into(last_col) - 2),
-    )) = Some(Piece {
+    *board.get_mut_ref(GridIndex::new(last_row, last_col - 2)) = Some(Piece {
         kind: PieceKind::Bishop,
         owner: player1,
     });
@@ -185,10 +267,7 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
         kind: PieceKind::Bishop,
         owner: player2,
     });
-    *board.get_mut_ref(GridIndex::new(
-        Row(0),
-        Col(<Col as Into<usize>>::into(last_col) - 2),
-    )) = Some(Piece {
+    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 2)) = Some(Piece {
         kind: PieceKind::Bishop,
         owner: player2,
     });
@@ -264,8 +343,102 @@ impl Chess {
         &self.state
     }
 
-    fn get_cell(&mut self, coordinates: GridIndex<Row, Col>) -> &mut Cell {
+    fn get_cell(&self, coordinates: GridIndex<Row, Col>) -> &Cell {
+        self.board.get_ref(coordinates)
+    }
+
+    fn get_cell_mut(&mut self, coordinates: GridIndex<Row, Col>) -> &mut Cell {
         self.board.get_mut_ref(coordinates)
+    }
+
+    fn get_moves(&self, pos: GridIndex<Row, Col>) -> GameResult<Vec<GridIndex<Row, Col>>> {
+        let last_row = <Row as WithMaxValue>::MaxValue::to_usize() - 1;
+        let last_col = <Col as WithMaxValue>::MaxValue::to_usize() - 1;
+        let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
+            row: pos.get_row(),
+            col: pos.get_col(),
+        })?;
+        let mut res = vec![];
+        match piece.kind {
+            PieceKind::Pawn(d) => {
+                let row = match d {
+                    Direction::Down if pos.get_row() < last_row => pos.get_row() + 1,
+                    Direction::Up if pos.get_row() > 0 => pos.get_row() - 1,
+                    _ => return Ok(vec![]),
+                };
+                res.push(GridIndex::new(Row(row), Col(pos.get_col())));
+                if pos.get_col() < last_col
+                    && self
+                        .get_cell(GridIndex::new(Row(row), Col(pos.get_col() + 1)))
+                        .filter(|target| target.is_enemy(piece.owner))
+                        .is_some()
+                {
+                    res.push(GridIndex::new(Row(row), Col(pos.get_col() + 1)));
+                }
+                if pos.get_col() > 0
+                    && self
+                        .get_cell(GridIndex::new(Row(row), Col(pos.get_col() - 1)))
+                        .filter(|target| target.is_enemy(piece.owner))
+                        .is_some()
+                {
+                    res.push(GridIndex::new(Row(row), Col(pos.get_col() - 1)));
+                }
+            }
+            PieceKind::Bishop => {
+                let diag_tl = self
+                    .board
+                    .top_left_iter(GridIndex::new(
+                        Row(pos.get_row() - 1),
+                        Col(pos.get_col() - 1),
+                    ))
+                    .indexed();
+                let diag_tr = self
+                    .board
+                    .top_right_iter(GridIndex::new(
+                        Row(pos.get_row() - 1),
+                        Col(pos.get_col() + 1),
+                    ))
+                    .indexed();
+                let diag_br = self
+                    .board
+                    .bottom_right_iter(GridIndex::new(
+                        Row(pos.get_row() + 1),
+                        Col(pos.get_col() + 1),
+                    ))
+                    .indexed();
+                let diag_bl = self
+                    .board
+                    .bottom_left_iter(GridIndex::new(
+                        Row(pos.get_row() + 1),
+                        Col(pos.get_col() - 1),
+                    ))
+                    .indexed();
+                let diagonals = diag_tl.chain(diag_tr).chain(diag_br).chain(diag_bl);
+                for (index, cell) in diagonals {
+                    if let Some(target) = cell {
+                        if target.is_enemy(piece.owner) {
+                            res.push(index);
+                        }
+                        break;
+                    } else {
+                        res.push(index);
+                    }
+                }
+            }
+            PieceKind::Knight => {
+                todo!()
+            }
+            PieceKind::Rook => {
+                todo!()
+            }
+            PieceKind::Queen => {
+                todo!()
+            }
+            PieceKind::King => {
+                todo!()
+            }
+        };
+        Ok(res)
     }
 
     fn set_winner(&mut self, player: PlayerId) -> GameResult<GameState> {
