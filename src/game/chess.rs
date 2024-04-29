@@ -1,3 +1,4 @@
+use generic_array::typenum::Unsigned;
 use prost::Message;
 
 use crate::game::error::GameError;
@@ -49,8 +50,14 @@ impl From<Col> for usize {
 }
 
 #[derive(Debug)]
-pub enum PieceType {
-    Pawn,
+enum Direction {
+    Up,
+    Down,
+}
+
+#[derive(Debug)]
+pub enum PieceKind {
+    Pawn(Direction),
     Bishop,
     Knight,
     Rook,
@@ -60,7 +67,7 @@ pub enum PieceType {
 
 #[derive(Debug)]
 pub struct Piece {
-    piece: PieceType,
+    kind: PieceKind,
     owner: PlayerId,
 }
 
@@ -105,6 +112,108 @@ impl FromProtobuf for TurnData {
     }
 }
 
+fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
+    let mut board = Grid::empty();
+    let last_row = Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1);
+    let last_col = Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1);
+    // init pawns
+    for i in 0..<Col as WithMaxValue>::MaxValue::to_usize() {
+        let mut pawn_row = <Row as Into<usize>>::into(last_row) - 1;
+        *board.get_mut_ref(GridIndex::new(Row(pawn_row), Col(i))) = Some(Piece {
+            kind: PieceKind::Pawn(Direction::Up),
+            owner: player1,
+        });
+        pawn_row = 1;
+        *board.get_mut_ref(GridIndex::new(Row(pawn_row), Col(i))) = Some(Piece {
+            kind: PieceKind::Pawn(Direction::Down),
+            owner: player2,
+        });
+    }
+    // init rooks
+    *board.get_mut_ref(GridIndex::new(last_row, Col(0))) = Some(Piece {
+        kind: PieceKind::Rook,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(last_row, last_col)) = Some(Piece {
+        kind: PieceKind::Rook,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(0))) = Some(Piece {
+        kind: PieceKind::Rook,
+        owner: player2,
+    });
+    *board.get_mut_ref(GridIndex::new(Row(0), last_col)) = Some(Piece {
+        kind: PieceKind::Rook,
+        owner: player2,
+    });
+    // init knights
+    *board.get_mut_ref(GridIndex::new(last_row, Col(1))) = Some(Piece {
+        kind: PieceKind::Knight,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(
+        last_row,
+        Col(<Col as Into<usize>>::into(last_col) - 1),
+    )) = Some(Piece {
+        kind: PieceKind::Knight,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(1))) = Some(Piece {
+        kind: PieceKind::Knight,
+        owner: player2,
+    });
+    *board.get_mut_ref(GridIndex::new(
+        Row(0),
+        Col(<Col as Into<usize>>::into(last_col) - 1),
+    )) = Some(Piece {
+        kind: PieceKind::Knight,
+        owner: player2,
+    });
+    // init bishops
+    *board.get_mut_ref(GridIndex::new(last_row, Col(2))) = Some(Piece {
+        kind: PieceKind::Bishop,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(
+        last_row,
+        Col(<Col as Into<usize>>::into(last_col) - 2),
+    )) = Some(Piece {
+        kind: PieceKind::Bishop,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(2))) = Some(Piece {
+        kind: PieceKind::Bishop,
+        owner: player2,
+    });
+    *board.get_mut_ref(GridIndex::new(
+        Row(0),
+        Col(<Col as Into<usize>>::into(last_col) - 2),
+    )) = Some(Piece {
+        kind: PieceKind::Bishop,
+        owner: player2,
+    });
+    // init queens
+    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece {
+        kind: PieceKind::Queen,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece {
+        kind: PieceKind::Queen,
+        owner: player2,
+    });
+    // init kings
+    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece {
+        kind: PieceKind::King,
+        owner: player1,
+    });
+    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece {
+        kind: PieceKind::King,
+        owner: player2,
+    });
+
+    board
+}
+
 #[derive(Debug)]
 pub struct Chess {
     players: PlayerPool<Player>,
@@ -131,7 +240,7 @@ impl Game for Chess {
         Ok(Self {
             players: PlayerPool::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
-            board: Grid::empty(), // TODO: fill the board
+            board: initial_board(id1, id2),
         })
     }
 
