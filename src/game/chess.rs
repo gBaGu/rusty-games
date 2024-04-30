@@ -351,9 +351,13 @@ impl Chess {
         self.board.get_mut_ref(coordinates)
     }
 
+    fn is_enemy(&self, coordinates: GridIndex<Row, Col>, player: PlayerId) -> bool {
+        self.get_cell(coordinates)
+            .filter(|target| target.is_enemy(player))
+            .is_some()
+    }
+
     fn get_moves(&self, pos: GridIndex<Row, Col>) -> GameResult<Vec<GridIndex<Row, Col>>> {
-        let last_row = <Row as WithMaxValue>::MaxValue::to_usize() - 1;
-        let last_col = <Col as WithMaxValue>::MaxValue::to_usize() - 1;
         let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
             row: pos.get_row(),
             col: pos.get_col(),
@@ -361,58 +365,37 @@ impl Chess {
         let mut res = vec![];
         match piece.kind {
             PieceKind::Pawn(d) => {
-                let row = match d {
-                    Direction::Down if pos.get_row() < last_row => pos.get_row() + 1,
-                    Direction::Up if pos.get_row() > 0 => pos.get_row() - 1,
-                    _ => return Ok(vec![]),
+                let advanced = match d {
+                    Direction::Down => pos.move_down(1),
+                    Direction::Up => pos.move_up(1),
                 };
-                res.push(GridIndex::new(Row(row), Col(pos.get_col())));
-                if pos.get_col() < last_col
-                    && self
-                        .get_cell(GridIndex::new(Row(row), Col(pos.get_col() + 1)))
-                        .filter(|target| target.is_enemy(piece.owner))
-                        .is_some()
-                {
-                    res.push(GridIndex::new(Row(row), Col(pos.get_col() + 1)));
+                if let Some(advanced) = advanced {
+                    res.push(advanced);
+                    if let Some(moved) = advanced.move_right(1) {
+                        if self.is_enemy(moved, piece.owner) {
+                            res.push(moved);
+                        }
+                    }
                 }
-                if pos.get_col() > 0
-                    && self
-                        .get_cell(GridIndex::new(Row(row), Col(pos.get_col() - 1)))
-                        .filter(|target| target.is_enemy(piece.owner))
-                        .is_some()
-                {
-                    res.push(GridIndex::new(Row(row), Col(pos.get_col() - 1)));
+                if let Some(advanced) = advanced {
+                    res.push(advanced);
+                    if let Some(moved) = advanced.move_left(1) {
+                        if self.is_enemy(moved, piece.owner) {
+                            res.push(moved);
+                        }
+                    }
                 }
             }
             PieceKind::Bishop => {
-                let diag_tl = self
-                    .board
-                    .top_left_iter(GridIndex::new(
-                        Row(pos.get_row() - 1),
-                        Col(pos.get_col() - 1),
-                    ))
-                    .indexed();
-                let diag_tr = self
-                    .board
-                    .top_right_iter(GridIndex::new(
-                        Row(pos.get_row() - 1),
-                        Col(pos.get_col() + 1),
-                    ))
-                    .indexed();
-                let diag_br = self
-                    .board
-                    .bottom_right_iter(GridIndex::new(
-                        Row(pos.get_row() + 1),
-                        Col(pos.get_col() + 1),
-                    ))
-                    .indexed();
-                let diag_bl = self
-                    .board
-                    .bottom_left_iter(GridIndex::new(
-                        Row(pos.get_row() + 1),
-                        Col(pos.get_col() - 1),
-                    ))
-                    .indexed();
+                let mut diag_tl = self.board.top_left_iter(pos).indexed();
+                let mut diag_tr = self.board.top_right_iter(pos).indexed();
+                let mut diag_br = self.board.bottom_right_iter(pos).indexed();
+                let mut diag_bl = self.board.bottom_left_iter(pos).indexed();
+                // skip current position for every iterator
+                let _ = diag_tl.next();
+                let _ = diag_tr.next();
+                let _ = diag_br.next();
+                let _ = diag_bl.next();
                 let diagonals = diag_tl.chain(diag_tr).chain(diag_br).chain(diag_bl);
                 for (index, cell) in diagonals {
                     if let Some(target) = cell {

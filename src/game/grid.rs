@@ -35,6 +35,56 @@ where
 
 impl<Row, Col> GridIndex<Row, Col>
 where
+    Row: Copy
+        + PartialOrd
+        + From<usize>
+        + Add<usize, Output = Row>
+        + Sub<usize, Output = Row>
+        + WithMaxValue,
+    Col: Copy
+        + PartialOrd
+        + From<usize>
+        + Add<usize, Output = Col>
+        + Sub<usize, Output = Col>
+        + WithMaxValue,
+{
+    pub fn move_right(&self, n: usize) -> Option<Self> {
+        let moved = GridIndex::new(self.row, self.col + n);
+        if moved.is_valid() {
+            Some(moved)
+        } else {
+            None
+        }
+    }
+
+    pub fn move_left(&self, n: usize) -> Option<Self> {
+        if self.col >= n.into() {
+            Some(GridIndex::new(self.row, self.col - n))
+        } else {
+            None
+        }
+    }
+
+    pub fn move_up(&self, n: usize) -> Option<Self> {
+        if self.row >= n.into() {
+            Some(GridIndex::new(self.row - n, self.col))
+        } else {
+            None
+        }
+    }
+
+    pub fn move_down(&self, n: usize) -> Option<Self> {
+        let moved = GridIndex::new(self.row + n, self.col);
+        if moved.is_valid() {
+            Some(moved)
+        } else {
+            None
+        }
+    }
+}
+
+impl<Row, Col> GridIndex<Row, Col>
+where
     Row: Copy + Into<usize>,
     Col: Copy + Into<usize>,
 {
@@ -91,20 +141,8 @@ where
 impl<T, Row, Col> Grid<T, Row, Col>
 where
     T: Default,
-    Row: Copy
-        + Into<usize>
-        + PartialOrd
-        + From<usize>
-        + Add<usize, Output = Row>
-        + Sub<usize, Output = Row>
-        + WithMaxValue,
-    Col: Copy
-        + Into<usize>
-        + PartialOrd
-        + From<usize>
-        + Add<usize, Output = Col>
-        + Sub<usize, Output = Col>
-        + WithMaxValue,
+    Row: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize> + Sub<usize> + WithMaxValue,
+    Col: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize> + Sub<usize> + WithMaxValue,
 {
     pub fn top_left_iter(&self, pos: GridIndex<Row, Col>) -> TopLeftGridIterator<T, Row, Col> {
         TopLeftGridIterator {
@@ -254,8 +292,14 @@ where
 pub trait WithGridIndex<Row, Col> {
     fn get_index(&self) -> Option<GridIndex<Row, Col>>;
 
-    fn indexed(self) -> IndexedGridIterator<Row, Col, Self> where Self: Sized {
-        IndexedGridIterator { it: self, phantom_data: Default::default() }
+    fn indexed(self) -> IndexedGridIterator<Row, Col, Self>
+    where
+        Self: Sized,
+    {
+        IndexedGridIterator {
+            it: self,
+            phantom_data: Default::default(),
+        }
     }
 }
 
@@ -301,13 +345,13 @@ where
 
 pub struct IndexedGridIterator<Row, Col, It> {
     it: It,
-    phantom_data: PhantomData<(Row, Col)>
+    phantom_data: PhantomData<(Row, Col)>,
 }
 
 impl<Row, Col, It> Iterator for IndexedGridIterator<Row, Col, It>
 where
-    Row: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize, Output = Row> + WithMaxValue,
-    Col: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize, Output = Col> + WithMaxValue,
+    Row: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize> + WithMaxValue,
+    Col: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize> + WithMaxValue,
     It: Iterator + WithGridIndex<Row, Col>,
 {
     type Item = (GridIndex<Row, Col>, It::Item);
