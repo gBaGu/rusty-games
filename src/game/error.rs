@@ -16,6 +16,10 @@ pub enum GameError {
     GameIsFinished,
     #[error("other player's turn (expected: {expected}, found: {found})")]
     NotYourTurn { expected: PlayerId, found: PlayerId },
+    #[error("failed to make move: {reason}")]
+    InvalidMove { reason: String },
+    #[error("player {found} is unable to make this move, player {expected} is expected")]
+    UnauthorizedMove { expected: PlayerId, found: PlayerId },
     #[error("failed to switch players in the pool")]
     PlayerPoolCorrupted,
 }

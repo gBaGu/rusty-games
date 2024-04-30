@@ -291,8 +291,44 @@ impl Game for Chess {
         matches!(self.state, GameState::Finished(_))
     }
 
-    fn update(&mut self, _player: PlayerId, _data: Self::TurnData) -> GameResult<GameState> {
-        todo!()
+    fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
+        if matches!(self.state, GameState::Finished(_)) {
+            return Err(GameError::GameIsFinished);
+        }
+        if player != self.get_current_player()?.id {
+            return Err(GameError::NotYourTurn {
+                expected: self.get_current_player()?.id,
+                found: player,
+            });
+        }
+
+        if let Some(piece) = self.get_cell_mut(data.from) {
+            if piece.owner != player {
+                return Err(GameError::UnauthorizedMove {
+                    expected: piece.owner,
+                    found: player,
+                });
+            }
+            let available_moves = self.get_moves(data.from)?;
+            if !available_moves.contains(&data.to) {
+                return Err(GameError::InvalidMove {
+                    reason: format!(
+                        "unable to move to this position ({}, {})",
+                        data.to.get_row(),
+                        data.to.get_col()
+                    ),
+                });
+            }
+
+            *self.get_cell_mut(data.to) = self.get_cell_mut(data.from).take();
+        } else {
+            return Err(GameError::CellIsEmpty {
+                row: data.from.get_row(),
+                col: data.from.get_col(),
+            });
+        }
+
+        self.update_state()
     }
 }
 
@@ -516,6 +552,7 @@ impl Chess {
                     .collect();
             }
             PieceKind::King => {
+                // TODO: account for castling
                 let diag_tl = self.board.top_left_iter(pos).indexed().skip(1).next();
                 let diag_tr = self.board.top_right_iter(pos).indexed().skip(1).next();
                 let diag_br = self.board.bottom_right_iter(pos).indexed().skip(1).next();
