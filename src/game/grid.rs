@@ -144,6 +144,34 @@ where
     Row: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize> + Sub<usize> + WithMaxValue,
     Col: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize> + Sub<usize> + WithMaxValue,
 {
+    pub fn right_iter(&self, pos: GridIndex<Row, Col>) -> RightGridIterator<T, Row, Col> {
+        RightGridIterator {
+            current: pos,
+            grid: &self,
+        }
+    }
+
+    pub fn left_iter(&self, pos: GridIndex<Row, Col>) -> LeftGridIterator<T, Row, Col> {
+        LeftGridIterator {
+            current: Some(pos),
+            grid: &self,
+        }
+    }
+
+    pub fn top_iter(&self, pos: GridIndex<Row, Col>) -> TopGridIterator<T, Row, Col> {
+        TopGridIterator {
+            current: Some(pos),
+            grid: &self,
+        }
+    }
+
+    pub fn bottom_iter(&self, pos: GridIndex<Row, Col>) -> BottomGridIterator<T, Row, Col> {
+        BottomGridIterator {
+            current: pos,
+            grid: &self,
+        }
+    }
+
     pub fn top_left_iter(&self, pos: GridIndex<Row, Col>) -> TopLeftGridIterator<T, Row, Col> {
         TopLeftGridIterator {
             current: Some(pos),
@@ -176,6 +204,110 @@ where
             current: Some(pos),
             grid: &self,
         }
+    }
+}
+
+pub struct RightGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
+    current: GridIndex<Row, Col>, // no need for an Option as we're only incrementing
+    grid: &'a Grid<T, Row, Col>,
+}
+
+impl<'a, T, Row, Col> Iterator for RightGridIterator<'a, T, Row, Col>
+    where
+        T: Default,
+        Row: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+        Col: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize, Output = Col> + WithMaxValue,
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current.is_valid() {
+            let old_current = self.current;
+            self.current = GridIndex::new(self.current.row, self.current.col + 1);
+            return Some(self.grid.get_ref(old_current));
+        }
+        None
+    }
+}
+
+pub struct LeftGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
+    current: Option<GridIndex<Row, Col>>,
+    grid: &'a Grid<T, Row, Col>,
+}
+
+impl<'a, T, Row, Col> Iterator for LeftGridIterator<'a, T, Row, Col>
+    where
+        T: Default,
+        Row: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+        Col: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize, Output = Col> + WithMaxValue,
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(current) = self.current {
+            if current.is_valid() {
+                let old_current = current;
+                if current.row == 0.into() || current.col == 0.into() {
+                    self.current = None;
+                } else {
+                    self.current = Some(GridIndex::new(current.row, current.col - 1));
+                }
+                return Some(self.grid.get_ref(old_current));
+            }
+        }
+        None
+    }
+}
+
+pub struct TopGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
+    current: Option<GridIndex<Row, Col>>,
+    grid: &'a Grid<T, Row, Col>,
+}
+
+impl<'a, T, Row, Col> Iterator for TopGridIterator<'a, T, Row, Col>
+    where
+        T: Default,
+        Row: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize, Output = Row> + WithMaxValue,
+        Col: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(current) = self.current {
+            if current.is_valid() {
+                let old_current = current;
+                if current.row == 0.into() || current.col == 0.into() {
+                    self.current = None;
+                } else {
+                    self.current = Some(GridIndex::new(current.row - 1, current.col));
+                }
+                return Some(self.grid.get_ref(old_current));
+            }
+        }
+        None
+    }
+}
+
+pub struct BottomGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
+    current: GridIndex<Row, Col>, // no need for an Option as we're only incrementing
+    grid: &'a Grid<T, Row, Col>,
+}
+
+impl<'a, T, Row, Col> Iterator for BottomGridIterator<'a, T, Row, Col>
+    where
+        T: Default,
+        Row: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize, Output = Row> + WithMaxValue,
+        Col: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current.is_valid() {
+            let old_current = self.current;
+            self.current = GridIndex::new(self.current.row + 1, self.current.col);
+            return Some(self.grid.get_ref(old_current));
+        }
+        None
     }
 }
 
@@ -300,6 +432,46 @@ pub trait WithGridIndex<Row, Col> {
             it: self,
             phantom_data: Default::default(),
         }
+    }
+}
+
+impl<T, Row, Col> WithGridIndex<Row, Col> for RightGridIterator<'_, T, Row, Col>
+    where
+        Row: Copy + WithMaxValue,
+        Col: Copy + WithMaxValue,
+{
+    fn get_index(&self) -> Option<GridIndex<Row, Col>> {
+        Some(self.current)
+    }
+}
+
+impl<T, Row, Col> WithGridIndex<Row, Col> for LeftGridIterator<'_, T, Row, Col>
+    where
+        Row: Copy + WithMaxValue,
+        Col: Copy + WithMaxValue,
+{
+    fn get_index(&self) -> Option<GridIndex<Row, Col>> {
+        self.current
+    }
+}
+
+impl<T, Row, Col> WithGridIndex<Row, Col> for TopGridIterator<'_, T, Row, Col>
+    where
+        Row: Copy + WithMaxValue,
+        Col: Copy + WithMaxValue,
+{
+    fn get_index(&self) -> Option<GridIndex<Row, Col>> {
+        self.current
+    }
+}
+
+impl<T, Row, Col> WithGridIndex<Row, Col> for BottomGridIterator<'_, T, Row, Col>
+    where
+        Row: Copy + WithMaxValue,
+        Col: Copy + WithMaxValue,
+{
+    fn get_index(&self) -> Option<GridIndex<Row, Col>> {
+        Some(self.current)
     }
 }
 

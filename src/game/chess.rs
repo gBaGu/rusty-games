@@ -293,6 +293,20 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     board
 }
 
+// iterator helper
+fn until_first_encounter<'a>(
+    encountered: &mut bool,
+    elem: (GridIndex<Row, Col>, &'a Cell),
+) -> Option<(GridIndex<Row, Col>, &'a Option<Piece>)> {
+    if *encountered {
+        return None;
+    }
+    if elem.1.is_some() {
+        *encountered = true;
+    }
+    Some(elem)
+}
+
 #[derive(Debug)]
 pub struct Chess {
     players: PlayerPool<Player>,
@@ -357,12 +371,24 @@ impl Chess {
             .is_some()
     }
 
+    fn is_friendly(&self, coordinates: GridIndex<Row, Col>, player: PlayerId) -> bool {
+        self.get_cell(coordinates)
+            .filter(|target| !target.is_enemy(player))
+            .is_some()
+    }
+
     fn get_moves(&self, pos: GridIndex<Row, Col>) -> GameResult<Vec<GridIndex<Row, Col>>> {
         let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
             row: pos.get_row(),
             col: pos.get_col(),
         })?;
         let mut res = vec![];
+        let empty_cell_or_enemy = |(index, cell): (GridIndex<Row, Col>, &Cell)| {
+            if cell.filter(|p| !p.is_enemy(piece.owner)).is_some() {
+                return Some(index);
+            }
+            None
+        };
         match piece.kind {
             PieceKind::Pawn(d) => {
                 let advanced = match d {
@@ -370,55 +396,190 @@ impl Chess {
                     Direction::Up => pos.move_up(1),
                 };
                 if let Some(advanced) = advanced {
-                    res.push(advanced);
-                    if let Some(moved) = advanced.move_right(1) {
-                        if self.is_enemy(moved, piece.owner) {
-                            res.push(moved);
-                        }
+                    if self.get_cell(advanced).is_none() {
+                        res.push(advanced);
                     }
-                }
-                if let Some(advanced) = advanced {
-                    res.push(advanced);
-                    if let Some(moved) = advanced.move_left(1) {
-                        if self.is_enemy(moved, piece.owner) {
-                            res.push(moved);
-                        }
-                    }
+                    res.extend(
+                        [advanced.move_right(1), advanced.move_left(1)]
+                            .into_iter()
+                            .flatten()
+                            .filter(|&index| self.is_enemy(index, piece.owner)),
+                    );
                 }
             }
             PieceKind::Bishop => {
-                let mut diag_tl = self.board.top_left_iter(pos).indexed();
-                let mut diag_tr = self.board.top_right_iter(pos).indexed();
-                let mut diag_br = self.board.bottom_right_iter(pos).indexed();
-                let mut diag_bl = self.board.bottom_left_iter(pos).indexed();
-                // skip current position for every iterator
-                let _ = diag_tl.next();
-                let _ = diag_tr.next();
-                let _ = diag_br.next();
-                let _ = diag_bl.next();
-                let diagonals = diag_tl.chain(diag_tr).chain(diag_br).chain(diag_bl);
-                for (index, cell) in diagonals {
-                    if let Some(target) = cell {
-                        if target.is_enemy(piece.owner) {
-                            res.push(index);
-                        }
-                        break;
-                    } else {
-                        res.push(index);
-                    }
-                }
+                let diag_tl = self
+                    .board
+                    .top_left_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let diag_tr = self
+                    .board
+                    .top_right_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let diag_br = self
+                    .board
+                    .bottom_right_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let diag_bl = self
+                    .board
+                    .bottom_left_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                res = diag_tl
+                    .chain(diag_tr)
+                    .chain(diag_br)
+                    .chain(diag_bl)
+                    .filter_map(empty_cell_or_enemy)
+                    .collect();
             }
             PieceKind::Knight => {
-                todo!()
+                if let Some(up) = pos.move_up(2) {
+                    res.extend(
+                        [up.move_right(1), up.move_left(1)]
+                            .into_iter()
+                            .flatten()
+                            .filter(|&index| !self.is_friendly(index, piece.owner)),
+                    );
+                }
+                if let Some(down) = pos.move_down(2) {
+                    res.extend(
+                        [down.move_right(1), down.move_left(1)]
+                            .into_iter()
+                            .flatten()
+                            .filter(|&index| !self.is_friendly(index, piece.owner)),
+                    );
+                }
+                if let Some(right) = pos.move_right(2) {
+                    res.extend(
+                        [right.move_up(1), right.move_down(1)]
+                            .into_iter()
+                            .flatten()
+                            .filter(|&index| !self.is_friendly(index, piece.owner)),
+                    );
+                }
+                if let Some(left) = pos.move_left(2) {
+                    res.extend(
+                        [left.move_up(1), left.move_down(1)]
+                            .into_iter()
+                            .flatten()
+                            .filter(|&index| !self.is_friendly(index, piece.owner)),
+                    );
+                }
             }
             PieceKind::Rook => {
-                todo!()
+                let right = self
+                    .board
+                    .right_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let left = self
+                    .board
+                    .left_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let top = self
+                    .board
+                    .top_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let bot = self
+                    .board
+                    .bottom_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                res = right
+                    .chain(left)
+                    .chain(top)
+                    .chain(bot)
+                    .filter_map(empty_cell_or_enemy)
+                    .collect();
             }
             PieceKind::Queen => {
-                todo!()
+                let diag_tl = self
+                    .board
+                    .top_left_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let diag_tr = self
+                    .board
+                    .top_right_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let diag_br = self
+                    .board
+                    .bottom_right_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let diag_bl = self
+                    .board
+                    .bottom_left_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let right = self
+                    .board
+                    .right_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let left = self
+                    .board
+                    .left_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let top = self
+                    .board
+                    .top_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                let bot = self
+                    .board
+                    .bottom_iter(pos)
+                    .indexed()
+                    .skip(1)
+                    .scan(false, until_first_encounter);
+                res = diag_tl
+                    .chain(diag_tr)
+                    .chain(diag_br)
+                    .chain(diag_bl)
+                    .chain(right)
+                    .chain(left)
+                    .chain(top)
+                    .chain(bot)
+                    .filter_map(empty_cell_or_enemy)
+                    .collect();
             }
             PieceKind::King => {
-                todo!()
+                let diag_tl = self.board.top_left_iter(pos).indexed().skip(1).next();
+                let diag_tr = self.board.top_right_iter(pos).indexed().skip(1).next();
+                let diag_br = self.board.bottom_right_iter(pos).indexed().skip(1).next();
+                let diag_bl = self.board.bottom_left_iter(pos).indexed().skip(1).next();
+                let right = self.board.right_iter(pos).indexed().skip(1).next();
+                let left = self.board.left_iter(pos).indexed().skip(1).next();
+                let top = self.board.top_iter(pos).indexed().skip(1).next();
+                let bot = self.board.bottom_iter(pos).indexed().skip(1).next();
+                res = [diag_tl, diag_tr, diag_br, diag_bl, right, left, top, bot]
+                    .iter()
+                    .flatten()
+                    .cloned()
+                    .filter_map(empty_cell_or_enemy)
+                    .collect();
             }
         };
         Ok(res)
