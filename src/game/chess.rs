@@ -211,84 +211,34 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     let last_col = Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1);
     // init pawns
     for i in 0..<Col as WithMaxValue>::MaxValue::to_usize() {
-        *board.get_mut_ref(GridIndex::new(last_row - 1, Col(i))) = Some(Piece {
-            kind: PieceKind::Pawn(Direction::Up),
-            owner: player1,
-        });
-        *board.get_mut_ref(GridIndex::new(Row(1), Col(i))) = Some(Piece {
-            kind: PieceKind::Pawn(Direction::Down),
-            owner: player2,
-        });
+        *board.get_mut_ref(GridIndex::new(last_row - 1, Col(i))) =
+            Some(Piece::create_pawn(player1, Direction::Up));
+        *board.get_mut_ref(GridIndex::new(Row(1), Col(i))) =
+            Some(Piece::create_pawn(player2, Direction::Down));
     }
     // init rooks
-    *board.get_mut_ref(GridIndex::new(last_row, Col(0))) = Some(Piece {
-        kind: PieceKind::Rook,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(last_row, last_col)) = Some(Piece {
-        kind: PieceKind::Rook,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(0))) = Some(Piece {
-        kind: PieceKind::Rook,
-        owner: player2,
-    });
-    *board.get_mut_ref(GridIndex::new(Row(0), last_col)) = Some(Piece {
-        kind: PieceKind::Rook,
-        owner: player2,
-    });
+    *board.get_mut_ref(GridIndex::new(last_row, Col(0))) = Some(Piece::create_rook(player1));
+    *board.get_mut_ref(GridIndex::new(last_row, last_col)) = Some(Piece::create_rook(player1));
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(0))) = Some(Piece::create_rook(player2));
+    *board.get_mut_ref(GridIndex::new(Row(0), last_col)) = Some(Piece::create_rook(player2));
     // init knights
-    *board.get_mut_ref(GridIndex::new(last_row, Col(1))) = Some(Piece {
-        kind: PieceKind::Knight,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(last_row, last_col - 1)) = Some(Piece {
-        kind: PieceKind::Knight,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(1))) = Some(Piece {
-        kind: PieceKind::Knight,
-        owner: player2,
-    });
-    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 1)) = Some(Piece {
-        kind: PieceKind::Knight,
-        owner: player2,
-    });
+    *board.get_mut_ref(GridIndex::new(last_row, Col(1))) = Some(Piece::create_knight(player1));
+    *board.get_mut_ref(GridIndex::new(last_row, last_col - 1)) =
+        Some(Piece::create_knight(player1));
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(1))) = Some(Piece::create_knight(player2));
+    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 1)) = Some(Piece::create_knight(player2));
     // init bishops
-    *board.get_mut_ref(GridIndex::new(last_row, Col(2))) = Some(Piece {
-        kind: PieceKind::Bishop,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(last_row, last_col - 2)) = Some(Piece {
-        kind: PieceKind::Bishop,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(2))) = Some(Piece {
-        kind: PieceKind::Bishop,
-        owner: player2,
-    });
-    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 2)) = Some(Piece {
-        kind: PieceKind::Bishop,
-        owner: player2,
-    });
+    *board.get_mut_ref(GridIndex::new(last_row, Col(2))) = Some(Piece::create_bishop(player1));
+    *board.get_mut_ref(GridIndex::new(last_row, last_col - 2)) =
+        Some(Piece::create_bishop(player1));
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(2))) = Some(Piece::create_bishop(player2));
+    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 2)) = Some(Piece::create_bishop(player2));
     // init queens
-    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece {
-        kind: PieceKind::Queen,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece {
-        kind: PieceKind::Queen,
-        owner: player2,
-    });
+    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece::create_queen(player1));
+    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece::create_queen(player2));
     // init kings
-    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece {
-        kind: PieceKind::King,
-        owner: player1,
-    });
-    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece {
-        kind: PieceKind::King,
-        owner: player2,
-    });
+    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece::create_king(player1));
+    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece::create_king(player2));
 
     board
 }
