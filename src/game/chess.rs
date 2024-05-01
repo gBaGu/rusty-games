@@ -1,5 +1,6 @@
 use generic_array::typenum::Unsigned;
 use prost::Message;
+use std::iter::Scan;
 use std::ops::{Add, Sub};
 
 use crate::game::error::GameError;
@@ -244,17 +245,22 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
 }
 
 // iterator helper
-fn until_first_encounter<'a>(
-    encountered: &mut bool,
-    elem: (GridIndex<Row, Col>, &'a Cell),
-) -> Option<(GridIndex<Row, Col>, &'a Option<Piece>)> {
-    if *encountered {
-        return None;
-    }
-    if elem.1.is_some() {
-        *encountered = true;
-    }
-    Some(elem)
+fn until_encounter<'a, I: Iterator<Item = (GridIndex<Row, Col>, &'a Cell)>>(
+    it: I,
+) -> Scan<
+    I,
+    bool,
+    impl FnMut(&mut bool, <I as Iterator>::Item) -> Option<(GridIndex<Row, Col>, &'a Option<Piece>)>,
+> {
+    it.scan(false, |encountered, elem| {
+        if *encountered {
+            return None;
+        }
+        if elem.1.is_some() {
+            *encountered = true;
+        }
+        Some(elem)
+    })
 }
 
 #[derive(Debug)]
@@ -394,30 +400,10 @@ impl Chess {
                 }
             }
             PieceKind::Bishop => {
-                let diag_tl = self
-                    .board
-                    .top_left_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let diag_tr = self
-                    .board
-                    .top_right_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let diag_br = self
-                    .board
-                    .bottom_right_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let diag_bl = self
-                    .board
-                    .bottom_left_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
+                let diag_tl = until_encounter(self.board.top_left_iter(pos).indexed().skip(1));
+                let diag_tr = until_encounter(self.board.top_right_iter(pos).indexed().skip(1));
+                let diag_br = until_encounter(self.board.bottom_right_iter(pos).indexed().skip(1));
+                let diag_bl = until_encounter(self.board.bottom_left_iter(pos).indexed().skip(1));
                 res = diag_tl
                     .chain(diag_tr)
                     .chain(diag_br)
@@ -426,64 +412,28 @@ impl Chess {
                     .collect();
             }
             PieceKind::Knight => {
-                if let Some(up) = pos.move_up(2) {
-                    res.extend(
-                        [up.move_right(1), up.move_left(1)]
-                            .into_iter()
-                            .flatten()
-                            .filter(|&index| !self.is_friendly(index, piece.owner)),
-                    );
-                }
-                if let Some(down) = pos.move_down(2) {
-                    res.extend(
-                        [down.move_right(1), down.move_left(1)]
-                            .into_iter()
-                            .flatten()
-                            .filter(|&index| !self.is_friendly(index, piece.owner)),
-                    );
-                }
-                if let Some(right) = pos.move_right(2) {
-                    res.extend(
-                        [right.move_up(1), right.move_down(1)]
-                            .into_iter()
-                            .flatten()
-                            .filter(|&index| !self.is_friendly(index, piece.owner)),
-                    );
-                }
-                if let Some(left) = pos.move_left(2) {
-                    res.extend(
-                        [left.move_up(1), left.move_down(1)]
-                            .into_iter()
-                            .flatten()
-                            .filter(|&index| !self.is_friendly(index, piece.owner)),
-                    );
-                }
+                // add possible vertical moves
+                res.extend(
+                    pos.move_up(2)
+                        .iter()
+                        .chain(pos.move_down(2).iter())
+                        .flat_map(|pos| [pos.move_right(1), pos.move_left(1)].into_iter().flatten())
+                        .filter(|&pos| !self.is_friendly(pos, piece.owner)),
+                );
+                // add possible horizontal moves
+                res.extend(
+                    pos.move_right(2)
+                        .iter()
+                        .chain(pos.move_left(2).iter())
+                        .flat_map(|pos| [pos.move_up(1), pos.move_down(1)].into_iter().flatten())
+                        .filter(|&pos| !self.is_friendly(pos, piece.owner)),
+                );
             }
             PieceKind::Rook => {
-                let right = self
-                    .board
-                    .right_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let left = self
-                    .board
-                    .left_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let top = self
-                    .board
-                    .top_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let bot = self
-                    .board
-                    .bottom_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
+                let right = until_encounter(self.board.right_iter(pos).indexed().skip(1));
+                let left = until_encounter(self.board.left_iter(pos).indexed().skip(1));
+                let top = until_encounter(self.board.top_iter(pos).indexed().skip(1));
+                let bot = until_encounter(self.board.bottom_iter(pos).indexed().skip(1));
                 res = right
                     .chain(left)
                     .chain(top)
@@ -492,54 +442,14 @@ impl Chess {
                     .collect();
             }
             PieceKind::Queen => {
-                let diag_tl = self
-                    .board
-                    .top_left_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let diag_tr = self
-                    .board
-                    .top_right_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let diag_br = self
-                    .board
-                    .bottom_right_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let diag_bl = self
-                    .board
-                    .bottom_left_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let right = self
-                    .board
-                    .right_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let left = self
-                    .board
-                    .left_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let top = self
-                    .board
-                    .top_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
-                let bot = self
-                    .board
-                    .bottom_iter(pos)
-                    .indexed()
-                    .skip(1)
-                    .scan(false, until_first_encounter);
+                let diag_tl = until_encounter(self.board.top_left_iter(pos).indexed().skip(1));
+                let diag_tr = until_encounter(self.board.top_right_iter(pos).indexed().skip(1));
+                let diag_br = until_encounter(self.board.bottom_right_iter(pos).indexed().skip(1));
+                let diag_bl = until_encounter(self.board.bottom_left_iter(pos).indexed().skip(1));
+                let right = until_encounter(self.board.right_iter(pos).indexed().skip(1));
+                let left = until_encounter(self.board.left_iter(pos).indexed().skip(1));
+                let top = until_encounter(self.board.top_iter(pos).indexed().skip(1));
+                let bot = until_encounter(self.board.bottom_iter(pos).indexed().skip(1));
                 res = diag_tl
                     .chain(diag_tr)
                     .chain(diag_br)
