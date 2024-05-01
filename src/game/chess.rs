@@ -1,5 +1,7 @@
 use generic_array::typenum::Unsigned;
 use prost::Message;
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::iter::Scan;
 use std::ops::{Add, Sub};
 
@@ -10,14 +12,32 @@ use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
 use crate::game::state::{FinishedState, GameState};
 use crate::proto::CoordinatesPair;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Team {
+    Black,
+    White,
+}
+
+impl Team {
+    pub fn get_king_initial_position(&self) -> GridIndex<Row, Col> {
+        match self {
+            Team::White => {
+                GridIndex::new(Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1), Col(4))
+            }
+            Team::Black => GridIndex::new(Row(0), Col(4)),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
     id: PlayerId,
+    team: Team,
 }
 
 impl Player {
-    pub fn new(id: PlayerId) -> Player {
-        Self { id }
+    pub fn new(id: PlayerId, team: Team) -> Player {
+        Self { id, team }
     }
 }
 
@@ -96,14 +116,8 @@ impl From<Col> for usize {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Direction {
-    Up,
-    Down,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PieceKind {
-    Pawn(Direction),
+    Pawn,
     Bishop,
     Knight,
     Rook,
@@ -118,9 +132,9 @@ pub struct Piece {
 }
 
 impl Piece {
-    fn create_pawn(owner: PlayerId, direction: Direction) -> Self {
+    fn create_pawn(owner: PlayerId) -> Self {
         Self {
-            kind: PieceKind::Pawn(direction),
+            kind: PieceKind::Pawn,
             owner,
         }
     }
@@ -167,7 +181,13 @@ impl Piece {
 
 type Cell = Option<Piece>;
 
-#[derive(Debug)]
+enum MoveType {
+    LeftCastling,
+    RightCastling,
+    None,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct TurnData {
     from: GridIndex<Row, Col>,
     to: GridIndex<Row, Col>,
@@ -213,9 +233,8 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     // init pawns
     for i in 0..<Col as WithMaxValue>::MaxValue::to_usize() {
         *board.get_mut_ref(GridIndex::new(last_row - 1, Col(i))) =
-            Some(Piece::create_pawn(player1, Direction::Up));
-        *board.get_mut_ref(GridIndex::new(Row(1), Col(i))) =
-            Some(Piece::create_pawn(player2, Direction::Down));
+            Some(Piece::create_pawn(player1));
+        *board.get_mut_ref(GridIndex::new(Row(1), Col(i))) = Some(Piece::create_pawn(player2));
     }
     // init rooks
     *board.get_mut_ref(GridIndex::new(last_row, Col(0))) = Some(Piece::create_rook(player1));
@@ -236,10 +255,10 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     *board.get_mut_ref(GridIndex::new(Row(0), last_col - 2)) = Some(Piece::create_bishop(player2));
     // init queens
     *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece::create_queen(player1));
-    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece::create_queen(player2));
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(3))) = Some(Piece::create_queen(player2));
     // init kings
     *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece::create_king(player1));
-    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece::create_king(player2));
+    *board.get_mut_ref(GridIndex::new(Row(0), Col(4))) = Some(Piece::create_king(player2));
 
     board
 }
@@ -263,11 +282,46 @@ fn until_encounter<'a, I: Iterator<Item = (GridIndex<Row, Col>, &'a Cell)>>(
     })
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CastleOptions {
+    left: bool,
+    right: bool,
+}
+
+impl CastleOptions {
+    pub fn all() -> Self {
+        Self {
+            left: true,
+            right: true,
+        }
+    }
+
+    pub fn none() -> Self {
+        Self {
+            left: false,
+            right: false,
+        }
+    }
+}
+
+impl Default for CastleOptions {
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
+#[derive(Debug, Default)]
+struct AdditionalState {
+    castle_options: CastleOptions,
+    check: Vec<GridIndex<Row, Col>>,
+}
+
 #[derive(Debug)]
 pub struct Chess {
     players: PlayerPool<Player>,
     state: GameState,
     board: Grid<Cell, Row, Col>,
+    additional_state: HashMap<PlayerId, AdditionalState>,
 }
 
 impl Game for Chess {
@@ -284,12 +338,18 @@ impl Game for Chess {
         if id1 == id2 {
             return Err(GameError::DuplicatePlayerId);
         }
-        let p1 = Player::new(id1);
-        let p2 = Player::new(id2);
+        let p1 = Player::new(id1, Team::White);
+        let p2 = Player::new(id2, Team::Black);
         Ok(Self {
             players: PlayerPool::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
             board: initial_board(id1, id2),
+            additional_state: [
+                (p1.id, AdditionalState::default()),
+                (p2.id, AdditionalState::default()),
+            ]
+            .into_iter()
+            .collect(),
         })
     }
 
@@ -326,6 +386,38 @@ impl Game for Chess {
                 });
             }
 
+            match self.get_move_type(data) {
+                MoveType::LeftCastling => {
+                    *self.get_cell_mut(GridIndex::new(
+                        Row(data.to.get_row()),
+                        Col(data.to.get_col() + 1),
+                    )) = self
+                        .get_cell_mut(GridIndex::new(Row(data.to.get_row()), Col(0)))
+                        .take();
+                    self.additional_state
+                        .get_mut(&player)
+                        .ok_or(GameError::PlayerNotFound)?
+                        .castle_options = CastleOptions::none();
+                }
+                MoveType::RightCastling => {
+                    *self.get_cell_mut(GridIndex::new(
+                        Row(data.to.get_row()),
+                        Col(data.to.get_col() - 1),
+                    )) = self
+                        .get_cell_mut(GridIndex::new(
+                            Row(data.to.get_row()),
+                            Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1),
+                        ))
+                        .take();
+                    self.additional_state
+                        .get_mut(&player)
+                        .ok_or(GameError::PlayerNotFound)?
+                        .castle_options = CastleOptions::none();
+                }
+                MoveType::None => {
+                    // TODO: update castle_options and check
+                }
+            };
             *self.get_cell_mut(data.to) = self.get_cell_mut(data.from).take();
         } else {
             return Err(GameError::CellIsEmpty {
@@ -369,18 +461,69 @@ impl Chess {
             .is_some()
     }
 
+    fn get_move_type(&self, TurnData { from, to }: TurnData) -> MoveType {
+        if self
+            .get_cell(from)
+            .filter(|p| p.kind == PieceKind::King)
+            .is_some()
+        {
+            if (from == Team::Black.get_king_initial_position()
+                || from == Team::White.get_king_initial_position())
+                && from.get_row() == to.get_row()
+            {
+                return match from.get_col().partial_cmp(&to.get_col()) {
+                    Some(Ordering::Less) if to.get_col() - 2 == from.get_col() => {
+                        MoveType::RightCastling
+                    }
+                    Some(Ordering::Greater) if from.get_col() - 2 == to.get_col() => {
+                        MoveType::LeftCastling
+                    }
+                    _ => MoveType::None,
+                };
+            }
+        }
+        MoveType::None
+    }
+
+    fn can_castle(&self, id: PlayerId) -> GameResult<CastleOptions> {
+        let additional_state = self
+            .additional_state
+            .get(&id)
+            .ok_or(GameError::PlayerNotFound)?;
+        let player = self
+            .players
+            .find_by_id(id)
+            .ok_or(GameError::PlayerNotFound)?;
+        let empty_not_threatened = |(pos, cell): (GridIndex<Row, Col>, &Cell)| {
+            cell.is_none() && self.get_attack_threats(pos, player).is_empty()
+        };
+        let mut castle_options = additional_state.castle_options;
+        if additional_state.check.is_empty() {
+            let king_pos = player.team.get_king_initial_position();
+            if castle_options.left {
+                let mut left_it = self.board.left_iter(king_pos).indexed().skip(1).take(2);
+                castle_options.left = left_it.all(empty_not_threatened);
+            }
+            if castle_options.right {
+                let mut right_it = self.board.right_iter(king_pos).indexed().skip(1).take(2);
+                castle_options.right = right_it.all(empty_not_threatened);
+            }
+        }
+        Ok(castle_options)
+    }
+
     fn get_attack_threats(
         &self,
         pos: GridIndex<Row, Col>,
-        player: PlayerId,
-    ) -> GameResult<Vec<GridIndex<Row, Col>>> {
+        player: &Player,
+    ) -> Vec<GridIndex<Row, Col>> {
         let is_occupied = |(pos, cell): (_, &Cell)| {
             if let Some(piece) = cell {
                 return Some((pos, *piece));
             }
             None
         };
-        let is_enemy = |(_, piece): &(GridIndex<Row, Col>, Piece)| piece.is_enemy(player);
+        let is_enemy = |(_, piece): &(GridIndex<Row, Col>, Piece)| piece.is_enemy(player.id);
         let mut diag_tl = self.board.top_left_iter(pos).indexed().skip(1);
         let mut diag_tr = self.board.top_right_iter(pos).indexed().skip(1);
         let mut diag_br = self.board.bottom_right_iter(pos).indexed().skip(1);
@@ -402,11 +545,11 @@ impl Chess {
             .filter(|&(enemy_pos, enemy_piece)| match enemy_piece.kind {
                 PieceKind::Bishop | PieceKind::Queen => true,
                 PieceKind::King => enemy_pos.is_adjacent(&pos),
-                PieceKind::Pawn(dir) => {
+                PieceKind::Pawn => {
                     enemy_pos.is_adjacent(&pos)
-                        && match dir {
-                            Direction::Up => enemy_pos.get_row() > pos.get_row(),
-                            Direction::Down => enemy_pos.get_row() < pos.get_row(),
+                        && match player.team {
+                            Team::White => enemy_pos.get_row() > pos.get_row(),
+                            Team::Black => enemy_pos.get_row() < pos.get_row(),
                         }
                 }
                 _ => false,
@@ -444,13 +587,13 @@ impl Chess {
                     )
                     .filter(|&pos| {
                         self.get_cell(pos)
-                            .filter(|p| p.is_enemy(player) && p.kind == PieceKind::Knight)
+                            .filter(|p| p.is_enemy(player.id) && p.kind == PieceKind::Knight)
                             .is_some()
                     }),
             )
             .collect();
 
-        Ok(threats)
+        threats
     }
 
     fn get_moves(&self, pos: GridIndex<Row, Col>) -> GameResult<Vec<GridIndex<Row, Col>>> {
@@ -458,6 +601,10 @@ impl Chess {
             row: pos.get_row(),
             col: pos.get_col(),
         })?;
+        let player = self
+            .players
+            .find_by_id(piece.owner)
+            .ok_or(GameError::PlayerNotFound)?;
         let mut res = vec![];
         let empty_cell_or_enemy = |(index, cell): (GridIndex<Row, Col>, &Cell)| {
             if cell.filter(|p| !p.is_enemy(piece.owner)).is_some() {
@@ -466,10 +613,10 @@ impl Chess {
             None
         };
         match piece.kind {
-            PieceKind::Pawn(d) => {
-                let advanced = match d {
-                    Direction::Down => pos.move_down(1),
-                    Direction::Up => pos.move_up(1),
+            PieceKind::Pawn => {
+                let advanced = match player.team {
+                    Team::White => pos.move_up(1),
+                    Team::Black => pos.move_down(1),
                 };
                 if let Some(advanced) = advanced {
                     if self.get_cell(advanced).is_none() {
@@ -546,7 +693,6 @@ impl Chess {
                     .collect();
             }
             PieceKind::King => {
-                // TODO: account for castling
                 res = [
                     self.board.top_left_iter(pos).indexed().skip(1).next(),
                     self.board.top_right_iter(pos).indexed().skip(1).next(),
@@ -556,7 +702,19 @@ impl Chess {
                     self.board.left_iter(pos).indexed().skip(1).next(),
                     self.board.top_iter(pos).indexed().skip(1).next(),
                     self.board.bottom_iter(pos).indexed().skip(1).next(),
-                ].into_iter().flatten().filter_map(empty_cell_or_enemy).collect();
+                ]
+                .into_iter()
+                .flatten()
+                .filter_map(empty_cell_or_enemy)
+                .collect();
+
+                let castle_options = self.can_castle(piece.owner)?;
+                if castle_options.left {
+                    res.extend(pos.move_left(2).into_iter());
+                }
+                if castle_options.right {
+                    res.extend(pos.move_right(2).into_iter());
+                }
             }
         };
         Ok(res)
