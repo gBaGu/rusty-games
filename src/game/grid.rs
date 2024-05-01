@@ -1,5 +1,6 @@
 use generic_array::typenum::Unsigned;
 use generic_array::{ArrayLength, GenericArray};
+use std::cmp::Ordering;
 use std::marker::PhantomData;
 use std::ops::{Add, Deref, Sub};
 
@@ -30,6 +31,28 @@ where
             && self.row < Row::from(Row::MaxValue::to_usize())
             && self.col >= Col::from(0)
             && self.col < Col::from(Col::MaxValue::to_usize())
+    }
+}
+
+impl<Row, Col> GridIndex<Row, Col>
+    where
+        Row: Copy + PartialOrd + Sub<usize, Output = Row>,
+        Col: Copy + PartialOrd + Sub<usize, Output = Col>,
+{
+    pub fn is_adjacent(&self, other: &GridIndex<Row, Col>) -> bool {
+        let vertically_adjacent = match self.row.partial_cmp(&other.row) {
+            Some(Ordering::Equal) => true,
+            Some(Ordering::Less) => *self == GridIndex::new(other.row - 1, other.col),
+            Some(Ordering::Greater) => *other == GridIndex::new(self.row - 1, self.col),
+            None => false,
+        };
+        let horizontally_adjacent = match self.col.partial_cmp(&other.col) {
+            Some(Ordering::Equal) => true,
+            Some(Ordering::Less) => *self == GridIndex::new(other.row, other.col - 1),
+            Some(Ordering::Greater) => *other == GridIndex::new(self.row, self.col - 1),
+            None => false,
+        };
+        vertically_adjacent && horizontally_adjacent
     }
 }
 

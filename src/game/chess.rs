@@ -95,13 +95,13 @@ impl From<Col> for usize {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Direction {
     Up,
     Down,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PieceKind {
     Pawn(Direction),
     Bishop,
@@ -369,6 +369,90 @@ impl Chess {
             .is_some()
     }
 
+    fn get_attack_threats(
+        &self,
+        pos: GridIndex<Row, Col>,
+        player: PlayerId,
+    ) -> GameResult<Vec<GridIndex<Row, Col>>> {
+        let is_occupied = |(pos, cell): (_, &Cell)| {
+            if let Some(piece) = cell {
+                return Some((pos, *piece));
+            }
+            None
+        };
+        let is_enemy = |(_, piece): &(GridIndex<Row, Col>, Piece)| piece.is_enemy(player);
+        let mut diag_tl = self.board.top_left_iter(pos).indexed().skip(1);
+        let mut diag_tr = self.board.top_right_iter(pos).indexed().skip(1);
+        let mut diag_br = self.board.bottom_right_iter(pos).indexed().skip(1);
+        let mut diag_bl = self.board.bottom_left_iter(pos).indexed().skip(1);
+        let mut right = self.board.right_iter(pos).indexed().skip(1);
+        let mut left = self.board.left_iter(pos).indexed().skip(1);
+        let mut top = self.board.top_iter(pos).indexed().skip(1);
+        let mut bot = self.board.bottom_iter(pos).indexed().skip(1);
+
+        // get first occupied cell which is enemy (if any) for each diagonal
+        let threats = diag_tl
+            .find_map(is_occupied)
+            .into_iter()
+            .filter(is_enemy)
+            .chain(diag_tr.find_map(is_occupied).into_iter().filter(is_enemy))
+            .chain(diag_br.find_map(is_occupied).into_iter().filter(is_enemy))
+            .chain(diag_bl.find_map(is_occupied).into_iter().filter(is_enemy))
+            // filter pieces that can attack diagonally
+            .filter(|&(enemy_pos, enemy_piece)| match enemy_piece.kind {
+                PieceKind::Bishop | PieceKind::Queen => true,
+                PieceKind::King => enemy_pos.is_adjacent(&pos),
+                PieceKind::Pawn(dir) => {
+                    enemy_pos.is_adjacent(&pos)
+                        && match dir {
+                            Direction::Up => enemy_pos.get_row() > pos.get_row(),
+                            Direction::Down => enemy_pos.get_row() < pos.get_row(),
+                        }
+                }
+                _ => false,
+            })
+            .chain(
+                // get first occupied cell which is enemy (if any) for each horizontal and vertical line
+                right
+                    .find_map(is_occupied)
+                    .into_iter()
+                    .filter(is_enemy)
+                    .chain(left.find_map(is_occupied).into_iter().filter(is_enemy))
+                    .chain(top.find_map(is_occupied).into_iter().filter(is_enemy))
+                    .chain(bot.find_map(is_occupied).into_iter().filter(is_enemy))
+                    // filter pieces that can attack horizontally or vertically
+                    .filter(|&(enemy_pos, enemy_piece)| match enemy_piece.kind {
+                        PieceKind::Rook | PieceKind::Queen => true,
+                        PieceKind::King => enemy_pos.is_adjacent(&pos),
+                        _ => false,
+                    }),
+            )
+            .map(|(index, _)| index)
+            .chain(
+                // check all possible knight positions
+                pos.move_up(2)
+                    .iter()
+                    .chain(pos.move_down(2).iter())
+                    .flat_map(|pos| [pos.move_right(1), pos.move_left(1)].into_iter().flatten())
+                    .chain(
+                        pos.move_right(2)
+                            .iter()
+                            .chain(pos.move_left(2).iter())
+                            .flat_map(|pos| {
+                                [pos.move_up(1), pos.move_down(1)].into_iter().flatten()
+                            }),
+                    )
+                    .filter(|&pos| {
+                        self.get_cell(pos)
+                            .filter(|p| p.is_enemy(player) && p.kind == PieceKind::Knight)
+                            .is_some()
+                    }),
+            )
+            .collect();
+
+        Ok(threats)
+    }
+
     fn get_moves(&self, pos: GridIndex<Row, Col>) -> GameResult<Vec<GridIndex<Row, Col>>> {
         let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
             row: pos.get_row(),
@@ -463,20 +547,16 @@ impl Chess {
             }
             PieceKind::King => {
                 // TODO: account for castling
-                let diag_tl = self.board.top_left_iter(pos).indexed().skip(1).next();
-                let diag_tr = self.board.top_right_iter(pos).indexed().skip(1).next();
-                let diag_br = self.board.bottom_right_iter(pos).indexed().skip(1).next();
-                let diag_bl = self.board.bottom_left_iter(pos).indexed().skip(1).next();
-                let right = self.board.right_iter(pos).indexed().skip(1).next();
-                let left = self.board.left_iter(pos).indexed().skip(1).next();
-                let top = self.board.top_iter(pos).indexed().skip(1).next();
-                let bot = self.board.bottom_iter(pos).indexed().skip(1).next();
-                res = [diag_tl, diag_tr, diag_br, diag_bl, right, left, top, bot]
-                    .iter()
-                    .flatten()
-                    .cloned()
-                    .filter_map(empty_cell_or_enemy)
-                    .collect();
+                res = [
+                    self.board.top_left_iter(pos).indexed().skip(1).next(),
+                    self.board.top_right_iter(pos).indexed().skip(1).next(),
+                    self.board.bottom_right_iter(pos).indexed().skip(1).next(),
+                    self.board.bottom_left_iter(pos).indexed().skip(1).next(),
+                    self.board.right_iter(pos).indexed().skip(1).next(),
+                    self.board.left_iter(pos).indexed().skip(1).next(),
+                    self.board.top_iter(pos).indexed().skip(1).next(),
+                    self.board.bottom_iter(pos).indexed().skip(1).next(),
+                ].into_iter().flatten().filter_map(empty_cell_or_enemy).collect();
             }
         };
         Ok(res)
