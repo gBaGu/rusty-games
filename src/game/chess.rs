@@ -27,6 +27,23 @@ impl Team {
             Team::Black => GridIndex::new(Row(0), Col(4)),
         }
     }
+
+    pub fn get_left_rook_initial_position(&self) -> GridIndex<Row, Col> {
+        let last_row = Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1);
+        match self {
+            Team::White => GridIndex::new(last_row, Col(0)),
+            Team::Black => GridIndex::new(Row(0), Col(0)),
+        }
+    }
+
+    pub fn get_right_rook_initial_position(&self) -> GridIndex<Row, Col> {
+        let last_row = Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1);
+        let last_col = Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1);
+        match self {
+            Team::White => GridIndex::new(last_row, last_col),
+            Team::Black => GridIndex::new(Row(0), last_col),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -174,6 +191,30 @@ impl Piece {
         }
     }
 
+    fn is_pawn(&self) -> bool {
+        self.kind == PieceKind::Pawn
+    }
+
+    fn is_bishop(&self) -> bool {
+        self.kind == PieceKind::Bishop
+    }
+
+    fn is_knight(&self) -> bool {
+        self.kind == PieceKind::Knight
+    }
+
+    fn is_rook(&self) -> bool {
+        self.kind == PieceKind::Rook
+    }
+
+    fn is_queen(&self) -> bool {
+        self.kind == PieceKind::Queen
+    }
+
+    fn is_king(&self) -> bool {
+        self.kind == PieceKind::King
+    }
+
     fn is_enemy(&self, player: PlayerId) -> bool {
         self.owner != player
     }
@@ -184,7 +225,9 @@ type Cell = Option<Piece>;
 enum MoveType {
     LeftCastling,
     RightCastling,
-    None,
+    KingMove,
+    RookMove,
+    Other,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -357,74 +400,69 @@ impl Game for Chess {
         matches!(self.state, GameState::Finished(_))
     }
 
-    fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
+    fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(GameError::GameIsFinished);
         }
-        if player != self.get_current_player()?.id {
+        let player = *self.get_current_player()?;
+        if id != player.id {
             return Err(GameError::NotYourTurn {
                 expected: self.get_current_player()?.id,
-                found: player,
+                found: id,
+            });
+        }
+        let piece = self.get_cell_mut(data.from).ok_or(GameError::CellIsEmpty {
+            row: data.from.get_row(),
+            col: data.from.get_col(),
+        })?;
+
+        if piece.owner != id {
+            return Err(GameError::UnauthorizedMove {
+                expected: piece.owner,
+                found: id,
+            });
+        }
+        let available_moves = self.get_moves(data.from)?;
+        if !available_moves.contains(&data.to) {
+            return Err(GameError::InvalidMove {
+                reason: format!(
+                    "unable to move to this position ({}, {})",
+                    data.to.get_row(),
+                    data.to.get_col()
+                ),
             });
         }
 
-        if let Some(piece) = self.get_cell_mut(data.from) {
-            if piece.owner != player {
-                return Err(GameError::UnauthorizedMove {
-                    expected: piece.owner,
-                    found: player,
-                });
+        match self.get_move_type(data) {
+            MoveType::LeftCastling => {
+                self.move_piece(
+                    GridIndex::new(Row(data.to.get_row()), Col(0)),
+                    GridIndex::new(Row(data.to.get_row()), Col(data.to.get_col() + 1)),
+                )?;
+                self.disable_castling(id);
             }
-            let available_moves = self.get_moves(data.from)?;
-            if !available_moves.contains(&data.to) {
-                return Err(GameError::InvalidMove {
-                    reason: format!(
-                        "unable to move to this position ({}, {})",
-                        data.to.get_row(),
-                        data.to.get_col()
+            MoveType::RightCastling => {
+                self.move_piece(
+                    GridIndex::new(
+                        Row(data.to.get_row()),
+                        Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1),
                     ),
-                });
+                    GridIndex::new(Row(data.to.get_row()), Col(data.to.get_col() - 1)),
+                )?;
+                self.disable_castling(id);
             }
-
-            match self.get_move_type(data) {
-                MoveType::LeftCastling => {
-                    *self.get_cell_mut(GridIndex::new(
-                        Row(data.to.get_row()),
-                        Col(data.to.get_col() + 1),
-                    )) = self
-                        .get_cell_mut(GridIndex::new(Row(data.to.get_row()), Col(0)))
-                        .take();
-                    self.additional_state
-                        .get_mut(&player)
-                        .ok_or(GameError::PlayerNotFound)?
-                        .castle_options = CastleOptions::none();
+            MoveType::KingMove => self.disable_castling(id),
+            MoveType::RookMove => {
+                if data.from == player.team.get_left_rook_initial_position() {
+                    self.disable_left_castling(id);
+                } else if data.from == player.team.get_right_rook_initial_position() {
+                    self.disable_right_castling(id);
                 }
-                MoveType::RightCastling => {
-                    *self.get_cell_mut(GridIndex::new(
-                        Row(data.to.get_row()),
-                        Col(data.to.get_col() - 1),
-                    )) = self
-                        .get_cell_mut(GridIndex::new(
-                            Row(data.to.get_row()),
-                            Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1),
-                        ))
-                        .take();
-                    self.additional_state
-                        .get_mut(&player)
-                        .ok_or(GameError::PlayerNotFound)?
-                        .castle_options = CastleOptions::none();
-                }
-                MoveType::None => {
-                    // TODO: update castle_options and check
-                }
-            };
-            *self.get_cell_mut(data.to) = self.get_cell_mut(data.from).take();
-        } else {
-            return Err(GameError::CellIsEmpty {
-                row: data.from.get_row(),
-                col: data.from.get_col(),
-            });
-        }
+            }
+            MoveType::Other => {}
+        };
+        self.move_piece(data.from, data.to)?;
+        // TODO: check opposite king
 
         self.update_state()
     }
@@ -449,6 +487,36 @@ impl Chess {
         self.board.get_mut_ref(coordinates)
     }
 
+    fn disable_castling(&mut self, id: PlayerId) {
+        if let Some(state) = self.additional_state.get_mut(&id) {
+            state.castle_options = CastleOptions::none();
+        }
+    }
+
+    fn disable_left_castling(&mut self, id: PlayerId) {
+        if let Some(state) = self.additional_state.get_mut(&id) {
+            state.castle_options.left = false;
+        }
+    }
+
+    fn disable_right_castling(&mut self, id: PlayerId) {
+        if let Some(state) = self.additional_state.get_mut(&id) {
+            state.castle_options.right = false;
+        }
+    }
+
+    fn move_piece(&mut self, from: GridIndex<Row, Col>, to: GridIndex<Row, Col>) -> GameResult<()> {
+        let piece = self
+            .get_cell_mut(from)
+            .take()
+            .ok_or(GameError::CellIsEmpty {
+                row: from.get_row(),
+                col: from.get_col(),
+            })?;
+        *self.get_cell_mut(to) = Some(piece);
+        Ok(())
+    }
+
     fn is_enemy(&self, coordinates: GridIndex<Row, Col>, player: PlayerId) -> bool {
         self.get_cell(coordinates)
             .filter(|target| target.is_enemy(player))
@@ -462,27 +530,27 @@ impl Chess {
     }
 
     fn get_move_type(&self, TurnData { from, to }: TurnData) -> MoveType {
-        if self
-            .get_cell(from)
-            .filter(|p| p.kind == PieceKind::King)
-            .is_some()
-        {
+        if self.get_cell(from).filter(Piece::is_king).is_some() {
             if (from == Team::Black.get_king_initial_position()
                 || from == Team::White.get_king_initial_position())
                 && from.get_row() == to.get_row()
             {
-                return match from.get_col().partial_cmp(&to.get_col()) {
+                match from.get_col().partial_cmp(&to.get_col()) {
                     Some(Ordering::Less) if to.get_col() - 2 == from.get_col() => {
-                        MoveType::RightCastling
+                        return MoveType::RightCastling;
                     }
                     Some(Ordering::Greater) if from.get_col() - 2 == to.get_col() => {
-                        MoveType::LeftCastling
+                        return MoveType::LeftCastling;
                     }
-                    _ => MoveType::None,
+                    _ => {}
                 };
             }
+            return MoveType::KingMove;
         }
-        MoveType::None
+        if self.get_cell(from).filter(Piece::is_rook).is_some() {
+            return MoveType::RookMove;
+        }
+        MoveType::Other
     }
 
     fn can_castle(&self, id: PlayerId) -> GameResult<CastleOptions> {
@@ -717,6 +785,7 @@ impl Chess {
                 }
             }
         };
+        // TODO: clear any moves that are putting you under check (does it belongs here?)
         Ok(res)
     }
 
