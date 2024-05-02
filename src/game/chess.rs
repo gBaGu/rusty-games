@@ -565,6 +565,17 @@ impl Chess {
             .is_some()
     }
 
+    fn is_in_check(&self, id: PlayerId) -> bool {
+        if let Some(threats) = self
+            .additional_state
+            .get(&id)
+            .map(|state| &state.check)
+        {
+            return !threats.is_empty();
+        }
+        false
+    }
+
     fn get_move_type(&self, TurnData { from, to }: TurnData) -> MoveType {
         if self.get_cell(from).filter(Piece::is_king).is_some() {
             if (from == Team::Black.get_king_initial_position()
@@ -817,6 +828,8 @@ impl Chess {
                 }
             }
         };
+
+        // exclude moves that lead to check
         let king_pos = self
             .additional_state
             .get(&player.id)
@@ -849,6 +862,32 @@ impl Chess {
     }
 
     fn update_state(&mut self) -> GameResult<GameState> {
-        todo!()
+        let enemy = *self.get_enemy_player()?;
+        let mut enemie_pieces = vec![];
+        for row in 0..<Row as WithMaxValue>::MaxValue::to_usize() {
+            for col in 0..<Col as WithMaxValue>::MaxValue::to_usize() {
+                if let Some(piece) = self.get_cell(Index::new(Row(row), Col(col))) {
+                    if !piece.is_enemy(enemy.id) {
+                        enemie_pieces.push(Index::new(Row(row), Col(col)));
+                    }
+                }
+            }
+        }
+        if enemie_pieces.into_iter().all(|index| {
+            if let Ok(moves) = self.get_moves(index) {
+                return moves.is_empty();
+            }
+            true
+        }) {
+            if self.is_in_check(enemy.id) {
+                let current_id = self.get_current_player()?.id;
+                self.set_winner(current_id)?;
+            } else {
+                // stalemate
+                self.state = GameState::Finished(FinishedState::Draw);
+            }
+        }
+
+        self.switch_player()
     }
 }
