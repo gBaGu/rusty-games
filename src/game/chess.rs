@@ -347,10 +347,11 @@ impl Default for CastleOptions {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct AdditionalState {
     castle_options: CastleOptions,
     check: Vec<Index>,
+    king_pos: Index,
 }
 
 #[derive(Debug)]
@@ -382,8 +383,22 @@ impl Game for Chess {
             state: GameState::Turn(p1.id),
             board: initial_board(id1, id2),
             additional_state: [
-                (p1.id, AdditionalState::default()),
-                (p2.id, AdditionalState::default()),
+                (
+                    p1.id,
+                    AdditionalState {
+                        castle_options: CastleOptions::all(),
+                        check: vec![],
+                        king_pos: p1.team.get_king_initial_position(),
+                    },
+                ),
+                (
+                    p2.id,
+                    AdditionalState {
+                        castle_options: CastleOptions::all(),
+                        check: vec![],
+                        king_pos: p2.team.get_king_initial_position(),
+                    },
+                ),
             ]
             .into_iter()
             .collect(),
@@ -442,7 +457,10 @@ impl Game for Chess {
                 )?;
                 self.disable_castling(id);
             }
-            MoveType::KingMove => self.disable_castling(id),
+            MoveType::KingMove => {
+                self.update_king_position(id, data.from);
+                self.disable_castling(id)
+            }
             MoveType::RookMove => {
                 if data.from == player.team.get_left_rook_initial_position() {
                     self.disable_left_castling(id);
@@ -453,7 +471,9 @@ impl Game for Chess {
             MoveType::Other => {}
         };
         self.move_piece(data.from, data.to)?;
-        // TODO: check opposite king
+        let enemy = *self.get_enemy_player()?;
+        self.update_check(&enemy);
+        self.update_check(&player);
 
         self.update_state()
     }
@@ -463,6 +483,12 @@ impl Chess {
     pub fn get_current_player(&mut self) -> GameResult<&Player> {
         self.players
             .get_current()
+            .ok_or(GameError::PlayerPoolCorrupted)
+    }
+    pub fn get_enemy_player(&mut self) -> GameResult<&Player> {
+        let current = *self.get_current_player()?;
+        self.players
+            .find(|p| p.id != current.id)
             .ok_or(GameError::PlayerPoolCorrupted)
     }
 
@@ -493,6 +519,25 @@ impl Chess {
     fn disable_right_castling(&mut self, id: PlayerId) {
         if let Some(state) = self.additional_state.get_mut(&id) {
             state.castle_options.right = false;
+        }
+    }
+
+    fn update_king_position(&mut self, id: PlayerId, pos: Index) {
+        if let Some(state) = self.additional_state.get_mut(&id) {
+            state.king_pos = pos;
+        }
+    }
+
+    fn update_check(&mut self, player: &Player) {
+        if let Some(king_pos) = self
+            .additional_state
+            .get(&player.id)
+            .map(|state| state.king_pos)
+        {
+            let threats = self.get_attack_threats(king_pos, player);
+            if let Some(state) = self.additional_state.get_mut(&player.id) {
+                state.check = threats;
+            }
         }
     }
 
@@ -651,12 +696,12 @@ impl Chess {
         threats
     }
 
-    fn get_moves(&self, pos: Index) -> GameResult<Vec<Index>> {
+    fn get_moves(&mut self, pos: Index) -> GameResult<Vec<Index>> {
         let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
             row: pos.get_row(),
             col: pos.get_col(),
         })?;
-        let player = self
+        let player = *self
             .players
             .find_by_id(piece.owner)
             .ok_or(GameError::PlayerNotFound)?;
@@ -772,7 +817,23 @@ impl Chess {
                 }
             }
         };
-        // TODO: clear any moves that are putting you under check (does it belongs here?)
+        let king_pos = self
+            .additional_state
+            .get(&player.id)
+            .ok_or(GameError::PlayerNotFound)?
+            .king_pos;
+        res.retain(|&index| {
+            let backup = self.get_cell(index).clone();
+            if let Err(_) = self.move_piece(pos, index) {
+                return false;
+            }
+            let king_safe = self.get_attack_threats(king_pos, &player).is_empty();
+            if let Err(_) = self.move_piece(index, pos) {
+                return false;
+            }
+            *self.get_cell_mut(index) = backup;
+            king_safe
+        });
         Ok(res)
     }
 
