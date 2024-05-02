@@ -12,6 +12,8 @@ use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
 use crate::game::state::{FinishedState, GameState};
 use crate::proto::CoordinatesPair;
 
+type Index = GridIndex<Row, Col>;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Team {
     Black,
@@ -19,29 +21,27 @@ pub enum Team {
 }
 
 impl Team {
-    pub fn get_king_initial_position(&self) -> GridIndex<Row, Col> {
+    pub fn get_king_initial_position(&self) -> Index {
         match self {
-            Team::White => {
-                GridIndex::new(Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1), Col(4))
-            }
-            Team::Black => GridIndex::new(Row(0), Col(4)),
+            Team::White => Index::new(Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1), Col(4)),
+            Team::Black => Index::new(Row(0), Col(4)),
         }
     }
 
-    pub fn get_left_rook_initial_position(&self) -> GridIndex<Row, Col> {
+    pub fn get_left_rook_initial_position(&self) -> Index {
         let last_row = Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1);
         match self {
-            Team::White => GridIndex::new(last_row, Col(0)),
-            Team::Black => GridIndex::new(Row(0), Col(0)),
+            Team::White => Index::new(last_row, Col(0)),
+            Team::Black => Index::new(Row(0), Col(0)),
         }
     }
 
-    pub fn get_right_rook_initial_position(&self) -> GridIndex<Row, Col> {
+    pub fn get_right_rook_initial_position(&self) -> Index {
         let last_row = Row(<Row as WithMaxValue>::MaxValue::to_usize() - 1);
         let last_col = Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1);
         match self {
-            Team::White => GridIndex::new(last_row, last_col),
-            Team::Black => GridIndex::new(Row(0), last_col),
+            Team::White => Index::new(last_row, last_col),
+            Team::Black => Index::new(Row(0), last_col),
         }
     }
 }
@@ -232,12 +232,12 @@ enum MoveType {
 
 #[derive(Clone, Copy, Debug)]
 pub struct TurnData {
-    from: GridIndex<Row, Col>,
-    to: GridIndex<Row, Col>,
+    from: Index,
+    to: Index,
 }
 
 impl TurnData {
-    pub fn new(from: GridIndex<Row, Col>, to: GridIndex<Row, Col>) -> Self {
+    pub fn new(from: Index, to: Index) -> Self {
         Self { from, to }
     }
 }
@@ -256,11 +256,11 @@ impl FromProtobuf for TurnData {
                 missing_field: "second".to_string(),
             })?;
         let turn_data = TurnData::new(
-            GridIndex::new(
+            Index::new(
                 Row(usize::try_from(first.row)?),
                 Col(usize::try_from(first.col)?),
             ),
-            GridIndex::new(
+            Index::new(
                 Row(usize::try_from(second.row)?),
                 Col(usize::try_from(second.col)?),
             ),
@@ -275,45 +275,39 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     let last_col = Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1);
     // init pawns
     for i in 0..<Col as WithMaxValue>::MaxValue::to_usize() {
-        *board.get_mut_ref(GridIndex::new(last_row - 1, Col(i))) =
-            Some(Piece::create_pawn(player1));
-        *board.get_mut_ref(GridIndex::new(Row(1), Col(i))) = Some(Piece::create_pawn(player2));
+        *board.get_mut_ref(Index::new(last_row - 1, Col(i))) = Some(Piece::create_pawn(player1));
+        *board.get_mut_ref(Index::new(Row(1), Col(i))) = Some(Piece::create_pawn(player2));
     }
     // init rooks
-    *board.get_mut_ref(GridIndex::new(last_row, Col(0))) = Some(Piece::create_rook(player1));
-    *board.get_mut_ref(GridIndex::new(last_row, last_col)) = Some(Piece::create_rook(player1));
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(0))) = Some(Piece::create_rook(player2));
-    *board.get_mut_ref(GridIndex::new(Row(0), last_col)) = Some(Piece::create_rook(player2));
+    *board.get_mut_ref(Index::new(last_row, Col(0))) = Some(Piece::create_rook(player1));
+    *board.get_mut_ref(Index::new(last_row, last_col)) = Some(Piece::create_rook(player1));
+    *board.get_mut_ref(Index::new(Row(0), Col(0))) = Some(Piece::create_rook(player2));
+    *board.get_mut_ref(Index::new(Row(0), last_col)) = Some(Piece::create_rook(player2));
     // init knights
-    *board.get_mut_ref(GridIndex::new(last_row, Col(1))) = Some(Piece::create_knight(player1));
-    *board.get_mut_ref(GridIndex::new(last_row, last_col - 1)) =
-        Some(Piece::create_knight(player1));
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(1))) = Some(Piece::create_knight(player2));
-    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 1)) = Some(Piece::create_knight(player2));
+    *board.get_mut_ref(Index::new(last_row, Col(1))) = Some(Piece::create_knight(player1));
+    *board.get_mut_ref(Index::new(last_row, last_col - 1)) = Some(Piece::create_knight(player1));
+    *board.get_mut_ref(Index::new(Row(0), Col(1))) = Some(Piece::create_knight(player2));
+    *board.get_mut_ref(Index::new(Row(0), last_col - 1)) = Some(Piece::create_knight(player2));
     // init bishops
-    *board.get_mut_ref(GridIndex::new(last_row, Col(2))) = Some(Piece::create_bishop(player1));
-    *board.get_mut_ref(GridIndex::new(last_row, last_col - 2)) =
-        Some(Piece::create_bishop(player1));
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(2))) = Some(Piece::create_bishop(player2));
-    *board.get_mut_ref(GridIndex::new(Row(0), last_col - 2)) = Some(Piece::create_bishop(player2));
+    *board.get_mut_ref(Index::new(last_row, Col(2))) = Some(Piece::create_bishop(player1));
+    *board.get_mut_ref(Index::new(last_row, last_col - 2)) = Some(Piece::create_bishop(player1));
+    *board.get_mut_ref(Index::new(Row(0), Col(2))) = Some(Piece::create_bishop(player2));
+    *board.get_mut_ref(Index::new(Row(0), last_col - 2)) = Some(Piece::create_bishop(player2));
     // init queens
-    *board.get_mut_ref(GridIndex::new(last_row, Col(3))) = Some(Piece::create_queen(player1));
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(3))) = Some(Piece::create_queen(player2));
+    *board.get_mut_ref(Index::new(last_row, Col(3))) = Some(Piece::create_queen(player1));
+    *board.get_mut_ref(Index::new(Row(0), Col(3))) = Some(Piece::create_queen(player2));
     // init kings
-    *board.get_mut_ref(GridIndex::new(last_row, Col(4))) = Some(Piece::create_king(player1));
-    *board.get_mut_ref(GridIndex::new(Row(0), Col(4))) = Some(Piece::create_king(player2));
+    *board.get_mut_ref(Index::new(last_row, Col(4))) = Some(Piece::create_king(player1));
+    *board.get_mut_ref(Index::new(Row(0), Col(4))) = Some(Piece::create_king(player2));
 
     board
 }
 
 // iterator helper
-fn until_encounter<'a, I: Iterator<Item = (GridIndex<Row, Col>, &'a Cell)>>(
+fn until_encounter<'a, I: Iterator<Item = (Index, &'a Cell)>>(
     it: I,
-) -> Scan<
-    I,
-    bool,
-    impl FnMut(&mut bool, <I as Iterator>::Item) -> Option<(GridIndex<Row, Col>, &'a Option<Piece>)>,
-> {
+) -> Scan<I, bool, impl FnMut(&mut bool, <I as Iterator>::Item) -> Option<(Index, &'a Option<Piece>)>>
+{
     it.scan(false, |encountered, elem| {
         if *encountered {
             return None;
@@ -356,7 +350,7 @@ impl Default for CastleOptions {
 #[derive(Debug, Default)]
 struct AdditionalState {
     castle_options: CastleOptions,
-    check: Vec<GridIndex<Row, Col>>,
+    check: Vec<Index>,
 }
 
 #[derive(Debug)]
@@ -436,18 +430,15 @@ impl Game for Chess {
         match self.get_move_type(data) {
             MoveType::LeftCastling => {
                 self.move_piece(
-                    GridIndex::new(Row(data.to.get_row()), Col(0)),
-                    GridIndex::new(Row(data.to.get_row()), Col(data.to.get_col() + 1)),
+                    player.team.get_left_rook_initial_position(),
+                    Index::new(Row(data.to.get_row()), Col(data.to.get_col() + 1)),
                 )?;
                 self.disable_castling(id);
             }
             MoveType::RightCastling => {
                 self.move_piece(
-                    GridIndex::new(
-                        Row(data.to.get_row()),
-                        Col(<Col as WithMaxValue>::MaxValue::to_usize() - 1),
-                    ),
-                    GridIndex::new(Row(data.to.get_row()), Col(data.to.get_col() - 1)),
+                    player.team.get_right_rook_initial_position(),
+                    Index::new(Row(data.to.get_row()), Col(data.to.get_col() - 1)),
                 )?;
                 self.disable_castling(id);
             }
@@ -479,11 +470,11 @@ impl Chess {
         &self.state
     }
 
-    fn get_cell(&self, coordinates: GridIndex<Row, Col>) -> &Cell {
+    fn get_cell(&self, coordinates: Index) -> &Cell {
         self.board.get_ref(coordinates)
     }
 
-    fn get_cell_mut(&mut self, coordinates: GridIndex<Row, Col>) -> &mut Cell {
+    fn get_cell_mut(&mut self, coordinates: Index) -> &mut Cell {
         self.board.get_mut_ref(coordinates)
     }
 
@@ -505,7 +496,7 @@ impl Chess {
         }
     }
 
-    fn move_piece(&mut self, from: GridIndex<Row, Col>, to: GridIndex<Row, Col>) -> GameResult<()> {
+    fn move_piece(&mut self, from: Index, to: Index) -> GameResult<()> {
         let piece = self
             .get_cell_mut(from)
             .take()
@@ -517,13 +508,13 @@ impl Chess {
         Ok(())
     }
 
-    fn is_enemy(&self, coordinates: GridIndex<Row, Col>, player: PlayerId) -> bool {
+    fn is_enemy(&self, coordinates: Index, player: PlayerId) -> bool {
         self.get_cell(coordinates)
             .filter(|target| target.is_enemy(player))
             .is_some()
     }
 
-    fn is_friendly(&self, coordinates: GridIndex<Row, Col>, player: PlayerId) -> bool {
+    fn is_friendly(&self, coordinates: Index, player: PlayerId) -> bool {
         self.get_cell(coordinates)
             .filter(|target| !target.is_enemy(player))
             .is_some()
@@ -562,7 +553,7 @@ impl Chess {
             .players
             .find_by_id(id)
             .ok_or(GameError::PlayerNotFound)?;
-        let empty_not_threatened = |(pos, cell): (GridIndex<Row, Col>, &Cell)| {
+        let empty_not_threatened = |(pos, cell): (Index, &Cell)| {
             cell.is_none() && self.get_attack_threats(pos, player).is_empty()
         };
         let mut castle_options = additional_state.castle_options;
@@ -580,18 +571,14 @@ impl Chess {
         Ok(castle_options)
     }
 
-    fn get_attack_threats(
-        &self,
-        pos: GridIndex<Row, Col>,
-        player: &Player,
-    ) -> Vec<GridIndex<Row, Col>> {
+    fn get_attack_threats(&self, pos: Index, player: &Player) -> Vec<Index> {
         let is_occupied = |(pos, cell): (_, &Cell)| {
             if let Some(piece) = cell {
                 return Some((pos, *piece));
             }
             None
         };
-        let is_enemy = |(_, piece): &(GridIndex<Row, Col>, Piece)| piece.is_enemy(player.id);
+        let is_enemy = |(_, piece): &(Index, Piece)| piece.is_enemy(player.id);
         let mut diag_tl = self.board.top_left_iter(pos).indexed().skip(1);
         let mut diag_tr = self.board.top_right_iter(pos).indexed().skip(1);
         let mut diag_br = self.board.bottom_right_iter(pos).indexed().skip(1);
@@ -664,7 +651,7 @@ impl Chess {
         threats
     }
 
-    fn get_moves(&self, pos: GridIndex<Row, Col>) -> GameResult<Vec<GridIndex<Row, Col>>> {
+    fn get_moves(&self, pos: Index) -> GameResult<Vec<Index>> {
         let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
             row: pos.get_row(),
             col: pos.get_col(),
@@ -674,7 +661,7 @@ impl Chess {
             .find_by_id(piece.owner)
             .ok_or(GameError::PlayerNotFound)?;
         let mut res = vec![];
-        let empty_cell_or_enemy = |(index, cell): (GridIndex<Row, Col>, &Cell)| {
+        let empty_cell_or_enemy = |(index, cell): (Index, &Cell)| {
             if cell.filter(|p| !p.is_enemy(piece.owner)).is_some() {
                 return Some(index);
             }
