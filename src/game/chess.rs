@@ -44,6 +44,13 @@ impl Team {
             Team::Black => Index::new(Row(0), last_col),
         }
     }
+
+    pub fn get_pawn_initial_row(&self) -> Row {
+        match self {
+            Team::White => Row(<Row as WithMaxValue>::MaxValue::to_usize() - 2),
+            Team::Black => Row(1),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -725,13 +732,21 @@ impl Chess {
         };
         match piece.kind {
             PieceKind::Pawn => {
-                let advanced = match player.team {
-                    Team::White => pos.move_up(1),
-                    Team::Black => pos.move_down(1),
+                let advance = match player.team {
+                    Team::White => Index::move_up,
+                    Team::Black => Index::move_down,
                 };
-                if let Some(advanced) = advanced {
+                if let Some(advanced) = advance(&pos, 1) {
                     if self.get_cell(advanced).is_none() {
                         res.push(advanced);
+                        // if pawn didn't move it can advance one more row
+                        if pos.get_row() == player.team.get_pawn_initial_row().into() {
+                            if let Some(advanced) = advance(&advanced, 1) {
+                                if self.get_cell(advanced).is_none() {
+                                    res.push(advanced);
+                                }
+                            }
+                        }
                     }
                     res.extend(
                         [advanced.move_right(1), advanced.move_left(1)]
