@@ -137,12 +137,13 @@ impl Game for TicTacToe {
     type TurnData = TurnData;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
-        let [id1, id2]: [_; 2] = players
-            .try_into()
-            .map_err(|_| GameError::InvalidPlayersNumber {
-                expected: 2,
-                found: players.len(),
-            })?;
+        let [id1, id2]: [_; 2] =
+            players
+                .try_into()
+                .map_err(|_| GameError::InvalidPlayersNumber {
+                    expected: 2,
+                    found: players.len(),
+                })?;
         if id1 == id2 {
             return Err(GameError::DuplicatePlayerId);
         }
@@ -185,7 +186,6 @@ impl Game for TicTacToe {
 }
 
 impl TicTacToe {
-
     pub fn get_current_player(&mut self) -> GameResult<&Player> {
         self.players
             .get_current()
@@ -205,22 +205,17 @@ impl TicTacToe {
     }
 
     fn update_state(&mut self) -> GameResult<GameState> {
+        let has_sign = |cell: Cell, sign: Sign| matches!(cell, Some(s) if s == sign);
         for i in 0..3 {
-            let row = &self.field[i];
-            if let Some(first_sign) = *row.first().unwrap() {
-                if row
-                    .iter()
-                    .all(|sign| matches!(*sign, Some(s) if s == first_sign))
-                {
-                    return self.set_winner(first_sign);
+            // check rows
+            if let [Some(sign1), Some(sign2), Some(sign3)] = self.field[i].as_slice() {
+                if sign1 == sign2 && sign2 == sign3 {
+                    return self.set_winner(*sign1);
                 }
             }
+            // check columns
             if let Some(first_sign) = self.field.first().unwrap()[i] {
-                if self
-                    .field
-                    .iter()
-                    .all(|row| matches!(row[i], Some(s) if s == first_sign))
-                {
+                if self.field.iter().all(|row| has_sign(row[i], first_sign)) {
                     return self.set_winner(first_sign);
                 }
             }
@@ -241,7 +236,7 @@ impl TicTacToe {
             }
         }
 
-        if self.field.iter().all(|row| row.iter().all(|s| s.is_some())) {
+        if self.field.iter().flatten().all(|s| s.is_some()) {
             self.state = GameState::Finished(FinishedState::Draw);
             return Ok(self.state);
         }
