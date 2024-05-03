@@ -6,6 +6,13 @@ use std::ops::{Add, Deref, Sub};
 
 pub trait WithMaxValue {
     type MaxValue: ArrayLength;
+
+    fn max() -> Self
+    where
+        Self: Sized + From<usize>,
+    {
+        (Self::MaxValue::to_usize() - 1).into()
+    }
 }
 
 // Struct used to mutably access items in Grid
@@ -28,16 +35,16 @@ where
 {
     pub fn is_valid(&self) -> bool {
         self.row >= Row::from(0)
-            && self.row < Row::from(Row::MaxValue::to_usize())
+            && self.row <= Row::max()
             && self.col >= Col::from(0)
-            && self.col < Col::from(Col::MaxValue::to_usize())
+            && self.col <= Col::max()
     }
 }
 
 impl<Row, Col> GridIndex<Row, Col>
-    where
-        Row: Copy + PartialOrd + Sub<usize, Output = Row>,
-        Col: Copy + PartialOrd + Sub<usize, Output = Col>,
+where
+    Row: Copy + PartialOrd + Sub<usize, Output = Row>,
+    Col: Copy + PartialOrd + Sub<usize, Output = Col>,
 {
     pub fn is_adjacent(&self, other: &GridIndex<Row, Col>) -> bool {
         let vertically_adjacent = match self.row.partial_cmp(&other.row) {
@@ -236,10 +243,10 @@ pub struct RightGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
 }
 
 impl<'a, T, Row, Col> Iterator for RightGridIterator<'a, T, Row, Col>
-    where
-        T: Default,
-        Row: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
-        Col: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize, Output = Col> + WithMaxValue,
+where
+    T: Default,
+    Row: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+    Col: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize, Output = Col> + WithMaxValue,
 {
     type Item = &'a T;
 
@@ -259,10 +266,10 @@ pub struct LeftGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
 }
 
 impl<'a, T, Row, Col> Iterator for LeftGridIterator<'a, T, Row, Col>
-    where
-        T: Default,
-        Row: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
-        Col: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize, Output = Col> + WithMaxValue,
+where
+    T: Default,
+    Row: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+    Col: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize, Output = Col> + WithMaxValue,
 {
     type Item = &'a T;
 
@@ -288,10 +295,10 @@ pub struct TopGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
 }
 
 impl<'a, T, Row, Col> Iterator for TopGridIterator<'a, T, Row, Col>
-    where
-        T: Default,
-        Row: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize, Output = Row> + WithMaxValue,
-        Col: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+where
+    T: Default,
+    Row: Copy + Into<usize> + PartialOrd + From<usize> + Sub<usize, Output = Row> + WithMaxValue,
+    Col: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
 {
     type Item = &'a T;
 
@@ -317,10 +324,10 @@ pub struct BottomGridIterator<'a, T, Row: WithMaxValue, Col: WithMaxValue> {
 }
 
 impl<'a, T, Row, Col> Iterator for BottomGridIterator<'a, T, Row, Col>
-    where
-        T: Default,
-        Row: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize, Output = Row> + WithMaxValue,
-        Col: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
+where
+    T: Default,
+    Row: Copy + Into<usize> + PartialOrd + From<usize> + Add<usize, Output = Row> + WithMaxValue,
+    Col: Copy + Into<usize> + PartialOrd + From<usize> + WithMaxValue,
 {
     type Item = &'a T;
 
@@ -459,9 +466,9 @@ pub trait WithGridIndex<Row, Col> {
 }
 
 impl<T, Row, Col> WithGridIndex<Row, Col> for RightGridIterator<'_, T, Row, Col>
-    where
-        Row: Copy + WithMaxValue,
-        Col: Copy + WithMaxValue,
+where
+    Row: Copy + WithMaxValue,
+    Col: Copy + WithMaxValue,
 {
     fn get_index(&self) -> Option<GridIndex<Row, Col>> {
         Some(self.current)
@@ -469,9 +476,9 @@ impl<T, Row, Col> WithGridIndex<Row, Col> for RightGridIterator<'_, T, Row, Col>
 }
 
 impl<T, Row, Col> WithGridIndex<Row, Col> for LeftGridIterator<'_, T, Row, Col>
-    where
-        Row: Copy + WithMaxValue,
-        Col: Copy + WithMaxValue,
+where
+    Row: Copy + WithMaxValue,
+    Col: Copy + WithMaxValue,
 {
     fn get_index(&self) -> Option<GridIndex<Row, Col>> {
         self.current
@@ -479,9 +486,9 @@ impl<T, Row, Col> WithGridIndex<Row, Col> for LeftGridIterator<'_, T, Row, Col>
 }
 
 impl<T, Row, Col> WithGridIndex<Row, Col> for TopGridIterator<'_, T, Row, Col>
-    where
-        Row: Copy + WithMaxValue,
-        Col: Copy + WithMaxValue,
+where
+    Row: Copy + WithMaxValue,
+    Col: Copy + WithMaxValue,
 {
     fn get_index(&self) -> Option<GridIndex<Row, Col>> {
         self.current
@@ -489,9 +496,9 @@ impl<T, Row, Col> WithGridIndex<Row, Col> for TopGridIterator<'_, T, Row, Col>
 }
 
 impl<T, Row, Col> WithGridIndex<Row, Col> for BottomGridIterator<'_, T, Row, Col>
-    where
-        Row: Copy + WithMaxValue,
-        Col: Copy + WithMaxValue,
+where
+    Row: Copy + WithMaxValue,
+    Col: Copy + WithMaxValue,
 {
     fn get_index(&self) -> Option<GridIndex<Row, Col>> {
         Some(self.current)

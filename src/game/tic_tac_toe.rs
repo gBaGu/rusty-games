@@ -56,7 +56,7 @@ impl TryFrom<usize> for FieldRow {
             1 => Ok(Self::R2),
             2 => Ok(Self::R3),
             _ => Err(Self::Error::InvalidGridRow {
-                max_expected: <Self as WithMaxValue>::MaxValue::to_usize(),
+                max_expected: <Self as WithMaxValue>::MaxValue::to_usize() - 1,
                 found: value,
             }),
         }
@@ -94,7 +94,7 @@ impl TryFrom<usize> for FieldCol {
             1 => Ok(Self::C2),
             2 => Ok(Self::C3),
             _ => Err(Self::Error::InvalidGridCol {
-                max_expected: <Self as WithMaxValue>::MaxValue::to_usize(),
+                max_expected: <Self as WithMaxValue>::MaxValue::to_usize() - 1,
                 found: value,
             }),
         }
@@ -194,10 +194,6 @@ impl TicTacToe {
 
     pub fn get_player_by_sign(&self, sign: Sign) -> Option<&Player> {
         self.players.find(|player| player.sign == sign)
-    }
-
-    pub fn get_state(&self) -> &GameState {
-        &self.state
     }
 
     fn get_cell(&mut self, coordinates: GridIndex<FieldRow, FieldCol>) -> &mut Cell {

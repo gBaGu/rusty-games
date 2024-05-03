@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
-use crate::game::chess::Chess;
+use crate::game::chess::game::Chess;
 use crate::game::game::{FromProtobuf, FromProtobufError, Game};
 use crate::game::{
     error::GameError,
