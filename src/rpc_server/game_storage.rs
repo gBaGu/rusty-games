@@ -3,13 +3,8 @@ use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use crate::game::chess::game::Chess;
-use crate::game::game::{FromProtobuf, FromProtobufError, Game};
-use crate::game::{
-    error::GameError,
-    player_pool::PlayerId,
-    state::GameState,
-    tic_tac_toe::TicTacToe,
-};
+use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameState};
+use crate::game::{error::GameError, player_pool::PlayerId, tic_tac_toe::TicTacToe};
 use crate::proto::GameType;
 
 #[derive(thiserror::Error, Debug)]

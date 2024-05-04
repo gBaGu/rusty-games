@@ -6,10 +6,9 @@ use crate::game::chess::index::{Col, Index, Row};
 use crate::game::chess::turn_data::TurnData;
 use crate::game::chess::types::{MoveType, Piece, PieceKind, Team};
 use crate::game::error::GameError;
-use crate::game::game::{Game, GameResult};
+use crate::game::game::{FinishedState, Game, GameResult, GameState};
 use crate::game::grid::{Grid, WithGridIndex, WithLength};
 use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
-use crate::game::state::{FinishedState, GameState};
 
 type Cell = Option<Piece>;
 

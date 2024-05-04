@@ -1,7 +1,6 @@
-use std::num::TryFromIntError;
 use crate::game::error::GameError;
 use crate::game::player_pool::PlayerId;
-use crate::game::state::GameState;
+use std::num::TryFromIntError;
 
 pub type GameResult<T> = Result<T, GameError>;
 
@@ -21,6 +20,18 @@ pub enum FromProtobufError {
 
 pub trait FromProtobuf: Sized {
     fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError>;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum FinishedState {
+    Win(PlayerId),
+    Draw,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum GameState {
+    Turn(PlayerId),
+    Finished(FinishedState),
 }
 
 pub trait Game: Sized {

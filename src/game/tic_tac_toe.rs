@@ -1,12 +1,13 @@
 use generic_array::typenum::Unsigned;
 use prost::Message;
 
-use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameResult};
+use crate::game::game::{
+    FinishedState, FromProtobuf, FromProtobufError, Game, GameResult, GameState,
+};
 use crate::game::{
     error::GameError,
     grid::{Grid, GridIndex, WithLength},
     player_pool::{PlayerId, PlayerPool, WithPlayerId},
-    state::{FinishedState, GameState},
     tic_tac_toe,
 };
 use crate::proto::Position;
