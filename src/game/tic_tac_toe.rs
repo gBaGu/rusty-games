@@ -156,8 +156,8 @@ impl Game for TicTacToe {
         })
     }
 
-    fn is_finished(&self) -> bool {
-        matches!(self.state, GameState::Finished(_))
+    fn state(&self) -> GameState {
+        self.state
     }
 
     fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState> {

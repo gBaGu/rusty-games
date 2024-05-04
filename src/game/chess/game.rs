@@ -167,12 +167,12 @@ impl Game for Chess {
         })
     }
 
-    fn is_finished(&self) -> bool {
-        matches!(self.state, GameState::Finished(_))
+    fn state(&self) -> GameState {
+        self.state
     }
 
     fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
-        if matches!(self.state, GameState::Finished(_)) {
+        if self.is_finished() {
             return Err(GameError::GameIsFinished);
         }
         let player = *self.get_current_player()?;
