@@ -157,10 +157,6 @@ impl Game for TicTacToe {
         })
     }
 
-    fn state(&self) -> GameState {
-        self.state
-    }
-
     fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(GameError::GameIsFinished);
@@ -183,6 +179,14 @@ impl Game for TicTacToe {
         *cell = Some(sign);
 
         self.update_state()
+    }
+
+    fn state(&self) -> GameState {
+        self.state
+    }
+
+    fn set_state(&mut self, state: GameState) {
+        self.state = state;
     }
 }
 

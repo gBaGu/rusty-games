@@ -166,10 +166,6 @@ impl Game for Chess {
         })
     }
 
-    fn state(&self) -> GameState {
-        self.state
-    }
-
     fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
         if self.is_finished() {
             return Err(GameError::GameIsFinished);
@@ -215,8 +211,8 @@ impl Game for Chess {
                 self.disable_castling(id);
             }
             MoveType::KingMove => {
+                // castling is disabled inside of update_king_position
                 self.update_king_position(id, data.from);
-                self.disable_castling(id)
             }
             MoveType::RookMove => {
                 if data.from == player.team.get_left_rook_initial_position() {
@@ -233,6 +229,14 @@ impl Game for Chess {
         self.update_check(&player);
 
         self.update_state()
+    }
+
+    fn state(&self) -> GameState {
+        self.state
+    }
+
+    fn set_state(&mut self, state: GameState) {
+        self.state = state;
     }
 }
 
@@ -278,6 +282,8 @@ impl Chess {
     fn update_king_position(&mut self, id: PlayerId, pos: Index) {
         if let Some(state) = self.additional_state.get_mut(&id) {
             state.king_pos = pos;
+            // castling is disabled once king has moved
+            state.castle_options = CastleOptions::none();
         }
     }
 
@@ -294,7 +300,7 @@ impl Chess {
         }
     }
 
-    fn move_piece(&mut self, from: Index, to: Index) -> GameResult<()> {
+    fn move_piece(&mut self, from: Index, to: Index) -> GameResult<Cell> {
         let piece = self
             .get_cell_mut(from)
             .take()
@@ -302,8 +308,8 @@ impl Chess {
                 row: from.row().into(),
                 col: from.col().into(),
             })?;
-        *self.get_cell_mut(to) = Some(piece);
-        Ok(())
+        let old_to = std::mem::replace(self.get_cell_mut(to), Some(piece));
+        Ok(old_to)
     }
 
     fn is_enemy(&self, position: Index, player: PlayerId) -> bool {
@@ -593,10 +599,10 @@ impl Chess {
             .ok_or(GameError::PlayerNotFound)?
             .king_pos;
         res.retain(|&index| {
-            let backup = self.get_cell(index).clone();
-            if let Err(_) = self.move_piece(pos, index) {
-                return false;
-            }
+            let backup = match self.move_piece(pos, index) {
+                Ok(cell) => cell,
+                Err(_) => return false,
+            };
             let king_safe = self.get_attack_threats(king_pos, &player).is_empty();
             if let Err(_) = self.move_piece(index, pos) {
                 return false;
@@ -605,11 +611,6 @@ impl Chess {
             king_safe
         });
         Ok(res)
-    }
-
-    fn set_winner(&mut self, player: PlayerId) -> GameResult<GameState> {
-        self.state = GameState::Finished(FinishedState::Win(player));
-        Ok(self.state)
     }
 
     fn switch_player(&mut self) -> GameResult<GameState> {
@@ -638,7 +639,7 @@ impl Chess {
         }) {
             if self.is_in_check(enemy.id) {
                 let current_id = self.get_current_player()?.id;
-                self.set_winner(current_id)?;
+                return Ok(self.set_winner(current_id));
             } else {
                 // stalemate
                 self.state = GameState::Finished(FinishedState::Draw);

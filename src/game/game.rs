@@ -38,10 +38,17 @@ pub trait Game: Sized {
     type TurnData: FromProtobuf;
 
     fn new(players: &[PlayerId]) -> GameResult<Self>;
-    fn state(&self) -> GameState;
     fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState>;
+
+    fn state(&self) -> GameState;
+    fn set_state(&mut self, state: GameState);
 
     fn is_finished(&self) -> bool {
         matches!(self.state(), GameState::Finished(_))
+    }
+
+    fn set_winner(&mut self, id: PlayerId) -> GameState {
+        self.set_state(GameState::Finished(FinishedState::Win(id)));
+        self.state()
     }
 }
