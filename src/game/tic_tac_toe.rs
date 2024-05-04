@@ -9,7 +9,7 @@ use crate::game::{
     state::{FinishedState, GameState},
     tic_tac_toe,
 };
-use crate::proto::Coordinates;
+use crate::proto::Position;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Sign {
@@ -124,9 +124,9 @@ type TurnData = GridIndex<FieldRow, FieldCol>;
 
 impl FromProtobuf for TurnData {
     fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
-        let coords = Coordinates::decode(buf)?;
-        let row: usize = usize::try_from(coords.row)?;
-        let col: usize = usize::try_from(coords.col)?;
+        let pos = Position::decode(buf)?;
+        let row: usize = usize::try_from(pos.row)?;
+        let col: usize = usize::try_from(pos.col)?;
         let row = tic_tac_toe::FieldRow::try_from(row)?;
         let col = tic_tac_toe::FieldCol::try_from(col)?;
         Ok(Self::new(row, col))
@@ -196,8 +196,8 @@ impl TicTacToe {
         self.players.find(|player| player.sign == sign)
     }
 
-    fn get_cell(&mut self, coordinates: GridIndex<FieldRow, FieldCol>) -> &mut Cell {
-        self.field.get_mut_ref(coordinates)
+    fn get_cell(&mut self, position: GridIndex<FieldRow, FieldCol>) -> &mut Cell {
+        self.field.get_mut_ref(position)
     }
 
     fn update_state(&mut self) -> GameResult<GameState> {

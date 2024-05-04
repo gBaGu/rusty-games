@@ -250,12 +250,12 @@ impl Chess {
             .ok_or(GameError::PlayerPoolCorrupted)
     }
 
-    fn get_cell(&self, coordinates: Index) -> &Cell {
-        self.board.get_ref(coordinates)
+    fn get_cell(&self, position: Index) -> &Cell {
+        self.board.get_ref(position)
     }
 
-    fn get_cell_mut(&mut self, coordinates: Index) -> &mut Cell {
-        self.board.get_mut_ref(coordinates)
+    fn get_cell_mut(&mut self, position: Index) -> &mut Cell {
+        self.board.get_mut_ref(position)
     }
 
     fn disable_castling(&mut self, id: PlayerId) {
@@ -307,14 +307,14 @@ impl Chess {
         Ok(())
     }
 
-    fn is_enemy(&self, coordinates: Index, player: PlayerId) -> bool {
-        self.get_cell(coordinates)
+    fn is_enemy(&self, position: Index, player: PlayerId) -> bool {
+        self.get_cell(position)
             .filter(|target| target.is_enemy(player))
             .is_some()
     }
 
-    fn is_friendly(&self, coordinates: Index, player: PlayerId) -> bool {
-        self.get_cell(coordinates)
+    fn is_friendly(&self, position: Index, player: PlayerId) -> bool {
+        self.get_cell(position)
             .filter(|target| !target.is_enemy(player))
             .is_some()
     }
