@@ -1,5 +1,5 @@
 use crate::game::chess::index::{Col, Index, Row};
-use crate::game::grid::WithMaxValue;
+use crate::game::grid::WithLength;
 use crate::game::player_pool::PlayerId;
 
 pub enum MoveType {

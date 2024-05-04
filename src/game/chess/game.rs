@@ -2,14 +2,14 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::iter::Scan;
 
-use crate::game::error::GameError;
-use crate::game::game::{Game, GameResult};
-use crate::game::grid::{Grid, WithGridIndex, WithMaxValue};
-use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
-use crate::game::state::{FinishedState, GameState};
 use crate::game::chess::index::{Col, Index, Row};
 use crate::game::chess::turn_data::TurnData;
 use crate::game::chess::types::{MoveType, Piece, PieceKind, Team};
+use crate::game::error::GameError;
+use crate::game::game::{Game, GameResult};
+use crate::game::grid::{Grid, WithGridIndex, WithLength};
+use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
+use crate::game::state::{FinishedState, GameState};
 
 type Cell = Option<Piece>;
 
@@ -32,7 +32,7 @@ impl WithPlayerId for Player {
 }
 
 fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
-    let mut board = Grid::empty();
+    let mut board = Grid::default();
     // init pawns
     for i in 0..=Col::max().0 {
         *board.get_mut_ref(Index::new(Row::max() - 1, Col(i))) = Some(Piece::create_pawn(player1));
@@ -45,12 +45,14 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     *board.get_mut_ref(Index::new(Row(0), Col::max())) = Some(Piece::create_rook(player2));
     // init knights
     *board.get_mut_ref(Index::new(Row::max(), Col(1))) = Some(Piece::create_knight(player1));
-    *board.get_mut_ref(Index::new(Row::max(), Col::max() - 1)) = Some(Piece::create_knight(player1));
+    *board.get_mut_ref(Index::new(Row::max(), Col::max() - 1)) =
+        Some(Piece::create_knight(player1));
     *board.get_mut_ref(Index::new(Row(0), Col(1))) = Some(Piece::create_knight(player2));
     *board.get_mut_ref(Index::new(Row(0), Col::max() - 1)) = Some(Piece::create_knight(player2));
     // init bishops
     *board.get_mut_ref(Index::new(Row::max(), Col(2))) = Some(Piece::create_bishop(player1));
-    *board.get_mut_ref(Index::new(Row::max(), Col::max() - 2)) = Some(Piece::create_bishop(player1));
+    *board.get_mut_ref(Index::new(Row::max(), Col::max() - 2)) =
+        Some(Piece::create_bishop(player1));
     *board.get_mut_ref(Index::new(Row(0), Col(2))) = Some(Piece::create_bishop(player2));
     *board.get_mut_ref(Index::new(Row(0), Col::max() - 2)) = Some(Piece::create_bishop(player2));
     // init queens
@@ -160,8 +162,8 @@ impl Game for Chess {
                     },
                 ),
             ]
-                .into_iter()
-                .collect(),
+            .into_iter()
+            .collect(),
         })
     }
 
@@ -181,8 +183,8 @@ impl Game for Chess {
             });
         }
         let piece = self.get_cell_mut(data.from).ok_or(GameError::CellIsEmpty {
-            row: data.from.get_row(),
-            col: data.from.get_col(),
+            row: data.from.row().into(),
+            col: data.from.col().into(),
         })?;
 
         if piece.owner != id {
@@ -194,11 +196,7 @@ impl Game for Chess {
         let available_moves = self.get_moves(data.from)?;
         if !available_moves.contains(&data.to) {
             return Err(GameError::InvalidMove {
-                reason: format!(
-                    "unable to move to this position ({}, {})",
-                    data.to.get_row(),
-                    data.to.get_col()
-                ),
+                reason: format!("unable to move {} to {}", data.from, data.to),
             });
         }
 
@@ -206,14 +204,14 @@ impl Game for Chess {
             MoveType::LeftCastling => {
                 self.move_piece(
                     player.team.get_left_rook_initial_position(),
-                    Index::new(Row(data.to.get_row()), Col(data.to.get_col() + 1)),
+                    Index::new(data.to.row(), data.to.col() + 1),
                 )?;
                 self.disable_castling(id);
             }
             MoveType::RightCastling => {
                 self.move_piece(
                     player.team.get_right_rook_initial_position(),
-                    Index::new(Row(data.to.get_row()), Col(data.to.get_col() - 1)),
+                    Index::new(data.to.row(), data.to.col() - 1),
                 )?;
                 self.disable_castling(id);
             }
@@ -302,8 +300,8 @@ impl Chess {
             .get_cell_mut(from)
             .take()
             .ok_or(GameError::CellIsEmpty {
-                row: from.get_row(),
-                col: from.get_col(),
+                row: from.row().into(),
+                col: from.col().into(),
             })?;
         *self.get_cell_mut(to) = Some(piece);
         Ok(())
@@ -332,13 +330,13 @@ impl Chess {
         if self.get_cell(from).filter(Piece::is_king).is_some() {
             if (from == Team::Black.get_king_initial_position()
                 || from == Team::White.get_king_initial_position())
-                && from.get_row() == to.get_row()
+                && from.row() == to.row()
             {
-                match from.get_col().partial_cmp(&to.get_col()) {
-                    Some(Ordering::Less) if to.get_col() - 2 == from.get_col() => {
+                match from.col().partial_cmp(&to.col()) {
+                    Some(Ordering::Less) if to.col() - 2 == from.col() => {
                         return MoveType::RightCastling;
                     }
-                    Some(Ordering::Greater) if from.get_col() - 2 == to.get_col() => {
+                    Some(Ordering::Greater) if from.col() - 2 == to.col() => {
                         return MoveType::LeftCastling;
                     }
                     _ => {}
@@ -411,9 +409,9 @@ impl Chess {
                 PieceKind::Pawn => {
                     enemy_pos.is_adjacent(&pos)
                         && match player.team {
-                        Team::White => enemy_pos.get_row() > pos.get_row(),
-                        Team::Black => enemy_pos.get_row() < pos.get_row(),
-                    }
+                            Team::White => enemy_pos.row() > pos.row(),
+                            Team::Black => enemy_pos.row() < pos.row(),
+                        }
                 }
                 _ => false,
             })
@@ -461,8 +459,8 @@ impl Chess {
 
     fn get_moves(&mut self, pos: Index) -> GameResult<Vec<Index>> {
         let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
-            row: pos.get_row(),
-            col: pos.get_col(),
+            row: pos.row().into(),
+            col: pos.col().into(),
         })?;
         let player = *self
             .players
@@ -485,7 +483,7 @@ impl Chess {
                     if self.get_cell(advanced).is_none() {
                         res.push(advanced);
                         // if pawn didn't move it can advance one more row
-                        if pos.get_row() == player.team.get_pawn_initial_row().into() {
+                        if pos.row() == player.team.get_pawn_initial_row() {
                             if let Some(advanced) = advance(&advanced, 1) {
                                 if self.get_cell(advanced).is_none() {
                                     res.push(advanced);
@@ -574,10 +572,10 @@ impl Chess {
                     self.board.top_iter(pos).indexed().skip(1).next(),
                     self.board.bottom_iter(pos).indexed().skip(1).next(),
                 ]
-                    .into_iter()
-                    .flatten()
-                    .filter_map(empty_cell_or_enemy)
-                    .collect();
+                .into_iter()
+                .flatten()
+                .filter_map(empty_cell_or_enemy)
+                .collect();
 
                 let castle_options = self.can_castle(piece.owner)?;
                 if castle_options.left {

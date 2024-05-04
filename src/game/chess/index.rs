@@ -1,13 +1,31 @@
+use std::fmt::{Display, Formatter, Write};
 use std::ops::{Add, Sub};
 
-use crate::game::grid::{GridIndex, WithMaxValue};
+use crate::game::grid::{GridIndex, WithLength};
 
 pub type Index = GridIndex<Row, Col>;
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Row(pub usize);
-impl WithMaxValue for Row {
-    type MaxValue = generic_array::typenum::U8;
+
+impl WithLength for Row {
+    type Length = generic_array::typenum::U8;
+}
+
+impl Display for Row {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            0 => f.write_char('8'),
+            1 => f.write_char('7'),
+            2 => f.write_char('6'),
+            3 => f.write_char('5'),
+            4 => f.write_char('4'),
+            5 => f.write_char('3'),
+            6 => f.write_char('2'),
+            7 => f.write_char('1'),
+            _ => f.write_str("INVALID"),
+        }
+    }
 }
 
 impl Add<usize> for Row {
@@ -40,8 +58,25 @@ impl From<Row> for usize {
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Col(pub usize);
-impl WithMaxValue for Col {
-    type MaxValue = generic_array::typenum::U8;
+
+impl Display for Col {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            0 => f.write_char('a'),
+            1 => f.write_char('b'),
+            2 => f.write_char('c'),
+            3 => f.write_char('d'),
+            4 => f.write_char('e'),
+            5 => f.write_char('f'),
+            6 => f.write_char('g'),
+            7 => f.write_char('h'),
+            _ => f.write_str("INVALID"),
+        }
+    }
+}
+
+impl WithLength for Col {
+    type Length = generic_array::typenum::U8;
 }
 
 impl Add<usize> for Col {

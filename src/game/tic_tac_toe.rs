@@ -4,7 +4,7 @@ use prost::Message;
 use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameResult};
 use crate::game::{
     error::GameError,
-    grid::{Grid, GridIndex, WithMaxValue},
+    grid::{Grid, GridIndex, WithLength},
     player_pool::{PlayerId, PlayerPool, WithPlayerId},
     state::{FinishedState, GameState},
     tic_tac_toe,
@@ -43,8 +43,8 @@ pub enum FieldRow {
 }
 
 // TODO: use derive macro instead
-impl WithMaxValue for FieldRow {
-    type MaxValue = generic_array::typenum::U3;
+impl WithLength for FieldRow {
+    type Length = generic_array::typenum::U3;
 }
 
 impl TryFrom<usize> for FieldRow {
@@ -56,7 +56,7 @@ impl TryFrom<usize> for FieldRow {
             1 => Ok(Self::R2),
             2 => Ok(Self::R3),
             _ => Err(Self::Error::InvalidGridRow {
-                max_expected: <Self as WithMaxValue>::MaxValue::to_usize() - 1,
+                max_expected: <Self as WithLength>::Length::to_usize() - 1,
                 found: value,
             }),
         }
@@ -81,8 +81,8 @@ pub enum FieldCol {
 }
 
 // TODO: use derive macro instead
-impl WithMaxValue for FieldCol {
-    type MaxValue = generic_array::typenum::U3;
+impl WithLength for FieldCol {
+    type Length = generic_array::typenum::U3;
 }
 
 impl TryFrom<usize> for FieldCol {
@@ -94,7 +94,7 @@ impl TryFrom<usize> for FieldCol {
             1 => Ok(Self::C2),
             2 => Ok(Self::C3),
             _ => Err(Self::Error::InvalidGridCol {
-                max_expected: <Self as WithMaxValue>::MaxValue::to_usize() - 1,
+                max_expected: <Self as WithLength>::Length::to_usize() - 1,
                 found: value,
             }),
         }
@@ -152,7 +152,7 @@ impl Game for TicTacToe {
         Ok(Self {
             players: PlayerPool::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
-            field: Grid::empty(),
+            field: Grid::default(),
         })
     }
 
@@ -175,8 +175,8 @@ impl Game for TicTacToe {
         let cell = self.get_cell(data);
         if cell.is_some() {
             return Err(GameError::CellIsOccupied {
-                row: data.get_row(),
-                col: data.get_col(),
+                row: data.row().into(),
+                col: data.col().into(),
             });
         }
         *cell = Some(sign);
