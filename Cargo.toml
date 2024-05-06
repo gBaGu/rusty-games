@@ -21,3 +21,6 @@ tonic-reflection = "0.11"
 
 [build-dependencies]
 tonic-build = "0.11"
+
+[dev-dependencies]
+itertools = "0.12"

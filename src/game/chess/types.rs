@@ -56,7 +56,7 @@ pub enum PieceKind {
     King,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Piece {
     pub kind: PieceKind,
     pub owner: PlayerId,

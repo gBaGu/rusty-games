@@ -22,13 +22,13 @@ pub trait FromProtobuf: Sized {
     fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError>;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FinishedState {
     Win(PlayerId),
     Draw,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameState {
     Turn(PlayerId),
     Finished(FinishedState),
@@ -38,7 +38,7 @@ pub trait Game: Sized {
     type TurnData: FromProtobuf;
 
     fn new(players: &[PlayerId]) -> GameResult<Self>;
-    fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState>;
+    fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState>;
 
     fn state(&self) -> GameState;
     fn set_state(&mut self, state: GameState);

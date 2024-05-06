@@ -1,6 +1,6 @@
 use crate::game::player_pool::PlayerId;
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 pub enum GameError {
     #[error("duplicate player id encountered")]
     DuplicatePlayerId,
@@ -22,4 +22,30 @@ pub enum GameError {
     UnauthorizedMove { expected: PlayerId, found: PlayerId },
     #[error("failed to switch players in the pool")]
     PlayerPoolCorrupted,
+}
+
+impl GameError {
+    pub fn cell_is_empty(row: usize, col: usize) -> Self {
+        Self::CellIsEmpty { row, col }
+    }
+
+    pub fn cell_is_occupied(row: usize, col: usize) -> Self {
+        Self::CellIsOccupied { row, col }
+    }
+
+    pub fn invalid_move(reason: String) -> Self {
+        Self::InvalidMove { reason }
+    }
+
+    pub fn invalid_players_number(expected: usize, found: usize) -> Self {
+        Self::InvalidPlayersNumber { expected, found }
+    }
+
+    pub fn not_your_turn(expected: PlayerId, found: PlayerId) -> Self {
+        Self::NotYourTurn { expected, found }
+    }
+
+    pub fn unauthorized_move(expected: PlayerId, found: PlayerId) -> Self {
+        Self::UnauthorizedMove { expected, found }
+    }
 }

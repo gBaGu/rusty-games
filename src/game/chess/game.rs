@@ -80,7 +80,7 @@ fn until_encounter<'a, I: Iterator<Item = (Index, &'a Cell)>>(
     })
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct CastleOptions {
     left: bool,
     right: bool,
@@ -127,13 +127,9 @@ impl Game for Chess {
     type TurnData = TurnData;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
-        let [id1, id2]: [_; 2] =
-            players
-                .try_into()
-                .map_err(|_| GameError::InvalidPlayersNumber {
-                    expected: 2,
-                    found: players.len(),
-                })?;
+        let [id1, id2]: [_; 2] = players
+            .try_into()
+            .map_err(|_| GameError::invalid_players_number(2, players.len()))?;
         if id1 == id2 {
             return Err(GameError::DuplicatePlayerId);
         }
@@ -172,27 +168,24 @@ impl Game for Chess {
         }
         let player = *self.get_current_player()?;
         if id != player.id {
-            return Err(GameError::NotYourTurn {
-                expected: self.get_current_player()?.id,
-                found: id,
-            });
+            return Err(GameError::not_your_turn(self.get_current_player()?.id, id));
         }
-        let piece = self.get_cell_mut(data.from).ok_or(GameError::CellIsEmpty {
-            row: data.from.row().into(),
-            col: data.from.col().into(),
-        })?;
+        let piece = self
+            .get_cell_mut(data.from)
+            .ok_or(GameError::cell_is_empty(
+                data.from.row().into(),
+                data.from.col().into(),
+            ))?;
 
         if piece.owner != id {
-            return Err(GameError::UnauthorizedMove {
-                expected: piece.owner,
-                found: id,
-            });
+            return Err(GameError::unauthorized_move(piece.owner, id));
         }
         let available_moves = self.get_moves(data.from)?;
         if !available_moves.contains(&data.to) {
-            return Err(GameError::InvalidMove {
-                reason: format!("unable to move {} to {}", data.from, data.to),
-            });
+            return Err(GameError::invalid_move(format!(
+                "unable to move {} to {}",
+                data.from, data.to
+            )));
         }
 
         match self.get_move_type(data) {
@@ -288,11 +281,7 @@ impl Chess {
     }
 
     fn update_check(&mut self, player: &Player) {
-        if let Some(king_pos) = self
-            .additional_state
-            .get(&player.id)
-            .map(|state| state.king_pos)
-        {
+        if let Some(king_pos) = self.get_king_position(player.id) {
             let threats = self.get_attack_threats(king_pos, player);
             if let Some(state) = self.additional_state.get_mut(&player.id) {
                 state.check = threats;
@@ -304,10 +293,10 @@ impl Chess {
         let piece = self
             .get_cell_mut(from)
             .take()
-            .ok_or(GameError::CellIsEmpty {
-                row: from.row().into(),
-                col: from.col().into(),
-            })?;
+            .ok_or(GameError::cell_is_empty(
+                from.row().into(),
+                from.col().into(),
+            ))?;
         let old_to = std::mem::replace(self.get_cell_mut(to), Some(piece));
         Ok(old_to)
     }
@@ -329,6 +318,10 @@ impl Chess {
             return !threats.is_empty();
         }
         false
+    }
+
+    fn get_king_position(&self, id: PlayerId) -> Option<Index> {
+        self.additional_state.get(&id).map(|state| state.king_pos)
     }
 
     fn get_move_type(&self, TurnData { from, to }: TurnData) -> MoveType {
@@ -463,10 +456,9 @@ impl Chess {
     }
 
     fn get_moves(&mut self, pos: Index) -> GameResult<Vec<Index>> {
-        let piece = self.get_cell(pos).ok_or(GameError::CellIsEmpty {
-            row: pos.row().into(),
-            col: pos.col().into(),
-        })?;
+        let piece = self
+            .get_cell(pos)
+            .ok_or(GameError::cell_is_empty(pos.row().into(), pos.col().into()))?;
         let player = *self
             .players
             .find_by_id(piece.owner)
@@ -594,10 +586,8 @@ impl Chess {
 
         // exclude moves that lead to check
         let king_pos = self
-            .additional_state
-            .get(&player.id)
-            .ok_or(GameError::PlayerNotFound)?
-            .king_pos;
+            .get_king_position(player.id)
+            .ok_or(GameError::PlayerNotFound)?;
         res.retain(|&index| {
             let backup = match self.move_piece(pos, index) {
                 Ok(cell) => cell,
@@ -647,5 +637,101 @@ impl Chess {
         }
 
         self.switch_player()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_creation() {
+        let (player1, player2) = (1u64, 2u64);
+        // Chess::new with less than players should fail
+        assert_eq!(
+            Chess::new(&[]).unwrap_err(),
+            GameError::invalid_players_number(2, 0)
+        );
+        assert_eq!(
+            Chess::new(&[player1]).unwrap_err(),
+            GameError::invalid_players_number(2, 1)
+        );
+        // Chess::new with more than players should fail
+        assert_eq!(
+            Chess::new(&[player1, player2, 3]).unwrap_err(),
+            GameError::invalid_players_number(2, 3)
+        );
+        assert_eq!(
+            Chess::new(&[player1, player2, 3, 9]).unwrap_err(),
+            GameError::invalid_players_number(2, 4)
+        );
+        // Chess::new with duplicated player id should fail
+        assert_eq!(
+            Chess::new(&[player1, player1]).unwrap_err(),
+            GameError::DuplicatePlayerId
+        );
+
+        let mut chess = Chess::new(&[player1, player2]).unwrap();
+        assert_eq!(chess.get_current_player().unwrap().id, player1);
+        assert_eq!(chess.get_current_player().unwrap().team, Team::White);
+        assert_eq!(chess.get_enemy_player().unwrap().id, player2);
+        assert_eq!(chess.get_enemy_player().unwrap().team, Team::Black);
+        assert_eq!(chess.state(), GameState::Turn(player1));
+
+        // check that initial board is correct
+        let (p1_backline_expected, p2_backline_expected): (Vec<_>, Vec<_>) = [
+            (Piece::create_rook(player1), Piece::create_rook(player2)),
+            (Piece::create_knight(player1), Piece::create_knight(player2)),
+            (Piece::create_bishop(player1), Piece::create_bishop(player2)),
+            (Piece::create_queen(player1), Piece::create_queen(player2)),
+            (Piece::create_king(player1), Piece::create_king(player2)),
+            (Piece::create_bishop(player1), Piece::create_bishop(player2)),
+            (Piece::create_knight(player1), Piece::create_knight(player2)),
+            (Piece::create_rook(player1), Piece::create_rook(player2)),
+        ]
+        .into_iter()
+        .unzip();
+        // check that player1 piece set is sound
+        let p1_backline_it = chess.board.right_iter(Index::new(Row::max(), Col(0)));
+        let p1_pawns_it = chess.board.right_iter(Index::new(Row::max() - 1, Col(0)));
+        itertools::assert_equal(
+            p1_backline_it.map(|item| item.unwrap()),
+            p1_backline_expected.into_iter(),
+        );
+        itertools::assert_equal(
+            p1_pawns_it.map(|item| item.unwrap()),
+            std::iter::repeat(Piece::create_pawn(player1)).take(8),
+        );
+        // check that player2 piece set is sound
+        let p2_backline_it = chess.board.right_iter(Index::new(Row(0), Col(0)));
+        let p2_pawns_it = chess.board.right_iter(Index::new(Row(1), Col(0)));
+        itertools::assert_equal(
+            p2_backline_it.map(|item| item.unwrap()),
+            p2_backline_expected.into_iter(),
+        );
+        itertools::assert_equal(
+            p2_pawns_it.map(|item| item.unwrap()),
+            std::iter::repeat(Piece::create_pawn(player2)).take(8),
+        );
+
+        // check additional state
+        assert_eq!(chess.is_in_check(player1), false);
+        assert_eq!(
+            chess.get_king_position(player1).unwrap(),
+            Team::White.get_king_initial_position()
+        );
+        assert_eq!(
+            chess.additional_state.get(&player1).unwrap().castle_options,
+            CastleOptions::all()
+        );
+        assert_eq!(chess.is_in_check(player2), false);
+        assert_eq!(
+            chess.get_king_position(player2).unwrap(),
+            Team::Black.get_king_initial_position()
+        );
+        assert_eq!(
+            chess.additional_state.get(&player2).unwrap().castle_options,
+            CastleOptions::all()
+        );
     }
 }

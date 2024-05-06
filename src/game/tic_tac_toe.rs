@@ -138,13 +138,9 @@ impl Game for TicTacToe {
     type TurnData = TurnData;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
-        let [id1, id2]: [_; 2] =
-            players
-                .try_into()
-                .map_err(|_| GameError::InvalidPlayersNumber {
-                    expected: 2,
-                    found: players.len(),
-                })?;
+        let [id1, id2]: [_; 2] = players
+            .try_into()
+            .map_err(|_| GameError::invalid_players_number(2, players.len()))?;
         if id1 == id2 {
             return Err(GameError::DuplicatePlayerId);
         }
@@ -157,24 +153,21 @@ impl Game for TicTacToe {
         })
     }
 
-    fn update(&mut self, player: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
+    fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(GameError::GameIsFinished);
         }
-        if player != self.get_current_player()?.id {
-            return Err(GameError::NotYourTurn {
-                expected: self.get_current_player()?.id,
-                found: player,
-            });
+        if id != self.get_current_player()?.id {
+            return Err(GameError::not_your_turn(self.get_current_player()?.id, id));
         }
 
         let sign = self.get_current_player()?.sign;
         let cell = self.get_cell(data);
         if cell.is_some() {
-            return Err(GameError::CellIsOccupied {
-                row: data.row().into(),
-                col: data.col().into(),
-            });
+            return Err(GameError::cell_is_occupied(
+                data.row().into(),
+                data.col().into(),
+            ));
         }
         *cell = Some(sign);
 
