@@ -588,11 +588,14 @@ impl Chess {
         let king_pos = self
             .get_king_position(player.id)
             .ok_or(GameError::PlayerNotFound)?;
+        // TODO: handle errors inside of retain
         res.retain(|&index| {
             let backup = match self.move_piece(pos, index) {
                 Ok(cell) => cell,
                 Err(_) => return false,
             };
+            // if king has moved use it's updated position
+            let king_pos = if piece.is_king() { index } else { king_pos };
             let king_safe = self.get_attack_threats(king_pos, &player).is_empty();
             if let Err(_) = self.move_piece(index, pos) {
                 return false;
@@ -642,11 +645,20 @@ impl Chess {
 
 #[cfg(test)]
 mod test {
-    use generic_array::typenum::Unsigned;
     use super::*;
+    use generic_array::typenum::Unsigned;
+    use itertools::Itertools;
 
     const PLAYER1: u64 = 1;
     const PLAYER2: u64 = 2;
+
+    fn row_indices(row: Row) -> Vec<Index> {
+        Grid::<Option<Cell>, Row, Col>::default()
+            .right_iter(Index::new(row, Col(0)))
+            .indexed()
+            .map(|(idx, _)| idx)
+            .collect_vec()
+    }
 
     fn create_custom_board(players: &[PlayerId], pieces: &[(Index, Piece)]) -> GameResult<Chess> {
         let mut chess = Chess::new(players)?;
@@ -821,6 +833,47 @@ mod test {
         itertools::assert_equal(chess.get_moves(b5).unwrap(), [b4, a4]);
         // capture white pawn
         chess.update(PLAYER2, TurnData::new(b5, a4)).unwrap();
+    }
+
+    #[test]
+    fn test_king_moves() {
+        let [_, _, c1, d1, e1, f1, g1, _]: [_; 8] = row_indices(Row::max()).try_into().unwrap();
+        let [_, _, c2, d2, e2, f2, _, _]: [_; 8] = row_indices(Row::max() - 1).try_into().unwrap();
+        let [_, _, c3, d3, e3, _, _, _]: [_; 8] = row_indices(Row::max() - 2).try_into().unwrap();
+        let [_, _, c4, d4, e4, _, _, _]: [_; 8] = row_indices(Row(4)).try_into().unwrap();
+        let [_, _, _, _, e8, f8, g8, _]: [_; 8] = row_indices(Row(0)).try_into().unwrap();
+        let [_, _, _, _, e7, f7, _, _]: [_; 8] = row_indices(Row(1)).try_into().unwrap();
+        let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
+
+        let sorted = |v: Vec<Index>| {
+            v.into_iter()
+                .sorted_by(|l, r| PartialOrd::partial_cmp(l, r).unwrap())
+        };
+
+        // white king has 5 options to move and 2 options for castling
+        itertools::assert_equal(
+            sorted(chess.get_moves(e1).unwrap()),
+            [d2, e2, f2, c1, d1, f1, g1],
+        );
+        // castle left
+        chess.update(PLAYER1, TurnData::new(e1, c1)).unwrap();
+
+        // black king has 3 options to move and 1 option for castling
+        // because now d8 is checked by the rook
+        itertools::assert_equal(sorted(chess.get_moves(e8).unwrap()), [f8, g8, e7, f7]);
+        // castle right
+        chess.update(PLAYER2, TurnData::new(e8, g8)).unwrap();
+
+        // place white king with no adjacent pieces
+        chess.move_piece(c1, d3).unwrap();
+
+        // white king has 8 options to move
+        itertools::assert_equal(
+            sorted(chess.get_moves(d3).unwrap()),
+            [c4, d4, e4, c3, e3, c2, d2, e2],
+        );
+        // move diagonally
+        chess.update(PLAYER1, TurnData::new(d3, c2)).unwrap();
     }
 
     #[test]

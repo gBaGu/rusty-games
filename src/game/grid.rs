@@ -20,7 +20,7 @@ pub trait WithLength {
 }
 
 /// Index struct to access elements in the [`Grid`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct GridIndex<Row, Col> {
     row: Row,
     col: Col,
