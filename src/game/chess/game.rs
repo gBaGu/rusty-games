@@ -614,17 +614,17 @@ impl Chess {
 
     fn update_state(&mut self) -> GameResult<GameState> {
         let enemy = *self.get_enemy_player()?;
-        let mut enemie_pieces = vec![];
+        let mut enemy_pieces = vec![];
         for row in 0..=Row::max().0 {
             for col in 0..=Col::max().0 {
                 if let Some(piece) = self.get_cell(Index::new(Row(row), Col(col))) {
                     if !piece.is_enemy(enemy.id) {
-                        enemie_pieces.push(Index::new(Row(row), Col(col)));
+                        enemy_pieces.push(Index::new(Row(row), Col(col)));
                     }
                 }
             }
         }
-        if enemie_pieces.into_iter().all(|index| {
+        if enemy_pieces.into_iter().all(|index| {
             if let Ok(moves) = self.get_moves(index) {
                 return moves.is_empty();
             }
