@@ -318,7 +318,7 @@ where
         if let Some(current) = self.current {
             if current.is_valid() {
                 let old_current = current;
-                if current.row == 0.into() || current.col == 0.into() {
+                if current.col == 0.into() {
                     self.current = None;
                 } else {
                     self.current = Some(GridIndex::new(current.row, current.col - 1));
@@ -350,7 +350,7 @@ where
         if let Some(current) = self.current {
             if current.is_valid() {
                 let old_current = current;
-                if current.row == 0.into() || current.col == 0.into() {
+                if current.row == 0.into() {
                     self.current = None;
                 } else {
                     self.current = Some(GridIndex::new(current.row - 1, current.col));
