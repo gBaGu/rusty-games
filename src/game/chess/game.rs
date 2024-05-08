@@ -366,6 +366,11 @@ impl Chess {
             if castle_options.left {
                 let mut left_it = self.board.left_iter(king_pos).indexed().skip(1).take(2);
                 castle_options.left = left_it.all(empty_not_threatened);
+                if castle_options.left {
+                    if let Some(idx) = king_pos.move_left(3) {
+                        castle_options.left = self.get_cell(idx).is_none();
+                    }
+                }
             }
             if castle_options.right {
                 let mut right_it = self.board.right_iter(king_pos).indexed().skip(1).take(2);
@@ -702,7 +707,7 @@ mod test {
         let mut chess = Chess::new(players)?;
         for row in 0..<Row as WithLength>::Length::to_usize() {
             for col in 0..<Col as WithLength>::Length::to_usize() {
-                *chess.board.get_mut_ref(Index::new(Row(row), Col(col))) = None;
+                chess.board.get_mut_ref(Index::new(Row(row), Col(col))).take();
             }
         }
         for &(idx, piece) in pieces {
@@ -842,6 +847,63 @@ mod test {
     }
 
     #[test]
+    fn test_is_enemy_is_friendly() {
+        let chess = Chess::new(&[PLAYER1, PLAYER2]).unwrap();
+        assert!(chess.is_friendly(Team::White.get_king_initial_position(), PLAYER1));
+        assert!(chess.is_friendly(Team::Black.get_king_initial_position(), PLAYER2));
+        assert!(chess.is_enemy(Team::White.get_king_initial_position(), PLAYER2));
+        assert!(chess.is_enemy(Team::Black.get_king_initial_position(), PLAYER1));
+    }
+
+    #[test]
+    fn test_get_move_type() {
+        let [a1, b1, c1, d1, e1, _, g1, _]: [_; 8] = row_indices(Row::max()).try_into().unwrap();
+        let [_, b8, _, _, e8, f8, g8, h8]: [_; 8] = row_indices(Row(0)).try_into().unwrap();
+        let f2 = Index::new(Row::max() - 1, Col(5));
+        let f3 = Index::new(Row::max() - 2, Col(5));
+        let a6 = Index::new(Row(2), Col(0));
+        let a7 = Index::new(Row(1), Col(0));
+        let mut chess = Chess::new(&[PLAYER1, PLAYER2]).unwrap();
+        // clear space for black to castle right
+        for idx in [f8, g8] {
+            chess.get_cell_mut(idx).take();
+        }
+        // clear space for white to castle left
+        for idx in [b1, c1, d1] {
+            chess.get_cell_mut(idx).take();
+        }
+
+        assert_eq!(
+            chess.get_move_type(TurnData::new(e1, c1)),
+            MoveType::LeftCastling
+        );
+        assert_eq!(
+            chess.get_move_type(TurnData::new(e8, g8)),
+            MoveType::RightCastling
+        );
+        assert_eq!(
+            chess.get_move_type(TurnData::new(e1, d1)),
+            MoveType::KingMove
+        );
+        assert_eq!(
+            chess.get_move_type(TurnData::new(e8, f8)),
+            MoveType::KingMove
+        );
+        assert_eq!(
+            chess.get_move_type(TurnData::new(a1, d1)),
+            MoveType::RookMove
+        );
+        assert_eq!(
+            chess.get_move_type(TurnData::new(h8, f8)),
+            MoveType::RookMove
+        );
+        assert_eq!(chess.get_move_type(TurnData::new(f2, f3)), MoveType::Other);
+        assert_eq!(chess.get_move_type(TurnData::new(g1, f3)), MoveType::Other);
+        assert_eq!(chess.get_move_type(TurnData::new(a7, a6)), MoveType::Other);
+        assert_eq!(chess.get_move_type(TurnData::new(b8, a6)), MoveType::Other);
+    }
+
+    #[test]
     fn test_pawn_moves() {
         let a2 = Index::new(Row::max() - 1, Col(0));
         let a3 = a2.move_up(1).unwrap();
@@ -913,8 +975,8 @@ mod test {
         itertools::assert_equal(sorted(chess.get_moves(c1).unwrap()), [a1, b1, d1]);
 
         // cleanup
-        *chess.get_cell_mut(c1) = None;
-        *chess.get_cell_mut(a1) = None;
+        chess.get_cell_mut(c1).take();
+        chess.get_cell_mut(a1).take();
         // new threatening bishop
         *chess.get_cell_mut(a5) = Some(Piece::create_bishop(PLAYER2));
 
@@ -1291,6 +1353,98 @@ mod test {
             assert_eq!(*chess.get_cell(d1), Some(Piece::create_rook(PLAYER1)));
             assert_eq!(*chess.get_cell(d8), Some(Piece::create_rook(PLAYER2)));
         }
+    }
+
+    /// castling enabled:
+    /// - can_castle returns true for both sides when not passing through check
+    /// - can_castle returns true for one side when for the other one king is passing through check
+    /// - can_castle returns false for both sides when king is passing through check for each one
+    /// - can_castle returns true for one side when
+    ///   there's a piece between king and rook on the other side
+    /// - can_castle returns false for both sides when there's a piece between king and rook on each one
+    /// castling disabled:
+    /// - can_castle returns false for both sides when not passing through check and
+    ///   there's no piece stands between king and rook on each side
+    #[test]
+    fn test_can_castle() {
+        let [_, b1, _, _, _, _, g1, _]: [_; 8] = row_indices(Row::max()).try_into().unwrap();
+        let [a8, _, c8, _, _, _, g8, h8]: [_; 8] = row_indices(Row(0)).try_into().unwrap();
+        let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
+
+        // castling enabled
+        assert_eq!(
+            chess.player_state.get(&PLAYER1).unwrap().castle_options,
+            CastleOptions::all()
+        );
+        assert_eq!(chess.can_castle(PLAYER1).unwrap(), CastleOptions::all());
+
+        // black rook at g8 forbids right castling for white king
+        chess.move_piece(a8, g8).unwrap();
+        assert_eq!(
+            chess.can_castle(PLAYER1).unwrap(),
+            CastleOptions {
+                left: true,
+                right: false,
+            }
+        );
+
+        // black rook at c8 forbids left castling for white king
+        chess.move_piece(g8, c8).unwrap();
+        assert_eq!(
+            chess.can_castle(PLAYER1).unwrap(),
+            CastleOptions {
+                left: false,
+                right: true,
+            }
+        );
+
+        // black rooks at c8 and g8 forbid castling for both sides for white king
+        chess.move_piece(h8, g8).unwrap();
+        assert_eq!(chess.can_castle(PLAYER1).unwrap(), CastleOptions::none());
+
+        // cleanup
+        chess.get_cell_mut(c8).take();
+        chess.get_cell_mut(g8).take();
+
+        // white knight at b1 forbids left castling for white king
+        *chess.get_cell_mut(b1) = Some(Piece::create_knight(PLAYER1));
+        assert_eq!(
+            chess.can_castle(PLAYER1).unwrap(),
+            CastleOptions {
+                left: false,
+                right: true,
+            }
+        );
+
+        // white knight at g1 forbids right castling for white king
+        chess.move_piece(b1, g1).unwrap();
+        assert_eq!(
+            chess.can_castle(PLAYER1).unwrap(),
+            CastleOptions {
+                left: true,
+                right: false,
+            }
+        );
+
+        // white knights at b1 and g1 forbid castling for both sides for white king
+        *chess.get_cell_mut(b1) = Some(Piece::create_knight(PLAYER1));
+        assert_eq!(chess.can_castle(PLAYER1).unwrap(), CastleOptions::none());
+
+        // cleanup
+        chess.get_cell_mut(b1).take();
+        chess.get_cell_mut(g1).take();
+
+        // castling is still enabled
+        assert_eq!(
+            chess.player_state.get(&PLAYER1).unwrap().castle_options,
+            CastleOptions::all()
+        );
+        assert_eq!(chess.can_castle(PLAYER1).unwrap(), CastleOptions::all());
+
+        // after castling is disabled can_castle will return false for both sides
+        // despite the absence of obstacles
+        chess.disable_castling(PLAYER1);
+        assert_eq!(chess.can_castle(PLAYER1).unwrap(), CastleOptions::none());
     }
 
     #[test]

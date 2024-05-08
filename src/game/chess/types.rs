@@ -2,6 +2,7 @@ use crate::game::chess::index::{Col, Index, Row};
 use crate::game::grid::WithLength;
 use crate::game::player_pool::PlayerId;
 
+#[derive(Debug, PartialEq)]
 pub enum MoveType {
     LeftCastling,
     RightCastling,
