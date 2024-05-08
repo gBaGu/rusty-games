@@ -65,17 +65,17 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
 }
 
 // iterator helper
-fn until_encounter<'a, I: Iterator<Item = (Index, &'a Cell)>>(
+fn until_encounter<'a, I>(
     it: I,
-) -> Scan<I, bool, impl FnMut(&mut bool, <I as Iterator>::Item) -> Option<(Index, &'a Option<Piece>)>>
+) -> Scan<I, bool, impl FnMut(&mut bool, I::Item) -> Option<I::Item> + 'a>
+where
+    I: Iterator<Item = (Index, &'a Cell)>,
 {
     it.scan(false, |encountered, elem| {
         if *encountered {
             return None;
         }
-        if elem.1.is_some() {
-            *encountered = true;
-        }
+        *encountered = elem.1.is_some();
         Some(elem)
     })
 }
@@ -660,6 +660,7 @@ mod test {
             .collect_vec()
     }
 
+    /// returns vector of all possible diagonal moves from a specified position
     fn diagonal_moves(pos: Index) -> Vec<Index> {
         let grid = Grid::<Option<Cell>, Row, Col>::default();
         let top_left = grid.top_left_iter(pos).indexed().skip(1);
@@ -670,6 +671,20 @@ mod test {
             .chain(top_right)
             .chain(bottom_right)
             .chain(bottom_left)
+            .map(|(idx, _)| idx)
+            .collect_vec()
+    }
+
+    /// returns vector of all possible orthogonal moves from a specified position
+    fn orthogonal_moves(pos: Index) -> Vec<Index> {
+        let grid = Grid::<Option<Cell>, Row, Col>::default();
+        let top = grid.top_iter(pos).indexed().skip(1);
+        let right = grid.right_iter(pos).indexed().skip(1);
+        let bottom = grid.bottom_iter(pos).indexed().skip(1);
+        let left = grid.left_iter(pos).indexed().skip(1);
+        top.chain(right)
+            .chain(bottom)
+            .chain(left)
             .map(|(idx, _)| idx)
             .collect_vec()
     }
@@ -835,6 +850,7 @@ mod test {
         let b6 = b7.move_down(1).unwrap();
         let b5 = b7.move_down(2).unwrap();
         let b4 = b7.move_down(3).unwrap();
+        let b1 = Index::new(Row::max(), Col(1));
         let mut chess = Chess::new(&[PLAYER1, PLAYER2]).unwrap();
 
         // white pawn has two options to move from initial position
@@ -848,7 +864,7 @@ mod test {
         chess.update(PLAYER2, TurnData::new(b7, b5)).unwrap();
 
         // after pawn has moved it can only advance by one
-        itertools::assert_equal(sorted(chess.get_moves(a3).unwrap()), [a4]);
+        itertools::assert_equal(chess.get_moves(a3).unwrap(), [a4]);
         // advance pawn by 1
         chess.update(PLAYER1, TurnData::new(a3, a4)).unwrap();
 
@@ -856,6 +872,12 @@ mod test {
         itertools::assert_equal(sorted(chess.get_moves(b5).unwrap()), [a4, b4]);
         // capture white pawn
         chess.update(PLAYER2, TurnData::new(b5, a4)).unwrap();
+
+        // black pawn still can advance
+        itertools::assert_equal(chess.get_moves(a4).unwrap(), [a3]);
+        // create obstacles and check that there is no options for the pawn to move
+        chess.update(PLAYER1, TurnData::new(b1, a3)).unwrap();
+        assert!(chess.get_moves(a4).unwrap().is_empty());
     }
 
     #[test]
@@ -891,8 +913,13 @@ mod test {
         chess.move_piece(a8, a3).unwrap();
         // skip turn for the second player
         chess.switch_player().unwrap();
-        // white king has 4 options to move
+        // white king has 3 options to move
         itertools::assert_equal(sorted(chess.get_moves(g2).unwrap()), [f2, f1, g1]);
+        // create obstacles and check that there is no options for the king to move
+        *chess.get_cell_mut(f2) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(f1) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(g1) = Some(Piece::create_pawn(PLAYER1));
+        assert!(chess.get_moves(g2).unwrap().is_empty());
     }
 
     #[test]
@@ -955,14 +982,18 @@ mod test {
         chess.switch_player().unwrap();
 
         itertools::assert_equal(sorted(chess.get_moves(b3).unwrap()), [a5, c5, d4, d2, c1]);
-        chess.update(PLAYER1, TurnData::new(b3, c1)).unwrap();
+        // create obstacles and check that there is no options for the knight to move
+        *chess.get_cell_mut(a5) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(c5) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d4) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d2) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(c1) = Some(Piece::create_pawn(PLAYER1));
+        assert!(chess.get_moves(b3).unwrap().is_empty());
     }
 
     #[test]
     fn test_bishop_moves() {
-        let a1 = Index::new(Row::max(), Col(0));
         let f1 = Index::new(Row::max(), Col(5));
-        let c4 = Index::new(Row(4), Col(2));
         let a6 = Index::new(Row(2), Col(0));
         let e6 = Index::new(Row(2), Col(4));
         let c8 = Index::new(Row(0), Col(2));
@@ -1000,16 +1031,89 @@ mod test {
             sorted(chess.get_moves(e6).unwrap()),
             sorted(diagonal_moves(e6)),
         );
-        // place white rook to cover some of white knight's move options
-        chess.move_piece(a1, c4).unwrap();
+        // create obstacles and check that there is no options for the bishop to move
+        *chess.get_cell_mut(e6.move_up(1).and_then(|idx| idx.move_left(1)).unwrap()) =
+            Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(e6.move_up(1).and_then(|idx| idx.move_right(1)).unwrap()) =
+            Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(e6.move_down(1).and_then(|idx| idx.move_left(1)).unwrap()) =
+            Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(e6.move_down(1).and_then(|idx| idx.move_right(1)).unwrap()) =
+            Some(Piece::create_pawn(PLAYER1));
+        assert!(chess.get_moves(e6).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_rook_moves() {
+        let a1 = Index::new(Row::max(), Col(0));
+        let a4 = Index::new(Row(4), Col(0));
+        let d4 = Index::new(Row(4), Col(3));
+        let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
+
         itertools::assert_equal(
-            sorted(chess.get_moves(e6).unwrap()),
-            sorted(
-                diagonal_moves(e6)
-                    .into_iter()
-                    .filter(|idx| idx.row() < Row(4) || idx.col() > Col(2)),
-            ),
+            sorted(chess.get_moves(a1).unwrap()),
+            sorted(orthogonal_moves(a1))
+                .into_iter() // filter out e1, f1, g1, h1
+                .filter(|idx| idx.col() < Col(4)),
         );
+        chess.update(PLAYER1, TurnData::new(a1, a4)).unwrap();
+
+        // skip turn for the second player
+        chess.switch_player().unwrap();
+
+        itertools::assert_equal(
+            sorted(chess.get_moves(a4).unwrap()),
+            sorted(orthogonal_moves(a4)),
+        );
+        chess.update(PLAYER1, TurnData::new(a4, d4)).unwrap();
+
+        // skip turn for the second player
+        chess.switch_player().unwrap();
+
+        itertools::assert_equal(
+            sorted(chess.get_moves(d4).unwrap()),
+            sorted(orthogonal_moves(d4)),
+        );
+        // create obstacles and check that there is no options for the rook to move
+        *chess.get_cell_mut(d4.move_up(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d4.move_down(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d4.move_right(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d4.move_left(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
+        assert!(chess.get_moves(d4).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_queen_moves() {
+        let [a1, b1, c1, d1, ..]: [_; 8] = row_indices(Row::max()).try_into().unwrap();
+        let [_, b2, c2, d2, ..]: [_; 8] = row_indices(Row::max() - 1).try_into().unwrap();
+        let [_, b3, c3, d3, ..]: [_; 8] = row_indices(Row::max() - 2).try_into().unwrap();
+        let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
+        *chess.get_cell_mut(d1) = Some(Piece::create_queen(PLAYER1));
+
+        itertools::assert_equal(
+            sorted(chess.get_moves(d1).unwrap()),
+            sorted(orthogonal_moves(d1).into_iter().chain(diagonal_moves(d1)))
+                .into_iter() // filter out a1, e1, f1, g1, h1
+                .filter(|&idx| idx != a1 && (idx.col() < Col(4) || idx.row() < Row::max())),
+        );
+        chess.update(PLAYER1, TurnData::new(d1, c2)).unwrap();
+
+        itertools::assert_equal(
+            sorted(chess.get_moves(c2).unwrap()),
+            sorted(orthogonal_moves(c2).into_iter().chain(diagonal_moves(c2))),
+        );
+        // create obstacles and check that there is only 3 options left for the queen to move
+        *chess.get_cell_mut(b2) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(b3) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(c3) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d3) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d2) = Some(Piece::create_pawn(PLAYER1));
+        itertools::assert_equal(sorted(chess.get_moves(c2).unwrap()), [b1, c1, d1]);
+        // close rest of the options
+        *chess.get_cell_mut(b1) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(c1) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d1) = Some(Piece::create_pawn(PLAYER1));
+        assert!(chess.get_moves(c2).unwrap().is_empty());
     }
 
     #[test]
