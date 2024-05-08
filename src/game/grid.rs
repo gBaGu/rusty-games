@@ -63,14 +63,14 @@ where
     pub fn is_adjacent(&self, other: &GridIndex<Row, Col>) -> bool {
         let vertically_adjacent = match self.row.partial_cmp(&other.row) {
             Some(Ordering::Equal) => true,
-            Some(Ordering::Less) => *self == GridIndex::new(other.row - 1, other.col),
-            Some(Ordering::Greater) => *other == GridIndex::new(self.row - 1, self.col),
+            Some(Ordering::Less) => self.row == other.row - 1,
+            Some(Ordering::Greater) => other.row == self.row - 1,
             None => false,
         };
         let horizontally_adjacent = match self.col.partial_cmp(&other.col) {
             Some(Ordering::Equal) => true,
-            Some(Ordering::Less) => *self == GridIndex::new(other.row, other.col - 1),
-            Some(Ordering::Greater) => *other == GridIndex::new(self.row, self.col - 1),
+            Some(Ordering::Less) => self.col == other.col - 1,
+            Some(Ordering::Greater) => other.col == self.col - 1,
             None => false,
         };
         vertically_adjacent && horizontally_adjacent
@@ -630,5 +630,52 @@ where
             Some(item) => Some((index.unwrap(), item)),
             None => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    type UsizeValue = usize;
+    type UsizeIndex = GridIndex<UsizeValue, UsizeValue>;
+
+    impl WithLength for UsizeValue {
+        type Length = generic_array::typenum::U4;
+    }
+
+    #[test]
+    fn test_is_valid() {
+        assert!(UsizeIndex::new(0, 0).is_valid());
+        assert!(UsizeIndex::new(0, 3).is_valid());
+        assert!(UsizeIndex::new(2, 1).is_valid());
+        assert!(UsizeIndex::new(3, 3).is_valid());
+
+        assert!(!UsizeIndex::new(4, 0).is_valid());
+        assert!(!UsizeIndex::new(0, 4).is_valid());
+        assert!(!UsizeIndex::new(5, 5).is_valid());
+    }
+
+    #[test]
+    fn test_is_adjacent() {
+        let ones = UsizeIndex::new(1, 1);
+        // the same index is adjacent
+        assert!(ones.is_adjacent(&UsizeIndex::new(1, 1)));
+
+        // check all adjacent indices
+        assert!(ones.is_adjacent(&UsizeIndex::new(2, 1)));
+        assert!(ones.is_adjacent(&UsizeIndex::new(2, 2)));
+        assert!(ones.is_adjacent(&UsizeIndex::new(1, 2)));
+        assert!(ones.is_adjacent(&UsizeIndex::new(0, 2)));
+        assert!(ones.is_adjacent(&UsizeIndex::new(0, 1)));
+        assert!(ones.is_adjacent(&UsizeIndex::new(0, 0)));
+        assert!(ones.is_adjacent(&UsizeIndex::new(1, 0)));
+        assert!(ones.is_adjacent(&UsizeIndex::new(2, 0)));
+
+        // check not adjacent
+        assert!(!ones.is_adjacent(&UsizeIndex::new(0, 3)));
+        assert!(!ones.is_adjacent(&UsizeIndex::new(1, 3)));
+        assert!(!ones.is_adjacent(&UsizeIndex::new(2, 3)));
+        assert!(!ones.is_adjacent(&UsizeIndex::new(3, 0)));
     }
 }
