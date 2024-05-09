@@ -5,7 +5,7 @@ use crate::game::grid::{GridIndex, WithLength};
 
 pub type Index = GridIndex<Row, Col>;
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct Row(pub usize);
 
 impl WithLength for Row {
@@ -56,7 +56,7 @@ impl From<Row> for usize {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct Col(pub usize);
 
 impl Display for Col {

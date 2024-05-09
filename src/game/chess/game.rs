@@ -108,11 +108,20 @@ impl Default for CastleOptions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct AdditionalState {
     castle_options: CastleOptions,
     check: Vec<Index>,
     king_pos: Index,
+}
+
+impl AdditionalState {
+    pub fn new(king_pos: Index) -> Self {
+        Self {
+            king_pos,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -142,19 +151,11 @@ impl Game for Chess {
             player_state: [
                 (
                     p1.id,
-                    AdditionalState {
-                        castle_options: CastleOptions::all(),
-                        check: vec![],
-                        king_pos: p1.team.get_king_initial_position(),
-                    },
+                    AdditionalState::new(p1.team.get_king_initial_position()),
                 ),
                 (
                     p2.id,
-                    AdditionalState {
-                        castle_options: CastleOptions::all(),
-                        check: vec![],
-                        king_pos: p2.team.get_king_initial_position(),
-                    },
+                    AdditionalState::new(p2.team.get_king_initial_position()),
                 ),
             ]
             .into_iter()
@@ -644,13 +645,13 @@ impl Chess {
             }
             true
         }) {
-            if self.is_in_check(enemy.id) {
-                return Ok(self.set_winner(current_player.id));
+            return if self.is_in_check(enemy.id) {
+                Ok(self.set_winner(current_player.id))
             } else {
                 // stalemate
                 self.state = GameState::Finished(FinishedState::Draw);
-                return Ok(self.state);
-            }
+                Ok(self.state)
+            };
         }
 
         self.switch_player()
