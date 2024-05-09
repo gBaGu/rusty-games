@@ -1745,4 +1745,48 @@ mod test {
             GameState::Finished(FinishedState::Draw)
         );
     }
+
+    #[test]
+    fn test_update_errors() {
+        let [_, _, _, _, e2, _, _, _]: [_; 8] = row_indices(Row::max() - 1).try_into().unwrap();
+        let [_, _, _, _, e7, _, _, _]: [_; 8] = row_indices(Row(1)).try_into().unwrap();
+        let e3 = Index::new(Row(5), Col(4));
+        let e4 = Index::new(Row(4), Col(4));
+        let e5 = Index::new(Row(3), Col(4));
+        let mut chess = Chess::new(&[PLAYER1, PLAYER2]).unwrap();
+
+        // cannot update finished game
+        chess.set_state(GameState::Finished(FinishedState::Draw));
+        assert_eq!(
+            chess.update(PLAYER1, TurnData::new(e2, e4)).unwrap_err(),
+            GameError::GameIsFinished
+        );
+
+        // reset state
+        chess.set_state(GameState::Turn(PLAYER1));
+
+        // second player cannot call update while its first player's turn
+        assert_eq!(
+            chess.update(PLAYER2, TurnData::new(e7, e5)).unwrap_err(),
+            GameError::not_your_turn(PLAYER1, PLAYER2)
+        );
+
+        // player cannot specify empty cell as 'to'
+        assert_eq!(
+            chess.update(PLAYER1, TurnData::new(e3, e5)).unwrap_err(),
+            GameError::cell_is_empty(e3.row().into(), e3.col().into())
+        );
+
+        // player cannot move another player's piece
+        assert_eq!(
+            chess.update(PLAYER1, TurnData::new(e7, e5)).unwrap_err(),
+            GameError::unauthorized_move(PLAYER2, PLAYER1)
+        );
+
+        // invalid move
+        assert_eq!(
+            chess.update(PLAYER1, TurnData::new(e2, e5)).unwrap_err(),
+            GameError::invalid_move(format!("unable to move {} to {}", e2, e5))
+        );
+    }
 }
