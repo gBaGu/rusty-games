@@ -217,9 +217,6 @@ impl Game for Chess {
             MoveType::Other => {}
         };
         self.move_piece(data.from, data.to)?;
-        let enemy = *self.get_enemy_player()?;
-        self.update_check(&enemy);
-        self.update_check(&player);
 
         self.update_state()
     }
@@ -611,6 +608,20 @@ impl Chess {
         Ok(res)
     }
 
+    fn find_pieces_positions(&self, id: PlayerId) -> Vec<Index> {
+        let mut pieces = vec![];
+        for row in 0..=Row::max().0 {
+            for col in 0..=Col::max().0 {
+                if let Some(piece) = self.get_cell(Index::new(Row(row), Col(col))) {
+                    if !piece.is_enemy(id) {
+                        pieces.push(Index::new(Row(row), Col(col)));
+                    }
+                }
+            }
+        }
+        pieces
+    }
+
     fn switch_player(&mut self) -> GameResult<GameState> {
         let next_player = self.players.next().ok_or(GameError::PlayerPoolCorrupted)?;
         self.state = GameState::Turn(next_player.id);
@@ -618,17 +629,12 @@ impl Chess {
     }
 
     fn update_state(&mut self) -> GameResult<GameState> {
+        let current_player = *self.get_current_player()?;
         let enemy = *self.get_enemy_player()?;
-        let mut enemy_pieces = vec![];
-        for row in 0..=Row::max().0 {
-            for col in 0..=Col::max().0 {
-                if let Some(piece) = self.get_cell(Index::new(Row(row), Col(col))) {
-                    if !piece.is_enemy(enemy.id) {
-                        enemy_pieces.push(Index::new(Row(row), Col(col)));
-                    }
-                }
-            }
-        }
+        self.update_check(&current_player);
+        self.update_check(&enemy);
+
+        let enemy_pieces = self.find_pieces_positions(enemy.id);
         if enemy_pieces.into_iter().all(|index| {
             if let Ok(moves) = self.get_moves(index) {
                 return moves.is_empty();
@@ -636,8 +642,7 @@ impl Chess {
             true
         }) {
             if self.is_in_check(enemy.id) {
-                let current_id = self.get_current_player()?.id;
-                return Ok(self.set_winner(current_id));
+                return Ok(self.set_winner(current_player.id));
             } else {
                 // stalemate
                 self.state = GameState::Finished(FinishedState::Draw);
@@ -1648,5 +1653,51 @@ mod test {
             sorted(chess.get_attack_threats(e1, &player1)),
             [c3, g3, e2, c1, f1],
         );
+    }
+
+    #[test]
+    fn test_find_pieces_positions() {
+        let [a1, b1, c1, d1, e1, f1, g1, h1]: [_; 8] = row_indices(Row::max()).try_into().unwrap();
+        let [a2, b2, c2, d2, e2, f2, g2, h2]: [_; 8] =
+            row_indices(Row::max() - 1).try_into().unwrap();
+        let [a7, b7, c7, d7, e7, f7, g7, h7]: [_; 8] = row_indices(Row(1)).try_into().unwrap();
+        let [a8, b8, c8, d8, e8, f8, g8, h8]: [_; 8] = row_indices(Row(0)).try_into().unwrap();
+        let mut chess = Chess::new(&[PLAYER1, PLAYER2]).unwrap();
+
+        itertools::assert_equal(
+            chess.find_pieces_positions(PLAYER1),
+            [
+                a2, b2, c2, d2, e2, f2, g2, h2, a1, b1, c1, d1, e1, f1, g1, h1,
+            ],
+        );
+        itertools::assert_equal(
+            chess.find_pieces_positions(PLAYER2),
+            [
+                a8, b8, c8, d8, e8, f8, g8, h8, a7, b7, c7, d7, e7, f7, g7, h7,
+            ],
+        );
+
+        for row in 0..=Row::max().0 {
+            for col in 0..=Col::max().0 {
+                chess.get_cell_mut(Index::new(Row(row), Col(col))).take();
+            }
+        }
+        itertools::assert_equal(chess.find_pieces_positions(PLAYER1), []);
+        itertools::assert_equal(chess.find_pieces_positions(PLAYER2), []);
+    }
+
+    #[test]
+    fn test_update_state_without_checks_just_switches_turns() {
+        let mut chess = Chess::new(&[PLAYER1, PLAYER2]).unwrap();
+
+        assert_eq!(chess.state, GameState::Turn(PLAYER1));
+        assert!(!chess.is_in_check(PLAYER1));
+        assert!(!chess.is_in_check(PLAYER2));
+        assert_eq!(chess.update_state().unwrap(), GameState::Turn(PLAYER2));
+        assert!(!chess.is_in_check(PLAYER1));
+        assert!(!chess.is_in_check(PLAYER2));
+        assert_eq!(chess.update_state().unwrap(), GameState::Turn(PLAYER1));
+        assert!(!chess.is_in_check(PLAYER1));
+        assert!(!chess.is_in_check(PLAYER2));
     }
 }

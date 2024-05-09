@@ -35,15 +35,16 @@ impl<T: Clone> PlayerPool<T> {
         self.players.iter().find(|player| player.get_id() == id)
     }
 
-    // Get next element from pool without advancing iterator
-    // &mut self is needed because Peekable can call next() on the underlying iterator
+    /// Get next element from pool without advancing iterator
+    /// &mut self is needed because Peekable can call next() on the underlying iterator
     pub fn get_current(&mut self) -> Option<&T> {
         self.players_queue.peek()
     }
 
-    // Get next element from pool and advance iterator by one
-    pub fn next(&mut self) -> Option<T> {
-        self.players_queue.next()
+    /// Advance iterator by one and return the next element from the pool
+    pub fn next(&mut self) -> Option<&T> {
+        self.players_queue.next()?;
+        self.players_queue.peek()
     }
 }
 
@@ -120,12 +121,13 @@ mod test {
         // calling multiple times doesn't change anything
         assert_eq!(*pool.get_current().unwrap(), 5);
 
-        // advance by one
+        // skip one
         let _ = pool.next().unwrap();
 
         // now getting the second element
         assert_eq!(*pool.get_current().unwrap(), 1);
 
+        // skip 3
         let _ = pool.next().unwrap();
         let _ = pool.next().unwrap();
         let _ = pool.next().unwrap();
@@ -137,8 +139,12 @@ mod test {
     #[test]
     fn test_cyclic_iteration() {
         let mut pool = PlayerPool::new(vec![1, 2, 3]);
+        // check that we are starting with the first element
+        assert_eq!(pool.get_current(), Some(&1));
         // check that elements cycle endlessly
-        let sequence: Vec<_> = std::iter::from_fn(|| pool.next()).take(10).collect();
-        assert_eq!(sequence, vec![1, 2, 3, 1, 2, 3, 1, 2, 3, 1]);
+        itertools::assert_equal(
+            std::iter::from_fn(|| pool.next().cloned()).take(10),
+            [2, 3, 1, 2, 3, 1, 2, 3, 1, 2],
+        );
     }
 }
