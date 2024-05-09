@@ -208,7 +208,7 @@ impl TicTacToe {
                 }
             }
             // check columns
-            if let Some(first_sign) = self.field.first().unwrap()[i] {
+            if let Some(first_sign) = self.field[0][i] {
                 if self.field.iter().all(|row| has_sign(row[i], first_sign)) {
                     return self.set_winner(first_sign);
                 }
