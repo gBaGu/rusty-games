@@ -630,8 +630,11 @@ impl Chess {
 
     fn update_state(&mut self) -> GameResult<GameState> {
         let current_player = *self.get_current_player()?;
+        // player cannot finish its turn in check, so just clear check for current player
+        if let Some(state) = self.player_state.get_mut(&current_player.id) {
+            state.check.clear();
+        }
         let enemy = *self.get_enemy_player()?;
-        self.update_check(&current_player);
         self.update_check(&enemy);
 
         let enemy_pieces = self.find_pieces_positions(enemy.id);
@@ -646,6 +649,7 @@ impl Chess {
             } else {
                 // stalemate
                 self.state = GameState::Finished(FinishedState::Draw);
+                return Ok(self.state);
             }
         }
 
@@ -1699,5 +1703,46 @@ mod test {
         assert_eq!(chess.update_state().unwrap(), GameState::Turn(PLAYER1));
         assert!(!chess.is_in_check(PLAYER1));
         assert!(!chess.is_in_check(PLAYER2));
+    }
+
+    #[test]
+    fn test_update_state_sets_winner() {
+        let a1 = Index::new(Row::max(), Col(0));
+        let h1 = Index::new(Row::max(), Col::max());
+        let a7 = Index::new(Row(1), Col(0));
+        let h8 = Index::new(Row(0), Col::max());
+        let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
+
+        // rooks on h8 and a7 is checkmate
+        chess.move_piece(h1, h8).unwrap();
+        chess.move_piece(a1, a7).unwrap();
+        assert_eq!(
+            chess.update_state().unwrap(),
+            GameState::Finished(FinishedState::Win(PLAYER1))
+        );
+    }
+
+    #[test]
+    fn test_update_state_sets_draw() {
+        let a1 = Index::new(Row::max(), Col(0));
+        let g1 = Index::new(Row::max(), Col::max() - 1);
+        let h1 = Index::new(Row::max(), Col::max());
+        let a7 = Index::new(Row(1), Col(0));
+        let a8 = Index::new(Row(0), Col(0));
+        let e8 = Index::new(Row(0), Col(4));
+        let h8 = Index::new(Row(0), Col::max());
+        let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
+
+        // move king to the corner and delete all other black pieces
+        chess.get_cell_mut(a8).take();
+        chess.move_piece(e8, h8).unwrap();
+        chess.update_king_position(PLAYER2, h8);
+        // rooks leave black king no option to move, but it's not in check -> stalemate
+        chess.move_piece(h1, g1).unwrap();
+        chess.move_piece(a1, a7).unwrap();
+        assert_eq!(
+            chess.update_state().unwrap(),
+            GameState::Finished(FinishedState::Draw)
+        );
     }
 }
