@@ -7,6 +7,20 @@ pub trait WithPlayerId {
     fn get_id(&self) -> PlayerId;
 }
 
+pub trait PlayerQueue {
+    type Item: WithPlayerId;
+
+    fn find<F>(&self, f: F) -> Option<&Self::Item>
+    where
+        F: FnMut(&&Self::Item) -> bool;
+
+    fn find_by_id(&self, id: PlayerId) -> Option<&Self::Item>;
+
+    fn get_current(&mut self) -> Option<&Self::Item>;
+
+    fn next(&mut self) -> Option<&Self::Item>;
+}
+
 #[derive(Debug)]
 pub struct PlayerPool<T: Clone> {
     players: Vec<T>,
@@ -20,29 +34,30 @@ impl<T: Clone> PlayerPool<T> {
             players_queue: players.into_iter().cycle().peekable(),
         }
     }
+}
 
-    pub fn find<F>(&self, f: F) -> Option<&T>
+impl<T: Clone + WithPlayerId> PlayerQueue for PlayerPool<T> {
+    type Item = T;
+
+    fn find<F>(&self, f: F) -> Option<&T>
     where
         F: FnMut(&&T) -> bool,
     {
         self.players.iter().find(f)
     }
 
-    pub fn find_by_id(&self, id: PlayerId) -> Option<&T>
-    where
-        T: WithPlayerId,
-    {
+    fn find_by_id(&self, id: PlayerId) -> Option<&T> {
         self.players.iter().find(|player| player.get_id() == id)
     }
 
     /// Get next element from pool without advancing iterator
     /// &mut self is needed because Peekable can call next() on the underlying iterator
-    pub fn get_current(&mut self) -> Option<&T> {
+    fn get_current(&mut self) -> Option<&T> {
         self.players_queue.peek()
     }
 
     /// Advance iterator by one and return the next element from the pool
-    pub fn next(&mut self) -> Option<&T> {
+    fn next(&mut self) -> Option<&T> {
         self.players_queue.next()?;
         self.players_queue.peek()
     }
@@ -50,7 +65,7 @@ impl<T: Clone> PlayerPool<T> {
 
 #[cfg(test)]
 mod test {
-    use super::{PlayerId, PlayerPool, WithPlayerId};
+    use super::*;
 
     #[derive(Clone, Copy, Debug, PartialEq)]
     struct DummyPlayer {
@@ -67,6 +82,15 @@ mod test {
     impl WithPlayerId for DummyPlayer {
         fn get_id(&self) -> PlayerId {
             self.id
+        }
+    }
+
+    impl<T> WithPlayerId for T
+    where
+        T: Clone + Copy + Into<PlayerId>
+    {
+        fn get_id(&self) -> PlayerId {
+            (*self).into()
         }
     }
 
@@ -114,7 +138,7 @@ mod test {
 
     #[test]
     fn test_get_current() {
-        let mut pool = PlayerPool::new(vec![5, 1, 2, 2, 3]);
+        let mut pool = PlayerPool::new(vec![5u64, 1, 2, 2, 3]);
 
         // starting with the first element
         assert_eq!(*pool.get_current().unwrap(), 5);
@@ -138,7 +162,7 @@ mod test {
 
     #[test]
     fn test_cyclic_iteration() {
-        let mut pool = PlayerPool::new(vec![1, 2, 3]);
+        let mut pool = PlayerPool::new(vec![1u64, 2, 3]);
         // check that we are starting with the first element
         assert_eq!(pool.get_current(), Some(&1));
         // check that elements cycle endlessly

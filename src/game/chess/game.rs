@@ -6,9 +6,9 @@ use crate::game::chess::index::{Col, Index, Row};
 use crate::game::chess::turn_data::TurnData;
 use crate::game::chess::types::{MoveType, Piece, PieceKind, Team};
 use crate::game::error::GameError;
-use crate::game::game::{FinishedState, Game, GameResult, GameState};
+use crate::game::game::{Game, GameResult, GameState};
 use crate::game::grid::{Grid, WithGridIndex, WithLength};
-use crate::game::player_pool::{PlayerId, PlayerPool, WithPlayerId};
+use crate::game::player_pool::{PlayerId, PlayerPool, PlayerQueue, WithPlayerId};
 
 type Cell = Option<Piece>;
 
@@ -134,6 +134,7 @@ pub struct Chess {
 
 impl Game for Chess {
     type TurnData = TurnData;
+    type Players = PlayerPool<Player>;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
         let [id1, id2]: [_; 2] = players
@@ -145,7 +146,7 @@ impl Game for Chess {
         let p1 = Player::new(id1, Team::White);
         let p2 = Player::new(id2, Team::Black);
         Ok(Self {
-            players: PlayerPool::new([p1, p2].to_vec()),
+            players: Self::Players::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
             board: initial_board(id1, id2),
             player_state: [
@@ -222,6 +223,14 @@ impl Game for Chess {
         self.update_state()
     }
 
+    fn players(&self) -> &Self::Players {
+        &self.players
+    }
+
+    fn players_mut(&mut self) -> &mut Self::Players {
+        &mut self.players
+    }
+
     fn state(&self) -> GameState {
         self.state
     }
@@ -232,18 +241,6 @@ impl Game for Chess {
 }
 
 impl Chess {
-    pub fn get_current_player(&mut self) -> GameResult<&Player> {
-        self.players
-            .get_current()
-            .ok_or(GameError::PlayerPoolCorrupted)
-    }
-    pub fn get_enemy_player(&mut self) -> GameResult<&Player> {
-        let current = *self.get_current_player()?;
-        self.players
-            .find(|p| p.id != current.id)
-            .ok_or(GameError::PlayerPoolCorrupted)
-    }
-
     fn get_cell(&self, position: Index) -> &Cell {
         self.board.get_ref(position)
     }
@@ -623,12 +620,6 @@ impl Chess {
         pieces
     }
 
-    fn switch_player(&mut self) -> GameResult<GameState> {
-        let next_player = self.players.next().ok_or(GameError::PlayerPoolCorrupted)?;
-        self.state = GameState::Turn(next_player.id);
-        Ok(self.state)
-    }
-
     fn update_state(&mut self) -> GameResult<GameState> {
         let current_player = *self.get_current_player()?;
         // player cannot finish its turn in check, so just clear check for current player
@@ -649,8 +640,7 @@ impl Chess {
                 Ok(self.set_winner(current_player.id))
             } else {
                 // stalemate
-                self.state = GameState::Finished(FinishedState::Draw);
-                Ok(self.state)
+                Ok(self.set_draw())
             };
         }
 
@@ -661,8 +651,11 @@ impl Chess {
 #[cfg(test)]
 mod test {
     use super::*;
+
     use generic_array::typenum::Unsigned;
     use itertools::Itertools;
+
+    use crate::game::game::FinishedState;
 
     const PLAYER1: u64 = 1;
     const PLAYER2: u64 = 2;
@@ -1757,7 +1750,7 @@ mod test {
         let mut chess = Chess::new(&[PLAYER1, PLAYER2]).unwrap();
 
         // cannot update finished game
-        chess.set_state(GameState::Finished(FinishedState::Draw));
+        chess.set_draw();
         assert_eq!(
             chess.update(PLAYER1, TurnData::new(e2, e4)).unwrap_err(),
             GameError::GameIsFinished

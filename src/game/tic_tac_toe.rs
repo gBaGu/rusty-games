@@ -1,13 +1,11 @@
 use generic_array::typenum::Unsigned;
 use prost::Message;
 
-use crate::game::game::{
-    FinishedState, FromProtobuf, FromProtobufError, Game, GameResult, GameState,
-};
+use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameResult, GameState};
 use crate::game::{
     error::GameError,
     grid::{Grid, GridIndex, WithLength},
-    player_pool::{PlayerId, PlayerPool, WithPlayerId},
+    player_pool::{PlayerId, PlayerPool, PlayerQueue, WithPlayerId},
     tic_tac_toe,
 };
 use crate::proto::Position;
@@ -136,6 +134,7 @@ impl FromProtobuf for TurnData {
 
 impl Game for TicTacToe {
     type TurnData = TurnData;
+    type Players = PlayerPool<Player>;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
         let [id1, id2]: [_; 2] = players
@@ -147,7 +146,7 @@ impl Game for TicTacToe {
         let p1 = Player::new(id1, Sign::X);
         let p2 = Player::new(id2, Sign::O);
         Ok(Self {
-            players: PlayerPool::new([p1, p2].to_vec()),
+            players: Self::Players::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
             field: Grid::default(),
         })
@@ -174,6 +173,14 @@ impl Game for TicTacToe {
         self.update_state()
     }
 
+    fn players(&self) -> &Self::Players {
+        &self.players
+    }
+
+    fn players_mut(&mut self) -> &mut Self::Players {
+        &mut self.players
+    }
+
     fn state(&self) -> GameState {
         self.state
     }
@@ -184,14 +191,10 @@ impl Game for TicTacToe {
 }
 
 impl TicTacToe {
-    pub fn get_current_player(&mut self) -> GameResult<&Player> {
+    pub fn get_player_by_sign(&self, sign: Sign) -> GameResult<&Player> {
         self.players
-            .get_current()
-            .ok_or(GameError::PlayerPoolCorrupted)
-    }
-
-    pub fn get_player_by_sign(&self, sign: Sign) -> Option<&Player> {
-        self.players.find(|player| player.sign == sign)
+            .find(|player| player.sign == sign)
+            .ok_or(GameError::PlayerNotFound)
     }
 
     fn get_cell(&mut self, position: GridIndex<FieldRow, FieldCol>) -> &mut Cell {
@@ -204,13 +207,13 @@ impl TicTacToe {
             // check rows
             if let [Some(sign1), Some(sign2), Some(sign3)] = self.field[i].as_slice() {
                 if sign1 == sign2 && sign2 == sign3 {
-                    return self.set_winner(*sign1);
+                    return self.set_winner_sign(*sign1);
                 }
             }
             // check columns
             if let Some(first_sign) = self.field[0][i] {
                 if self.field.iter().all(|row| has_sign(row[i], first_sign)) {
-                    return self.set_winner(first_sign);
+                    return self.set_winner_sign(first_sign);
                 }
             }
         }
@@ -219,36 +222,26 @@ impl TicTacToe {
             (self.field[0][0], self.field[1][1], self.field[2][2])
         {
             if sign1 == sign2 && sign2 == sign3 {
-                return self.set_winner(sign1);
+                return self.set_winner_sign(sign1);
             }
         }
         if let (Some(sign1), Some(sign2), Some(sign3)) =
             (self.field[0][2], self.field[1][1], self.field[2][0])
         {
             if sign1 == sign2 && sign2 == sign3 {
-                return self.set_winner(sign1);
+                return self.set_winner_sign(sign1);
             }
         }
 
         if self.field.iter().flatten().all(|s| s.is_some()) {
-            self.state = GameState::Finished(FinishedState::Draw);
-            return Ok(self.state);
+            return Ok(self.set_draw());
         }
 
         self.switch_player()
     }
 
-    fn set_winner(&mut self, sign: Sign) -> GameResult<GameState> {
-        let player = self
-            .get_player_by_sign(sign)
-            .ok_or(GameError::PlayerNotFound)?;
-        self.state = GameState::Finished(FinishedState::Win(player.id));
-        Ok(self.state)
-    }
-
-    fn switch_player(&mut self) -> GameResult<GameState> {
-        let next_player = self.players.next().ok_or(GameError::PlayerPoolCorrupted)?;
-        self.state = GameState::Turn(next_player.id);
-        Ok(self.state)
+    fn set_winner_sign(&mut self, sign: Sign) -> GameResult<GameState> {
+        let player = self.get_player_by_sign(sign)?;
+        Ok(self.set_winner(player.id))
     }
 }
