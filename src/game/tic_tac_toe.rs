@@ -110,6 +110,51 @@ impl From<FieldCol> for usize {
     }
 }
 
+fn winning_combinations() -> [(Index, Index, Index); 8] {
+    [
+        (
+            Index::new(FieldRow::R1, FieldCol::C1),
+            Index::new(FieldRow::R1, FieldCol::C2),
+            Index::new(FieldRow::R1, FieldCol::C3),
+        ),
+        (
+            Index::new(FieldRow::R2, FieldCol::C1),
+            Index::new(FieldRow::R2, FieldCol::C2),
+            Index::new(FieldRow::R2, FieldCol::C3),
+        ),
+        (
+            Index::new(FieldRow::R3, FieldCol::C1),
+            Index::new(FieldRow::R3, FieldCol::C2),
+            Index::new(FieldRow::R3, FieldCol::C3),
+        ),
+        (
+            Index::new(FieldRow::R1, FieldCol::C1),
+            Index::new(FieldRow::R2, FieldCol::C1),
+            Index::new(FieldRow::R3, FieldCol::C1),
+        ),
+        (
+            Index::new(FieldRow::R1, FieldCol::C2),
+            Index::new(FieldRow::R2, FieldCol::C2),
+            Index::new(FieldRow::R3, FieldCol::C2),
+        ),
+        (
+            Index::new(FieldRow::R1, FieldCol::C3),
+            Index::new(FieldRow::R2, FieldCol::C3),
+            Index::new(FieldRow::R3, FieldCol::C3),
+        ),
+        (
+            Index::new(FieldRow::R1, FieldCol::C1),
+            Index::new(FieldRow::R2, FieldCol::C2),
+            Index::new(FieldRow::R3, FieldCol::C3),
+        ),
+        (
+            Index::new(FieldRow::R3, FieldCol::C1),
+            Index::new(FieldRow::R2, FieldCol::C2),
+            Index::new(FieldRow::R1, FieldCol::C3),
+        ),
+    ]
+}
+
 type Cell = Option<Sign>;
 
 #[derive(Debug)]
@@ -119,9 +164,9 @@ pub struct TicTacToe {
     field: Grid<Cell, FieldRow, FieldCol>,
 }
 
-type TurnData = GridIndex<FieldRow, FieldCol>;
+type Index = GridIndex<FieldRow, FieldCol>;
 
-impl FromProtobuf for TurnData {
+impl FromProtobuf for Index {
     fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
         let pos = Position::decode(buf)?;
         let row: usize = usize::try_from(pos.row)?;
@@ -133,7 +178,7 @@ impl FromProtobuf for TurnData {
 }
 
 impl Game for TicTacToe {
-    type TurnData = TurnData;
+    type TurnData = Index;
     type Players = PlayerPool<Player>;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
@@ -161,7 +206,7 @@ impl Game for TicTacToe {
         }
 
         let sign = self.get_current_player()?.sign;
-        let cell = self.get_cell(data);
+        let cell = self.get_cell_mut(data);
         if cell.is_some() {
             return Err(GameError::cell_is_occupied(
                 data.row().into(),
@@ -197,39 +242,25 @@ impl TicTacToe {
             .ok_or(GameError::PlayerNotFound)
     }
 
-    fn get_cell(&mut self, position: GridIndex<FieldRow, FieldCol>) -> &mut Cell {
+    fn get_cell(&self, position: Index) -> &Cell {
+        self.field.get_ref(position)
+    }
+
+    fn get_cell_mut(&mut self, position: Index) -> &mut Cell {
         self.field.get_mut_ref(position)
     }
 
     fn update_state(&mut self) -> GameResult<GameState> {
-        let has_sign = |cell: Cell, sign: Sign| matches!(cell, Some(s) if s == sign);
-        for i in 0..3 {
-            // check rows
-            if let [Some(sign1), Some(sign2), Some(sign3)] = self.field[i].as_slice() {
-                if sign1 == sign2 && sign2 == sign3 {
-                    return self.set_winner_sign(*sign1);
+        for (idx1, idx2, idx3) in winning_combinations() {
+            if let (Some(s1), Some(s2), Some(s3)) = (
+                self.get_cell(idx1),
+                self.get_cell(idx2),
+                self.get_cell(idx3),
+            ) {
+                if s1 == s2 && s2 == s3 {
+                    let player = self.get_player_by_sign(*s1)?;
+                    return Ok(self.set_winner(player.id));
                 }
-            }
-            // check columns
-            if let Some(first_sign) = self.field[0][i] {
-                if self.field.iter().all(|row| has_sign(row[i], first_sign)) {
-                    return self.set_winner_sign(first_sign);
-                }
-            }
-        }
-        // check diagonals
-        if let (Some(sign1), Some(sign2), Some(sign3)) =
-            (self.field[0][0], self.field[1][1], self.field[2][2])
-        {
-            if sign1 == sign2 && sign2 == sign3 {
-                return self.set_winner_sign(sign1);
-            }
-        }
-        if let (Some(sign1), Some(sign2), Some(sign3)) =
-            (self.field[0][2], self.field[1][1], self.field[2][0])
-        {
-            if sign1 == sign2 && sign2 == sign3 {
-                return self.set_winner_sign(sign1);
             }
         }
 
@@ -238,10 +269,5 @@ impl TicTacToe {
         }
 
         self.switch_player()
-    }
-
-    fn set_winner_sign(&mut self, sign: Sign) -> GameResult<GameState> {
-        let player = self.get_player_by_sign(sign)?;
-        Ok(self.set_winner(player.id))
     }
 }
