@@ -1,5 +1,7 @@
-use mp_game::game::game::Game;
-use mp_game::game::tic_tac_toe::{FieldCol, FieldRow, TicTacToe};
+extern crate server;
+
+use server::game::game::Game;
+use server::game::tic_tac_toe::{FieldCol, FieldRow, TicTacToe};
 
 fn main() {
     let player1 = 1;

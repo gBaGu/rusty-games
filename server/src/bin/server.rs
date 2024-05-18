@@ -1,6 +1,6 @@
-extern crate mp_game;
+extern crate server;
 
-use mp_game::rpc_server;
+use server::rpc_server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
