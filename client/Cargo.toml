@@ -5,3 +5,8 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.13.2", features = ["dynamic_linking"] }
+prost = "0.12.6"
+tonic = "0.11.0"
+
+[build-dependencies]
+tonic-build = "0.11.0"
