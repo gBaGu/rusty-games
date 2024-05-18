@@ -9,6 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .emit_rerun_if_changed(false)// turn this off as new 'cargo::' notation is used above
         .file_descriptor_set_path(PathBuf::from(out_dir).join("game_descriptor.bin"))
+        .build_client(false)
         .compile(&["proto/game.proto", "proto/rpc.proto"], &["proto/"])?;
     Ok(())
 }
