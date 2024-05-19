@@ -10,12 +10,16 @@ use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
 
-const FONT_PATH: &str = "fonts/FiraSans-Bold.ttf";
+pub const CONFIRMATION_SOUND_PATH: &str = "audio/confirmation.ogg";
+pub const ERROR_SOUND_PATH: &str = "audio/error.ogg";
+pub const TURN_SOUND_PATH: &str = "audio/turn.ogg";
 
-const MENU_ITEM_HEIGHT: f32 = 50.0;
-const MENU_ITEM_WIDTH: f32 = 300.0;
-const MENU_FONT_SIZE: f32 = 40.0;
-const MENU_TEXT_COLOR: Color = Color::OLIVE;
+pub const FONT_PATH: &str = "fonts/FiraSans-Bold.ttf";
+
+pub const MENU_ITEM_HEIGHT: f32 = 50.0;
+pub const MENU_ITEM_WIDTH: f32 = 300.0;
+pub const MENU_FONT_SIZE: f32 = 40.0;
+pub const MENU_TEXT_COLOR: Color = Color::OLIVE;
 
 // Styles
 

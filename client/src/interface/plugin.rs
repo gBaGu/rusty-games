@@ -14,18 +14,23 @@ use bevy::ui::{Interaction, UiImage};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 use std::str::FromStr;
+use bevy::audio::AudioBundle;
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::interface::common::button_bundle::{
     exit, menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
-use crate::interface::common::{
-    global_column_node_bundle, menu_column_node_bundle, menu_item_style, menu_row_node_bundle,
-    menu_text_bundle, menu_text_input_bundle, menu_text_style,
-};
+use crate::interface::common::{CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, global_column_node_bundle, menu_column_node_bundle, menu_item_style, menu_row_node_bundle, menu_text_bundle, menu_text_input_bundle, menu_text_style};
 use crate::interface::components::{AssociatedGameList, AssociatedTextInput};
 use crate::settings::{Settings, SubmitTextInputSetting};
 use crate::{CurrentGame, Game};
+
+fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
+    commands.spawn(AudioBundle {
+        source: asset_server.load(sound_path),
+        ..default()
+    });
+}
 
 pub struct InterfacePlugin;
 
@@ -71,12 +76,14 @@ fn state_transition(
         (With<Button>, Changed<Interaction>),
     >,
     text_inputs: Query<(Entity, &TextInputValue)>,
+    mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     mut exit: EventWriter<AppExit>,
     mut current_game: ResMut<CurrentGame>,
     app_state: Res<State<AppState>>,
     settings: Res<Settings>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    asset_server: Res<AssetServer>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
         if *app_state.get() == AppState::Game {
@@ -105,7 +112,10 @@ fn state_transition(
                                 });
                                 println!("state transition: {:?}", new_state);
                                 next_app_state.set(new_state);
+                                play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
                             }
+                        } else {
+                            play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
                         }
                     }
                 } else {
@@ -138,7 +148,9 @@ fn settings_submit<T: FromStr + 'static>(
         (With<Button>, Changed<Interaction>),
     >,
     text_inputs: Query<(Entity, &TextInputValue)>,
+    mut commands: Commands,
     mut settings: ResMut<Settings>,
+    asset_server: Res<AssetServer>,
 ) {
     for (interaction, submit_input) in submit_buttons.iter() {
         if *interaction == Interaction::Pressed {
@@ -148,6 +160,9 @@ fn settings_submit<T: FromStr + 'static>(
             {
                 if let Ok(val) = val.0.parse::<T>() {
                     submit_input.submit(&mut settings, val);
+                    play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
+                } else {
+                    play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
                 }
             }
         }
