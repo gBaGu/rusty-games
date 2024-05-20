@@ -10,6 +10,8 @@ pub trait WithPlayerId {
 pub trait PlayerQueue {
     type Item: WithPlayerId;
 
+    fn get_all(&self) -> &[Self::Item];
+
     fn find<F>(&self, f: F) -> Option<&Self::Item>
     where
         F: FnMut(&&Self::Item) -> bool;
@@ -38,6 +40,10 @@ impl<T: Clone> PlayerPool<T> {
 
 impl<T: Clone + WithPlayerId> PlayerQueue for PlayerPool<T> {
     type Item = T;
+
+    fn get_all(&self) -> &[T] {
+        self.players.as_slice()
+    }
 
     fn find<F>(&self, f: F) -> Option<&T>
     where
@@ -170,5 +176,17 @@ mod test {
             std::iter::from_fn(|| pool.next().cloned()).take(10),
             [2, 3, 1, 2, 3, 1, 2, 3, 1, 2],
         );
+    }
+
+    #[test]
+    fn test_get_all() {
+        let mut pool = PlayerPool::new(vec![1u64, 2, 3]);
+
+        // initial sequence is returned
+        itertools::assert_equal(pool.get_all(), &[1, 2, 3]);
+
+        // advancing the queue doesn't affect get_all
+        pool.next();
+        itertools::assert_equal(pool.get_all(), &[1, 2, 3]);
     }
 }

@@ -8,6 +8,8 @@ service Game {
   rpc MakeTurn (MakeTurnRequest) returns (MakeTurnReply);
   rpc MakeTurnStreaming (stream MakeTurnRequest) returns (stream MakeTurnReply);
   rpc DeleteGame (DeleteGameRequest) returns (DeleteGameReply);
+
+  rpc GetPlayerGames (GetPlayerGamesRequest) returns (GetPlayerGamesReply);
 }
 
 message CreateGameRequest {
@@ -28,8 +30,7 @@ message MakeTurnRequest {
 }
 
 message MakeTurnReply {
-  optional uint64 next_player_id = 1;
-  optional uint64 winner = 2;
+  GameState game_state = 1;
 }
 
 message DeleteGameRequest {
@@ -39,4 +40,13 @@ message DeleteGameRequest {
 
 message DeleteGameReply {
 
+}
+
+message GetPlayerGamesRequest {
+  GameType game_type = 1;
+  uint64 player_id = 2;
+}
+
+message GetPlayerGamesReply {
+  repeated GameInfo games = 1;
 }

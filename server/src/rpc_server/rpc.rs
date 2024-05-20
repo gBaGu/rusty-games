@@ -5,7 +5,7 @@ use tonic::{Request, Response, Status, Streaming};
 
 use crate::proto::{
     game_server::Game, CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest,
-    GameType, MakeTurnReply, MakeTurnRequest,
+    GameType, GetPlayerGamesReply, GetPlayerGamesRequest, MakeTurnReply, MakeTurnRequest,
 };
 use crate::rpc_server::game_storage::GameStorage;
 
@@ -30,11 +30,12 @@ impl Game for GameImpl {
             .first()
             .cloned()
             .ok_or_else(|| Status::invalid_argument("player ids missing"))?;
-        self.games
+        let game_id = self
+            .games
             .create_game(game_type, player1, &request.player_ids)
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(CreateGameReply { game_id: player1 }))
+        Ok(Response::new(CreateGameReply { game_id }))
     }
 
     async fn make_turn(&self, request: Request<MakeTurnRequest>) -> RpcResult<MakeTurnReply> {
@@ -50,7 +51,9 @@ impl Game for GameImpl {
             .update_game(game_type, game_id, request.player_id, &request.turn_data)
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(MakeTurnReply::from_game_state(game_state)))
+        Ok(Response::new(MakeTurnReply {
+            game_state: Some(game_state),
+        }))
     }
 
     type MakeTurnStreamingStream =
@@ -76,7 +79,7 @@ impl Game for GameImpl {
                 let game_state = games.update_game(game_type, game_id, request.player_id, &request.turn_data)
                     .map_err(|e| Status::internal(e.to_string()))?;
 
-                yield MakeTurnReply::from_game_state(game_state);
+                yield MakeTurnReply { game_state: Some(game_state) };
             }
         };
 
@@ -96,5 +99,24 @@ impl Game for GameImpl {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(DeleteGameReply {}))
+    }
+
+    async fn get_player_games(
+        &self,
+        request: Request<GetPlayerGamesRequest>,
+    ) -> RpcResult<GetPlayerGamesReply> {
+        println!("Got request {:?}", request);
+
+        let request = request.into_inner();
+        let game_type = GameType::try_from(request.game_type)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let player_games = self
+            .games
+            .get_player_games(game_type, request.player_id)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(GetPlayerGamesReply {
+            games: player_games,
+        }))
     }
 }
