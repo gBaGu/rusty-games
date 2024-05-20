@@ -1,10 +1,12 @@
 use bevy::app::{App, AppExit, Plugin, Update};
 use bevy::asset::AssetServer;
+use bevy::audio::AudioBundle;
 use bevy::ecs::change_detection::{Res, ResMut};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::event::EventWriter;
 use bevy::ecs::query::{Changed, With};
-use bevy::ecs::schedule::{NextState, OnEnter, OnExit, State};
+use bevy::ecs::schedule::common_conditions::in_state;
+use bevy::ecs::schedule::{IntoSystemConfigs, NextState, OnEnter, OnExit, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::BuildChildren;
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
@@ -14,13 +16,16 @@ use bevy::ui::{Interaction, UiImage};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 use std::str::FromStr;
-use bevy::audio::AudioBundle;
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::interface::common::button_bundle::{
     exit, menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
-use crate::interface::common::{CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, global_column_node_bundle, menu_column_node_bundle, menu_item_style, menu_row_node_bundle, menu_text_bundle, menu_text_input_bundle, menu_text_style};
+use crate::interface::common::{
+    global_column_node_bundle, menu_column_node_bundle, menu_item_style, menu_row_node_bundle,
+    menu_text_bundle, menu_text_input_bundle, menu_text_style, CONFIRMATION_SOUND_PATH,
+    ERROR_SOUND_PATH,
+};
 use crate::interface::components::{AssociatedGameList, AssociatedTextInput};
 use crate::settings::{Settings, SubmitTextInputSetting};
 use crate::{CurrentGame, Game};
@@ -61,7 +66,11 @@ impl Plugin for InterfacePlugin {
             .add_systems(OnExit(AppState::Paused), cleanup_ui)
             .add_systems(
                 Update,
-                (state_transition, text_input_focus, settings_submit::<u64>),
+                (
+                    state_transition,
+                    text_input_focus,
+                    settings_submit::<u64>.run_if(in_state(AppState::Menu(MenuState::Settings))),
+                ),
             );
     }
 }
