@@ -1,3 +1,3 @@
-mod common;
 mod components;
+pub mod common;
 pub mod plugin;

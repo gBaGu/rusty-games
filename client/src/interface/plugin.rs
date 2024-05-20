@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use bevy::app::{App, AppExit, Plugin, Update};
 use bevy::asset::AssetServer;
 use bevy::audio::AudioBundle;
@@ -10,21 +12,21 @@ use bevy::ecs::schedule::{IntoSystemConfigs, NextState, OnEnter, OnExit, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::BuildChildren;
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::ui::node_bundles::ButtonBundle;
+use bevy::render::color::Color;
+use bevy::ui::node_bundles::{ButtonBundle, NodeBundle};
 use bevy::ui::widget::Button;
-use bevy::ui::{Interaction, UiImage};
+use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, UiImage, Val};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
-use std::str::FromStr;
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::interface::common::button_bundle::{
     exit, menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
 use crate::interface::common::{
-    global_column_node_bundle, menu_column_node_bundle, menu_item_style, menu_row_node_bundle,
-    menu_text_bundle, menu_text_input_bundle, menu_text_style, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH,
+    column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
+    menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
+    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
 };
 use crate::interface::components::{AssociatedGameList, AssociatedTextInput};
 use crate::settings::{Settings, SubmitTextInputSetting};
@@ -64,6 +66,8 @@ impl Plugin for InterfacePlugin {
             )
             .add_systems(OnEnter(AppState::Paused), setup_pause)
             .add_systems(OnExit(AppState::Paused), cleanup_ui)
+            .add_systems(OnEnter(AppState::Game), setup_game)
+            .add_systems(OnExit(AppState::Game), cleanup_ui)
             .add_systems(
                 Update,
                 (
@@ -115,10 +119,7 @@ fn state_transition(
                     {
                         if let Ok(val) = val.0.parse::<u64>() {
                             if let Some(user_id) = settings.user_id() {
-                                current_game.0 = Some(Game {
-                                    user_id,
-                                    opponent_id: val,
-                                });
+                                current_game.0 = Some(Game::new(user_id, val, &asset_server));
                                 println!("state transition: {:?}", new_state);
                                 next_app_state.set(new_state);
                                 play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
@@ -185,7 +186,7 @@ fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui::Nod
 }
 
 fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = menu_text_style(asset_server);
+    let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
     commands
@@ -224,32 +225,30 @@ fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = menu_text_style(asset_server);
+    let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
     commands
         .spawn(global_column_node_bundle())
         .with_children(|parent| {
-            parent
-                .spawn(menu_row_node_bundle())
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Set user id:", text_style.clone()));
-                    let input_id = parent
-                        .spawn(menu_text_input_bundle(
-                            text_style.clone(),
-                            menu_style.clone(),
-                        ))
-                        .id();
-                    parent
-                        .spawn(submit_text_input_setting(
-                            menu_style.clone(),
-                            input_id,
-                            Settings::set_user_id,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn(menu_text_bundle("Save", text_style.clone()));
-                        });
-                });
+            parent.spawn(row_node_bundle()).with_children(|parent| {
+                parent.spawn(menu_text_bundle("Set user id:", text_style.clone()));
+                let input_id = parent
+                    .spawn(menu_text_input_bundle(
+                        text_style.clone(),
+                        menu_style.clone(),
+                    ))
+                    .id();
+                parent
+                    .spawn(submit_text_input_setting(
+                        menu_style.clone(),
+                        input_id,
+                        Settings::set_user_id,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(menu_text_bundle("Save", text_style.clone()));
+                    });
+            });
             parent
                 .spawn(menu_navigation(
                     menu_style.clone(),
@@ -262,7 +261,7 @@ fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = menu_text_style(asset_server);
+    let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
     commands
@@ -285,33 +284,31 @@ fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServe
 }
 
 fn setup_play_over_network_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = menu_text_style(asset_server);
+    let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
     commands
         .spawn(global_column_node_bundle())
         .with_children(|parent| {
-            parent
-                .spawn(menu_row_node_bundle())
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Opponent id:", text_style.clone()));
-                    let input_id = parent
-                        .spawn(menu_text_input_bundle(
-                            text_style.clone(),
-                            menu_style.clone(),
-                        ))
-                        .id();
-                    parent
-                        .spawn(menu_navigation_with_associated_text_input(
-                            menu_style.clone(),
-                            AppState::Game,
-                            input_id,
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn(menu_text_bundle("Create game", text_style.clone()));
-                        });
-                });
-            let game_list_id = parent.spawn(menu_column_node_bundle()).id();
+            parent.spawn(row_node_bundle()).with_children(|parent| {
+                parent.spawn(menu_text_bundle("Opponent id:", text_style.clone()));
+                let input_id = parent
+                    .spawn(menu_text_input_bundle(
+                        text_style.clone(),
+                        menu_style.clone(),
+                    ))
+                    .id();
+                parent
+                    .spawn(menu_navigation_with_associated_text_input(
+                        menu_style.clone(),
+                        AppState::Game,
+                        input_id,
+                    ))
+                    .with_children(|parent| {
+                        parent.spawn(menu_text_bundle("Create game", text_style.clone()));
+                    });
+            });
+            let game_list_id = parent.spawn(column_node_bundle()).id();
             parent
                 .spawn((
                     ButtonBundle {
@@ -336,7 +333,7 @@ fn setup_play_over_network_menu(mut commands: Commands, asset_server: Res<AssetS
 }
 
 fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = menu_text_style(asset_server);
+    let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
     commands
@@ -362,6 +359,54 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
                 ))
                 .with_children(|parent| {
                     parent.spawn(menu_text_bundle("Main menu", text_style.clone()));
+                });
+        });
+}
+
+fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<CurrentGame>) {
+    let text_style = menu_text_style(&asset_server);
+    let sprite = game.0.as_ref().and_then(|game| game.images.get(&game.next));
+
+    commands
+        .spawn(global_column_node_bundle())
+        .with_children(|parent| {
+            parent.spawn(row_node_bundle()).with_children(|parent| {
+                parent.spawn(menu_text_bundle("Next:", text_style.clone()));
+                if let Some(sprite) = sprite {
+                    parent.spawn(square_ui_image(sprite.clone(), Val::Px(50.0)));
+                }
+            });
+            parent
+                .spawn(tic_tac_toe_grid_node_bundle())
+                .with_children(|parent| {
+                    for odd in [1i16, 3, 5] {
+                        for even in [2i16, 4] {
+                            // vertical borders
+                            parent.spawn(NodeBundle {
+                                style: Style {
+                                    display: Display::Grid,
+                                    grid_column: GridPlacement::start(even),
+                                    grid_row: GridPlacement::start(odd),
+                                    width: Val::Px(1.0),
+                                    ..default()
+                                },
+                                background_color: BackgroundColor(Color::BLACK),
+                                ..default()
+                            });
+                            // horizontal borders
+                            parent.spawn(NodeBundle {
+                                style: Style {
+                                    display: Display::Grid,
+                                    grid_column: GridPlacement::start(odd),
+                                    grid_row: GridPlacement::start(even),
+                                    height: Val::Px(1.0),
+                                    ..default()
+                                },
+                                background_color: BackgroundColor(Color::BLACK),
+                                ..default()
+                            });
+                        }
+                    }
                 });
         });
 }

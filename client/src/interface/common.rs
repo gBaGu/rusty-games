@@ -1,14 +1,19 @@
-use bevy::asset::AssetServer;
+use bevy::asset::{AssetServer, Handle};
 use bevy::ecs::bundle::Bundle;
-use bevy::ecs::change_detection::Res;
-use bevy::render::color::Color;
+use bevy::render::{color::Color, texture::Image};
 use bevy::text::TextStyle;
 use bevy::ui::node_bundles::{ButtonBundle, NodeBundle, TextBundle};
-use bevy::ui::{AlignItems, FlexDirection, JustifyContent, Style, UiImage, UiRect, Val};
+use bevy::ui::{
+    AlignItems, BackgroundColor, Display, FlexDirection, GridTrack, JustifyContent, Style, UiImage,
+    UiRect, Val,
+};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
+
+pub const X_SPRITE_PATH: &str = "sprites/X.png";
+pub const O_SPRITE_PATH: &str = "sprites/O.png";
 
 pub const CONFIRMATION_SOUND_PATH: &str = "audio/confirmation.ogg";
 pub const ERROR_SOUND_PATH: &str = "audio/error.ogg";
@@ -34,7 +39,7 @@ pub fn menu_item_style() -> Style {
     }
 }
 
-pub fn menu_text_style(asset_server: Res<AssetServer>) -> TextStyle {
+pub fn menu_text_style(asset_server: &AssetServer) -> TextStyle {
     TextStyle {
         font: asset_server.load(FONT_PATH),
         font_size: MENU_FONT_SIZE,
@@ -57,7 +62,7 @@ pub fn global_column_node_bundle() -> NodeBundle {
     }
 }
 
-pub fn menu_column_node_bundle() -> NodeBundle {
+pub fn column_node_bundle() -> NodeBundle {
     NodeBundle {
         style: Style {
             flex_direction: FlexDirection::Column,
@@ -68,7 +73,7 @@ pub fn menu_column_node_bundle() -> NodeBundle {
     }
 }
 
-pub fn menu_row_node_bundle() -> NodeBundle {
+pub fn row_node_bundle() -> NodeBundle {
     NodeBundle {
         style: Style {
             flex_direction: FlexDirection::Row,
@@ -77,6 +82,55 @@ pub fn menu_row_node_bundle() -> NodeBundle {
         },
         ..default()
     }
+}
+
+pub fn tic_tac_toe_grid_node_bundle() -> NodeBundle {
+    NodeBundle {
+        style: Style {
+            height: Val::Percent(100.0),
+            aspect_ratio: Some(1.0),
+            display: Display::Grid,
+            margin: UiRect::all(Val::Px(20.0)),
+            padding: UiRect::all(Val::Px(20.0)),
+            grid_template_columns: vec![
+                GridTrack::flex(1.0),
+                GridTrack::min_content(),
+                GridTrack::flex(1.0),
+                GridTrack::min_content(),
+                GridTrack::flex(1.0),
+            ],
+            grid_template_rows: vec![
+                GridTrack::flex(1.0),
+                GridTrack::min_content(),
+                GridTrack::flex(1.0),
+                GridTrack::min_content(),
+                GridTrack::flex(1.0),
+            ],
+            row_gap: Val::Px(12.0),
+            column_gap: Val::Px(12.0),
+            ..default()
+        },
+        background_color: BackgroundColor(Color::GRAY),
+        ..default()
+    }
+}
+
+// Image
+
+pub fn square_ui_image(image: Handle<Image>, size: Val) -> impl Bundle {
+    (
+        NodeBundle {
+            style: Style {
+                width: size,
+                height: size,
+                margin: UiRect::all(Val::Px(10.0)),
+                ..default()
+            },
+            background_color: BackgroundColor(Color::WHITE),
+            ..default()
+        },
+        UiImage::new(image),
+    )
 }
 
 // Text
