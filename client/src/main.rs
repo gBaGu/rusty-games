@@ -1,14 +1,16 @@
 mod app_state;
+mod grpc;
 mod interface;
-mod proto;
 mod settings;
 
 use std::collections::HashMap;
 
 use bevy::asset::{AssetServer, Handle};
 use bevy::prelude::{App, Camera2dBundle, Commands, DefaultPlugins, Image, Resource, Startup};
+use bevy::tasks::block_on;
 
 use crate::app_state::AppState;
+use crate::grpc::{GameClient, GrpcClient, DEFAULT_GRPC_SERVER_ADDRESS};
 use crate::interface::plugin::InterfacePlugin;
 use crate::settings::Settings;
 
@@ -41,12 +43,21 @@ fn init_camera(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let grpc_client = match block_on(GameClient::connect(DEFAULT_GRPC_SERVER_ADDRESS)) {
+        Ok(client) => GrpcClient::from_game_client(client),
+        Err(err) => {
+            println!("grpc client connect failed: {:?}", err);
+            GrpcClient::new()
+        }
+    };
     App::new()
         .init_state::<AppState>()
         .init_resource::<Settings>()
         .init_resource::<CurrentGame>()
+        .insert_resource(grpc_client)
         .add_plugins((DefaultPlugins, InterfacePlugin))
         .add_systems(Startup, init_camera)
         .run();
+    Ok(())
 }

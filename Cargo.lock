@@ -1390,6 +1390,7 @@ dependencies = [
  "bevy",
  "bevy_simple_text_input",
  "prost",
+ "server",
  "tonic",
  "tonic-build",
 ]
