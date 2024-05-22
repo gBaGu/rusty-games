@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::str::FromStr;
 
 use bevy::app::{App, AppExit, Plugin, Update};
@@ -21,20 +22,23 @@ use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::game::GameInfo;
+use crate::game::{CurrentGame, GameInfo};
 use crate::grpc::{CallGetPlayerGames, GrpcClient};
+use crate::interface::buttons::{
+    spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
+};
 use crate::interface::common::button_bundle::{
-    exit, menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
+    menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
-    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
+    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, O_SPRITE_PATH,
+    X_SPRITE_PATH,
 };
 use crate::interface::components::{AssociatedGameList, AssociatedTextInput};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::settings::{Settings, SubmitTextInputSetting};
-use crate::{CurrentGame, Game};
 
 fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
     commands.spawn(AudioBundle {
@@ -78,7 +82,8 @@ impl Plugin for InterfacePlugin {
                     state_transition,
                     text_input_focus,
                     settings_submit::<u64>.run_if(in_state(AppState::Menu(MenuState::Settings))),
-                    handle_player_games_task.run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
+                    (handle_player_games_task, join_game)
+                        .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                 ),
             );
     }
@@ -97,7 +102,6 @@ fn state_transition(
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     mut exit: EventWriter<AppExit>,
-    mut current_game: ResMut<CurrentGame>,
     app_state: Res<State<AppState>>,
     settings: Res<Settings>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -124,10 +128,7 @@ fn state_transition(
                     {
                         if let Ok(val) = val.0.parse::<u64>() {
                             if let Some(user_id) = settings.user_id() {
-                                current_game.0 = Some(Game::new(user_id, val, &asset_server));
-                                println!("state transition: {:?}", new_state);
-                                next_app_state.set(new_state);
-                                play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
+                                // TODO: make CreateGame call
                             }
                         } else {
                             play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
@@ -143,6 +144,35 @@ fn state_transition(
                 exit.send(AppExit);
             }
         }
+    }
+}
+
+fn join_game(
+    join_button: Query<(&Interaction, &JoinGame), (With<Button>, Changed<Interaction>)>,
+    mut commands: Commands,
+    mut next_app_state: ResMut<NextState<AppState>>,
+    settings: Res<Settings>,
+    asset_server: Res<AssetServer>,
+) {
+    let user_id = match settings.user_id() {
+        Some(id) => id,
+        None => {
+            println!("user_id is not set");
+            return;
+        }
+    };
+    if let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) {
+        let x_img = asset_server.load(X_SPRITE_PATH);
+        let o_img = asset_server.load(O_SPRITE_PATH);
+        commands.insert_resource(CurrentGame::new(
+            user_id,
+            join.deref().clone(),
+            x_img,
+            o_img,
+        ));
+        println!("state transition: join game");
+        next_app_state.set(AppState::Game);
+        play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
     }
 }
 
@@ -197,35 +227,28 @@ fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn(global_column_node_bundle())
         .with_children(|parent| {
-            parent
-                .spawn(menu_navigation(
-                    menu_style.clone(),
-                    AppState::Menu(MenuState::PlayWithBot),
-                ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Play", text_style.clone()));
-                });
-            parent
-                .spawn(menu_navigation(
-                    menu_style.clone(),
-                    AppState::Menu(MenuState::PlayOverNetwork),
-                ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Network", text_style.clone()));
-                });
-            parent
-                .spawn(menu_navigation(
-                    menu_style.clone(),
-                    AppState::Menu(MenuState::Settings),
-                ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Settings", text_style.clone()));
-                });
-            parent
-                .spawn(exit(menu_style.clone()))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Exit", text_style.clone()));
-                });
+            spawn_menu_navigation_button(
+                parent,
+                menu_style.clone(),
+                text_style.clone(),
+                "Play",
+                AppState::Menu(MenuState::PlayWithBot),
+            );
+            spawn_menu_navigation_button(
+                parent,
+                menu_style.clone(),
+                text_style.clone(),
+                "Network",
+                AppState::Menu(MenuState::PlayOverNetwork),
+            );
+            spawn_menu_navigation_button(
+                parent,
+                menu_style.clone(),
+                text_style.clone(),
+                "Settings",
+                AppState::Menu(MenuState::Settings),
+            );
+            spawn_exit_button(parent, menu_style, text_style, "Exit");
         });
 }
 
@@ -401,16 +424,19 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<CurrentGame>) {
+fn setup_game(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    game: Option<Res<CurrentGame>>,
+) {
     let text_style = menu_text_style(&asset_server);
-    let sprite = game.0.as_ref().and_then(|game| game.images.get(&game.next));
 
     commands
         .spawn(global_column_node_bundle())
         .with_children(|parent| {
             parent.spawn(row_node_bundle()).with_children(|parent| {
                 parent.spawn(menu_text_bundle("Next:", text_style.clone()));
-                if let Some(sprite) = sprite {
+                if let Some(sprite) = game.as_ref().and_then(|game| game.get_next_player_image()) {
                     parent.spawn(square_ui_image(sprite.clone(), Val::Px(50.0)));
                 }
             });
@@ -489,11 +515,13 @@ fn handle_player_games_task(
                                                 &format!("{:?}", game.players),
                                                 text_style.clone(),
                                             ));
-                                            parent
-                                                .spawn(menu_navigation(menu_style.clone(), AppState::Game))
-                                                .with_children(|parent| {
-                                                    parent.spawn(menu_text_bundle("Join", text_style.clone()));
-                                                });
+                                            spawn_join_game_button_bundle(
+                                                parent,
+                                                menu_style.clone(),
+                                                text_style.clone(),
+                                                "Join",
+                                                game.clone(),
+                                            );
                                         }
                                     });
                                 });

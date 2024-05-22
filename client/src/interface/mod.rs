@@ -3,3 +3,4 @@ pub mod plugin;
 
 mod components;
 mod game_list;
+mod buttons;

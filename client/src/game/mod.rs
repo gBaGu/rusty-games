@@ -1,7 +1,12 @@
 mod error;
 
-use crate::grpc::proto;
+use bevy::asset::{AssetServer, Handle};
+use bevy::prelude::{Image, Resource};
 use game_server::game::game::{FinishedState, GameState};
+use std::collections::HashMap;
+
+use crate::grpc::proto;
+use crate::interface;
 
 #[derive(Clone, Debug)]
 pub struct GameInfo {
@@ -34,5 +39,35 @@ impl TryFrom<proto::GameInfo> for GameInfo {
             players: value.players,
             state,
         })
+    }
+}
+
+#[derive(Resource)]
+pub struct CurrentGame {
+    id: u64,
+    user_id: u64,
+    state: GameState,
+    images: HashMap<u64, Handle<Image>>,
+}
+
+impl CurrentGame {
+    pub fn new(user_id: u64, game: GameInfo, x_img: Handle<Image>, o_img: Handle<Image>) -> Self {
+        Self {
+            id: game.id,
+            user_id,
+            state: game.state,
+            images: game.players.into_iter().zip([x_img, o_img]).collect(),
+        }
+    }
+
+    pub fn get_player_image(&self, id: &u64) -> Option<&Handle<Image>> {
+        self.images.get(id)
+    }
+
+    pub fn get_next_player_image(&self) -> Option<&Handle<Image>> {
+        if let GameState::Turn(id) = self.state {
+            return self.get_player_image(&id);
+        }
+        None
     }
 }
