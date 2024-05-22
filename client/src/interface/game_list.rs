@@ -5,7 +5,7 @@ use crate::grpc::CallGetPlayerGames;
 
 #[derive(Component, Default)]
 pub struct GameList {
-    games: Vec<GameInfo>
+    pub games: Vec<GameInfo>
 }
 
 #[derive(Bundle)]

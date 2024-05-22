@@ -62,6 +62,7 @@ pub fn reconnect(mut client: ResMut<GrpcClient>, mut timer: ResMut<ReconnectTime
     }
 
     if timer.tick(time.delta()).just_finished() && client.connect.is_none() {
+        println!("reconnecting to grpc server...");
         let task = IoTaskPool::get().spawn(async move {
             GameClient::connect(DEFAULT_GRPC_SERVER_ADDRESS).compat().await
         });
@@ -70,12 +71,13 @@ pub fn reconnect(mut client: ResMut<GrpcClient>, mut timer: ResMut<ReconnectTime
 }
 
 pub fn handle_reconnect(mut client: ResMut<GrpcClient>) {
-    if let Some(task) = client.connect.take() {
+    if let Some(task) = &mut client.connect {
         if let Some(res) = block_on(future::poll_once(task)) {
             match res {
                 Ok(c) => *client = GrpcClient::from_game_client(c),
                 Err(err) => {
                     println!("grpc client connect failed: {:?}", err);
+                    client.connect.take();
                 }
             }
         }

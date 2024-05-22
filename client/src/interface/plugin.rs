@@ -10,9 +10,10 @@ use bevy::ecs::query::{Changed, With};
 use bevy::ecs::schedule::common_conditions::in_state;
 use bevy::ecs::schedule::{IntoSystemConfigs, NextState, OnEnter, OnExit, State};
 use bevy::ecs::system::{Commands, Query};
-use bevy::hierarchy::BuildChildren;
+use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
 use bevy::render::color::Color;
+use bevy::tasks::{block_on, futures_lite::future};
 use bevy::ui::node_bundles::{ButtonBundle, NodeBundle};
 use bevy::ui::widget::Button;
 use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, UiImage, Val};
@@ -20,6 +21,8 @@ use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
+use crate::game::GameInfo;
+use crate::grpc::{CallGetPlayerGames, GrpcClient};
 use crate::interface::common::button_bundle::{
     exit, menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
@@ -29,10 +32,9 @@ use crate::interface::common::{
     tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
 };
 use crate::interface::components::{AssociatedGameList, AssociatedTextInput};
-use crate::grpc::{CallGetPlayerGames, GrpcClient};
+use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::settings::{Settings, SubmitTextInputSetting};
 use crate::{CurrentGame, Game};
-use crate::interface::game_list::{GameListBundle, LoadingGameListBundle};
 
 fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
     commands.spawn(AudioBundle {
@@ -76,6 +78,7 @@ impl Plugin for InterfacePlugin {
                     state_transition,
                     text_input_focus,
                     settings_submit::<u64>.run_if(in_state(AppState::Menu(MenuState::Settings))),
+                    handle_player_games_task.run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                 ),
             );
     }
@@ -317,11 +320,13 @@ fn setup_play_over_network_menu(
             });
             if let Some(id) = settings.user_id() {
                 if let Some(task) = grpc_client.load_player_games(id) {
-                    let game_list_id = parent.spawn(LoadingGameListBundle {
-                        container: column_node_bundle(),
-                        games: default(),
-                        task: CallGetPlayerGames(task),
-                    }).id();
+                    let game_list_id = parent
+                        .spawn(LoadingGameListBundle {
+                            container: column_node_bundle(),
+                            games: default(),
+                            task: CallGetPlayerGames(task),
+                        })
+                        .id();
                     parent
                         .spawn((
                             ButtonBundle {
@@ -334,20 +339,22 @@ fn setup_play_over_network_menu(
                         .with_children(|parent| {
                             parent.spawn(menu_text_bundle("Refresh", text_style.clone()));
                         });
-                } else  {
-                    parent.spawn(GameListBundle {
-                        container: column_node_bundle(),
-                        games: default(),
-                    })
+                } else {
+                    parent
+                        .spawn(GameListBundle {
+                            container: column_node_bundle(),
+                            games: default(),
+                        })
                         .with_children(|parent| {
                             parent.spawn(menu_text_bundle("Server is down", text_style.clone()));
                         });
                 }
             } else {
-                parent.spawn(GameListBundle {
-                    container: column_node_bundle(),
-                    games: default(),
-                })
+                parent
+                    .spawn(GameListBundle {
+                        container: column_node_bundle(),
+                        games: default(),
+                    })
                     .with_children(|parent| {
                         parent.spawn(menu_text_bundle("No user id provided", text_style.clone()));
                     });
@@ -440,4 +447,86 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<
                     }
                 });
         });
+}
+
+fn handle_player_games_task(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut game_lists: Query<(Entity, &mut GameList, &mut CallGetPlayerGames)>,
+) {
+    let text_style = menu_text_style(&asset_server);
+    let menu_style = menu_item_style();
+
+    for (entity, mut list, mut task) in game_lists.iter_mut() {
+        if let Some(res) = block_on(future::poll_once(&mut task.0)) {
+            match res {
+                Ok(response) => {
+                    let games: Result<Vec<GameInfo>, _> = response
+                        .into_inner()
+                        .games
+                        .into_iter()
+                        .map(|game| game.try_into())
+                        .collect();
+                    match games {
+                        Ok(games) => {
+                            list.games = games.clone();
+                            commands
+                                .entity(entity)
+                                .despawn_descendants()
+                                .remove::<CallGetPlayerGames>()
+                                .with_children(|parent| {
+                                    parent.spawn(row_node_bundle()).with_children(|parent| {
+                                        for game in games.iter() {
+                                            parent.spawn(menu_text_bundle(
+                                                &format!("ID: {}", game.id),
+                                                text_style.clone(),
+                                            ));
+                                            parent.spawn(menu_text_bundle(
+                                                &format!("{:?}", game.state),
+                                                text_style.clone(),
+                                            ));
+                                            parent.spawn(menu_text_bundle(
+                                                &format!("{:?}", game.players),
+                                                text_style.clone(),
+                                            ));
+                                            parent
+                                                .spawn(menu_navigation(menu_style.clone(), AppState::Game))
+                                                .with_children(|parent| {
+                                                    parent.spawn(menu_text_bundle("Join", text_style.clone()));
+                                                });
+                                        }
+                                    });
+                                });
+                        }
+                        Err(err) => {
+                            println!("GetPlayerGames invalid response: {}", err);
+                            commands
+                                .entity(entity)
+                                .despawn_descendants()
+                                .with_children(|parent| {
+                                    parent.spawn(menu_text_bundle(
+                                        &format!("Server error: {}", err),
+                                        text_style.clone(),
+                                    ));
+                                })
+                                .remove::<CallGetPlayerGames>();
+                        }
+                    }
+                }
+                Err(err) => {
+                    println!("GetPlayerGames request failed: {}", err);
+                    commands
+                        .entity(entity)
+                        .despawn_descendants()
+                        .with_children(|parent| {
+                            parent.spawn(menu_text_bundle(
+                                &format!("Server error: {}", err),
+                                text_style.clone(),
+                            ));
+                        })
+                        .remove::<CallGetPlayerGames>();
+                }
+            }
+        }
+    }
 }

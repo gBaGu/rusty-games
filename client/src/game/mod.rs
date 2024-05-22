@@ -3,10 +3,11 @@ mod error;
 use crate::grpc::proto;
 use game_server::game::game::{FinishedState, GameState};
 
+#[derive(Clone, Debug)]
 pub struct GameInfo {
-    id: u64,
-    players: Vec<u64>,
-    state: GameState,
+    pub id: u64,
+    pub players: Vec<u64>,
+    pub state: GameState,
 }
 
 impl TryFrom<proto::GameInfo> for GameInfo {
