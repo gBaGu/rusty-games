@@ -31,6 +31,23 @@ impl GrpcClient {
         }
     }
 
+    pub fn create_game(
+        &self,
+        player_id: u64,
+        opponent_id: u64,
+    ) -> Option<Task<RpcResult<proto::CreateGameReply>>> {
+        let mut client = self.inner.as_ref().cloned()?;
+        let task = IoTaskPool::get().spawn(async move {
+            client
+                .create_game(Request::new(proto::CreateGameRequest {
+                    game_type: proto::GameType::TicTacToe.into(),
+                    player_ids: vec![player_id, opponent_id],
+                }))
+                .await
+        });
+        Some(task)
+    }
+
     pub fn load_player_games(
         &self,
         player_id: u64,
@@ -51,11 +68,19 @@ impl GrpcClient {
 #[derive(Default, Deref, DerefMut, Resource)]
 pub struct ReconnectTimer(pub Timer);
 
+/// Task component for creating game over grpc
+#[derive(Component, Deref)]
+pub struct CallCreateGame(pub Task<RpcResult<proto::CreateGameReply>>);
+
 /// Task component for loading player games over grpc
 #[derive(Component, Deref)]
 pub struct CallGetPlayerGames(pub Task<RpcResult<proto::GetPlayerGamesReply>>);
 
-pub fn reconnect(mut client: ResMut<GrpcClient>, mut timer: ResMut<ReconnectTimer>, time: Res<Time>) {
+pub fn reconnect(
+    mut client: ResMut<GrpcClient>,
+    mut timer: ResMut<ReconnectTimer>,
+    time: Res<Time>,
+) {
     if client.is_some() {
         timer.reset();
         return;
@@ -64,7 +89,9 @@ pub fn reconnect(mut client: ResMut<GrpcClient>, mut timer: ResMut<ReconnectTime
     if timer.tick(time.delta()).just_finished() && client.connect.is_none() {
         println!("reconnecting to grpc server...");
         let task = IoTaskPool::get().spawn(async move {
-            GameClient::connect(DEFAULT_GRPC_SERVER_ADDRESS).compat().await
+            GameClient::connect(DEFAULT_GRPC_SERVER_ADDRESS)
+                .compat()
+                .await
         });
         client.connect = Some(task);
     }

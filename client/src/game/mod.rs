@@ -1,14 +1,14 @@
 mod error;
 
-use bevy::asset::{AssetServer, Handle};
-use bevy::prelude::{Image, Resource};
-use game_server::game::game::{FinishedState, GameState};
 use std::collections::HashMap;
 
-use crate::grpc::proto;
-use crate::interface;
+use bevy::asset::Handle;
+use bevy::prelude::{Component, Image, Resource};
+use game_server::game::game::{FinishedState, GameState};
 
-#[derive(Clone, Debug)]
+use crate::grpc::proto;
+
+#[derive(Clone, Component, Debug)]
 pub struct GameInfo {
     pub id: u64,
     pub players: Vec<u64>,
