@@ -29,8 +29,10 @@ use crate::interface::common::{
     tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
 };
 use crate::interface::components::{AssociatedGameList, AssociatedTextInput};
+use crate::grpc::{CallGetPlayerGames, GrpcClient};
 use crate::settings::{Settings, SubmitTextInputSetting};
 use crate::{CurrentGame, Game};
+use crate::interface::game_list::{GameListBundle, LoadingGameListBundle};
 
 fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
     commands.spawn(AudioBundle {
@@ -283,7 +285,12 @@ fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServe
         });
 }
 
-fn setup_play_over_network_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_play_over_network_menu(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    settings: Res<Settings>,
+    grpc_client: Res<GrpcClient>,
+) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
@@ -308,19 +315,43 @@ fn setup_play_over_network_menu(mut commands: Commands, asset_server: Res<AssetS
                         parent.spawn(menu_text_bundle("Create game", text_style.clone()));
                     });
             });
-            let game_list_id = parent.spawn(column_node_bundle()).id();
-            parent
-                .spawn((
-                    ButtonBundle {
-                        style: menu_style.clone(),
-                        image: UiImage::default(),
-                        ..default()
-                    },
-                    AssociatedGameList(game_list_id),
-                ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Refresh", text_style.clone()));
-                });
+            if let Some(id) = settings.user_id() {
+                if let Some(task) = grpc_client.load_player_games(id) {
+                    let game_list_id = parent.spawn(LoadingGameListBundle {
+                        container: column_node_bundle(),
+                        games: default(),
+                        task: CallGetPlayerGames(task),
+                    }).id();
+                    parent
+                        .spawn((
+                            ButtonBundle {
+                                style: menu_style.clone(),
+                                image: UiImage::default(),
+                                ..default()
+                            },
+                            AssociatedGameList(game_list_id),
+                        ))
+                        .with_children(|parent| {
+                            parent.spawn(menu_text_bundle("Refresh", text_style.clone()));
+                        });
+                } else  {
+                    parent.spawn(GameListBundle {
+                        container: column_node_bundle(),
+                        games: default(),
+                    })
+                        .with_children(|parent| {
+                            parent.spawn(menu_text_bundle("Server is down", text_style.clone()));
+                        });
+                }
+            } else {
+                parent.spawn(GameListBundle {
+                    container: column_node_bundle(),
+                    games: default(),
+                })
+                    .with_children(|parent| {
+                        parent.spawn(menu_text_bundle("No user id provided", text_style.clone()));
+                    });
+            }
             parent
                 .spawn(menu_navigation(
                     menu_style.clone(),

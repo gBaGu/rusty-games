@@ -7,8 +7,8 @@ enum GameType {
   GAME_TYPE_CHESS = 2;
 }
 
-/// if next_player_id is not set than the game is finished
-/// if the game is finished and winner is not set than it's a draw
+// if next_player_id is not set than the game is finished
+// if the game is finished and winner is not set than it's a draw
 message GameState {
   optional uint64 next_player_id = 1;
   optional uint64 winner = 2;

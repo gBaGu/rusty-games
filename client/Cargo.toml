@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-compat = "0.2.3"
 bevy = { version = "0.13.2", features = ["dynamic_linking"] }
 bevy_simple_text_input = "0.7.0"
 game-server = { package = "server", path = "../server" }
