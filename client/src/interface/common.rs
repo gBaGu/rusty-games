@@ -23,6 +23,7 @@ pub const FONT_PATH: &str = "fonts/FiraSans-Bold.ttf";
 
 pub const MENU_ITEM_HEIGHT: f32 = 50.0;
 pub const MENU_ITEM_WIDTH: f32 = 300.0;
+pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
 pub const MENU_FONT_SIZE: f32 = 40.0;
 pub const MENU_TEXT_COLOR: Color = Color::OLIVE;
 
@@ -67,6 +68,8 @@ pub fn column_node_bundle() -> NodeBundle {
         style: Style {
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            min_height: Val::Px(MENU_LIST_MIN_HEIGHT),
             ..default()
         },
         ..default()

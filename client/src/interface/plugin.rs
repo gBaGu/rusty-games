@@ -511,8 +511,15 @@ fn handle_player_games_task(
                                 .despawn_descendants()
                                 .remove::<CallGetPlayerGames>()
                                 .with_children(|parent| {
-                                    parent.spawn(row_node_bundle()).with_children(|parent| {
-                                        for game in games.iter() {
+                                    if games.is_empty() {
+                                        parent.spawn(menu_text_bundle(
+                                            "No games available",
+                                            text_style.clone(),
+                                        ));
+                                        return;
+                                    }
+                                    for game in games.iter() {
+                                        parent.spawn(row_node_bundle()).with_children(|parent| {
                                             parent.spawn(menu_text_bundle(
                                                 &format!("ID: {}", game.id),
                                                 text_style.clone(),
@@ -532,8 +539,8 @@ fn handle_player_games_task(
                                                 "Join",
                                                 game.clone(),
                                             );
-                                        }
-                                    });
+                                        });
+                                    }
                                 });
                         }
                         Err(err) => {
@@ -598,10 +605,12 @@ fn handle_create_game_task(
                         play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
                     } else {
                         println!("GameInfo is corrupted: players is empty");
+                        play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
                     }
                 }
                 Err(err) => {
                     println!("CreateGame request failed: {}", err);
+                    play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
                 }
             };
             commands.entity(entity).despawn();
