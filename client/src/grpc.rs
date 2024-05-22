@@ -1,11 +1,12 @@
+use std::time::Duration;
+
 use async_compat::CompatExt;
-use bevy::prelude::{Component, Deref, DerefMut, Res, ResMut, Resource};
+use bevy::prelude::{Component, Deref, DerefMut, Res, ResMut, Resource, TimerMode};
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
 use bevy::time::{Time, Timer};
+use game_server::rpc_server::rpc::RpcResult;
 use tonic::transport;
 use tonic::Request;
-
-use game_server::rpc_server::rpc::RpcResult;
 
 pub mod proto {
     tonic::include_proto!("game");
@@ -65,8 +66,16 @@ impl GrpcClient {
     }
 }
 
-#[derive(Default, Deref, DerefMut, Resource)]
+#[derive(Deref, DerefMut, Resource)]
 pub struct ReconnectTimer(pub Timer);
+
+impl Default for ReconnectTimer {
+    fn default() -> Self {
+        let mut t = Timer::from_seconds(RECONNECT_INTERVAL_SEC, TimerMode::Repeating);
+        t.set_elapsed(Duration::from_secs_f32(RECONNECT_INTERVAL_SEC));
+        Self(t)
+    }
+}
 
 /// Task component for creating game over grpc
 #[derive(Component, Deref)]

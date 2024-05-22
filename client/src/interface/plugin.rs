@@ -13,11 +13,13 @@ use bevy::ecs::schedule::{IntoSystemConfigs, NextState, OnEnter, OnExit, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
+use bevy::prelude::{Deref, DerefMut, Resource, Time, TimerMode, Without};
 use bevy::render::color::Color;
 use bevy::tasks::{block_on, futures_lite::future};
-use bevy::ui::node_bundles::{ButtonBundle, NodeBundle};
+use bevy::time::Timer;
+use bevy::ui::node_bundles::NodeBundle;
 use bevy::ui::widget::Button;
-use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, UiImage, Val};
+use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, Val};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 use game_server::game::game::GameState;
@@ -34,10 +36,10 @@ use crate::interface::common::button_bundle::{
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
-    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, O_SPRITE_PATH,
-    X_SPRITE_PATH,
+    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
+    GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH,
 };
-use crate::interface::components::{AssociatedGameList, AssociatedTextInput};
+use crate::interface::components::AssociatedTextInput;
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::settings::{Settings, SubmitTextInputSetting};
 
@@ -48,11 +50,24 @@ fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &
     });
 }
 
+#[derive(Deref, DerefMut, Resource)]
+struct RefreshGamesTimer(pub Timer);
+
+impl Default for RefreshGamesTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(
+            GAME_LIST_REFRESH_INTERVAL_SEC,
+            TimerMode::Repeating,
+        ))
+    }
+}
+
 pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(TextInputPlugin)
+            .init_resource::<RefreshGamesTimer>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
             .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
             .add_systems(
@@ -83,7 +98,7 @@ impl Plugin for InterfacePlugin {
                     state_transition,
                     text_input_focus,
                     settings_submit::<u64>.run_if(in_state(AppState::Menu(MenuState::Settings))),
-                    (handle_player_games_task, join_game)
+                    (refresh_game_list, handle_player_games_task, join_game)
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task,
                 ),
@@ -353,25 +368,11 @@ fn setup_play_over_network_menu(
             });
             if let Some(id) = settings.user_id() {
                 if let Some(task) = grpc_client.load_player_games(id) {
-                    let game_list_id = parent
-                        .spawn(LoadingGameListBundle {
-                            container: column_node_bundle(),
-                            games: default(),
-                            task: CallGetPlayerGames(task),
-                        })
-                        .id();
-                    parent
-                        .spawn((
-                            ButtonBundle {
-                                style: menu_style.clone(),
-                                image: UiImage::default(),
-                                ..default()
-                            },
-                            AssociatedGameList(game_list_id),
-                        ))
-                        .with_children(|parent| {
-                            parent.spawn(menu_text_bundle("Refresh", text_style.clone()));
-                        });
+                    parent.spawn(LoadingGameListBundle {
+                        container: column_node_bundle(),
+                        games: default(),
+                        task: CallGetPlayerGames(task),
+                    });
                 } else {
                     parent
                         .spawn(GameListBundle {
@@ -485,6 +486,42 @@ fn setup_game(
         });
 }
 
+fn refresh_game_list(
+    mut commands: Commands,
+    mut timer: ResMut<RefreshGamesTimer>,
+    game_lists: Query<Entity, (With<GameList>, Without<CallGetPlayerGames>)>,
+    client: ResMut<GrpcClient>,
+    asset_server: Res<AssetServer>,
+    settings: Res<Settings>,
+    time: Res<Time>,
+) {
+    if timer.tick(time.delta()).just_finished() {
+        let text_style = menu_text_style(&asset_server);
+        for entity in game_lists.iter() {
+            if let Some(id) = settings.user_id() {
+                if let Some(task) = client.load_player_games(id) {
+                    println!("attach task to entity");
+                    commands.entity(entity).insert(CallGetPlayerGames(task));
+                } else {
+                    commands
+                        .entity(entity)
+                        .despawn_descendants()
+                        .with_children(|parent| {
+                            parent.spawn(menu_text_bundle("Server is down", text_style.clone()));
+                        });
+                }
+            } else {
+                commands
+                    .entity(entity)
+                    .despawn_descendants()
+                    .with_children(|parent| {
+                        parent.spawn(menu_text_bundle("No user id provided", text_style.clone()));
+                    });
+            }
+        }
+    }
+}
+
 fn handle_player_games_task(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -559,13 +596,12 @@ fn handle_player_games_task(
                     }
                 }
                 Err(err) => {
-                    println!("GetPlayerGames request failed: {}", err);
                     commands
                         .entity(entity)
                         .despawn_descendants()
                         .with_children(|parent| {
                             parent.spawn(menu_text_bundle(
-                                &format!("Server error: {}", err),
+                                &format!("Server error: {}", err.code().description()),
                                 text_style.clone(),
                             ));
                         })
