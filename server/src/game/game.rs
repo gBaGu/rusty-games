@@ -1,17 +1,20 @@
+use std::num::TryFromIntError;
+
 use crate::game::error::GameError;
 use crate::game::player_pool::{PlayerId, PlayerQueue, WithPlayerId};
-use std::num::TryFromIntError;
 
 pub type GameResult<T> = Result<T, GameError>;
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 pub enum FromProtobufError {
     #[error("invalid row (expected: 1-{max_expected}, found: {found})")]
     InvalidGridRow { max_expected: usize, found: usize },
     #[error("invalid column (expected: 1-{max_expected}, found: {found})")]
     InvalidGridCol { max_expected: usize, found: usize },
-    #[error("turn data has missing field: {missing_field}")]
-    TurnDataMissing { missing_field: String },
+    #[error("protobuf message is invalid: {reason}")]
+    InvalidProtobufMessage { reason: String },
+    #[error("message data has missing field: {missing_field}")]
+    MessageDataMissing { missing_field: String },
     #[error(transparent)]
     TurnDataConversion(#[from] TryFromIntError),
     #[error(transparent)]
@@ -32,6 +35,24 @@ pub enum FinishedState {
 pub enum GameState {
     Turn(PlayerId),
     Finished(FinishedState),
+}
+
+impl TryFrom<crate::proto::GameState> for GameState {
+    type Error = FromProtobufError;
+
+    fn try_from(value: crate::proto::GameState) -> Result<Self, Self::Error> {
+        let state = match (value.next_player_id, value.winner) {
+            (Some(next), None) => GameState::Turn(next),
+            (None, Some(winner)) => GameState::Finished(FinishedState::Win(winner)),
+            (None, None) => GameState::Finished(FinishedState::Draw),
+            _ => {
+                return Err(FromProtobufError::InvalidProtobufMessage {
+                    reason: "invalid game_state".to_string(),
+                })
+            }
+        };
+        Ok(state)
+    }
 }
 
 pub trait Game: Sized {

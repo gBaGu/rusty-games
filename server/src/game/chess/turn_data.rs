@@ -21,12 +21,12 @@ impl FromProtobuf for TurnData {
         let pos = PositionPair::decode(buf)?;
         let first = pos
             .first
-            .ok_or_else(|| FromProtobufError::TurnDataMissing {
+            .ok_or_else(|| FromProtobufError::MessageDataMissing {
                 missing_field: "first".to_string(),
             })?;
         let second = pos
             .second
-            .ok_or_else(|| FromProtobufError::TurnDataMissing {
+            .ok_or_else(|| FromProtobufError::MessageDataMissing {
                 missing_field: "second".to_string(),
             })?;
         let turn_data = TurnData::new(

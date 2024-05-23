@@ -4,9 +4,8 @@ use std::collections::HashMap;
 
 use bevy::asset::Handle;
 use bevy::prelude::{Component, Image, Resource};
-use game_server::game::game::{FinishedState, GameState};
-
-use crate::grpc::proto;
+use game_server::game::game::{FromProtobufError, GameState};
+use game_server::proto;
 
 #[derive(Clone, Copy, Debug, Component)]
 pub struct GameCellPosition {
@@ -50,23 +49,13 @@ impl TryFrom<proto::GameInfo> for GameInfo {
     fn try_from(value: proto::GameInfo) -> Result<Self, error::GameError> {
         let state = value
             .game_state
-            .ok_or(error::GameError::InvalidProtobufMessage {
-                reason: "missing game_state".to_string(),
+            .ok_or(FromProtobufError::MessageDataMissing {
+                missing_field: "game_state".to_string(),
             })?;
-        let state = match (state.next_player_id, state.winner) {
-            (Some(next), None) => GameState::Turn(next),
-            (None, Some(winner)) => GameState::Finished(FinishedState::Win(winner)),
-            (None, None) => GameState::Finished(FinishedState::Draw),
-            _ => {
-                return Err(error::GameError::InvalidProtobufMessage {
-                    reason: "invalid game_state".to_string(),
-                })
-            }
-        };
         Ok(Self {
             id: value.game_id,
             players: value.players,
-            state,
+            state: state.try_into()?,
         })
     }
 }

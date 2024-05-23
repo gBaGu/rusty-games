@@ -5,14 +5,11 @@ use async_compat::CompatExt;
 use bevy::prelude::{Component, Deref, DerefMut, Res, ResMut, Resource, TimerMode};
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
 use bevy::time::{Time, Timer};
+use game_server::proto;
 use game_server::rpc_server::rpc::RpcResult;
 use prost::Message;
 use tonic::transport;
 use tonic::Request;
-
-pub mod proto {
-    tonic::include_proto!("game");
-}
 
 pub const DEFAULT_GRPC_SERVER_ADDRESS: &str = "http://localhost:50051";
 pub const RECONNECT_INTERVAL_SEC: f32 = 5.0;

@@ -129,7 +129,7 @@ fn update<T: Game>(
         .get_mut(&id)
         .ok_or(GameStorageError::NoSuchGame { id })?;
     let game_state = game.update(player, turn_data)?;
-    Ok(proto::GameState::from_game_state(game_state))
+    Ok(game_state.into())
 }
 
 fn delete<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult<()> {
@@ -161,7 +161,7 @@ fn get_player_games<T: Game>(
                 return Some(proto::GameInfo {
                     game_id: *id,
                     players: player_ids,
-                    game_state: Some(proto::GameState::from_game_state(game.state())),
+                    game_state: Some(game.state().into()),
                 });
             }
             None

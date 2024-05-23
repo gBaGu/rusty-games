@@ -1,7 +1,8 @@
 use bevy::utils::thiserror;
+use game_server::game::game::FromProtobufError;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum GameError {
-    #[error("protobuf message received from server is invalid: {reason}")]
-    InvalidProtobufMessage { reason: String },
+    #[error(transparent)]
+    MessageDataConversion(#[from] FromProtobufError),
 }

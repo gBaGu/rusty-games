@@ -22,7 +22,7 @@ use bevy::ui::widget::Button;
 use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, Val};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
-use game_server::game::game::{FinishedState, GameState};
+use game_server::game::game::GameState;
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::game::{CurrentGame, GameCellPosition, GameInfo};
@@ -716,15 +716,13 @@ fn handle_make_turn_task(
                             });
                         }
                         play_sound(&mut commands, &asset_server, TURN_SOUND_PATH);
-                        // TODO: move state conversion into some method
-                        let state = if let Some(next) = new_state.next_player_id {
-                            GameState::Turn(next)
-                        } else if let Some(winner) = new_state.winner {
-                            GameState::Finished(FinishedState::Win(winner))
-                        } else {
-                            GameState::Finished(FinishedState::Draw)
-                        };
-                        game.set_state(state);
+                        let state = new_state.try_into();
+                        match state {
+                            Ok(state) => game.set_state(state),
+                            Err(err) => {
+                                println!("failed to convert game state: {}", err);
+                            }
+                        }
                     } else {
                         println!("MakeTurn returned empty response");
                         play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
