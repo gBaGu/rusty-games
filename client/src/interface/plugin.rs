@@ -11,7 +11,7 @@ use bevy::ecs::query::{Changed, With};
 use bevy::ecs::schedule::common_conditions::in_state;
 use bevy::ecs::schedule::{IntoSystemConfigs, NextState, OnEnter, OnExit, State};
 use bevy::ecs::system::{Commands, Query};
-use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
+use bevy::hierarchy::{BuildChildren, Children, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
 use bevy::prelude::{Deref, DerefMut, Resource, Time, TimerMode, Without};
 use bevy::render::color::Color;
@@ -22,22 +22,23 @@ use bevy::ui::widget::Button;
 use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, Val};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
-use game_server::game::game::GameState;
+use game_server::game::game::{FinishedState, GameState};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::game::{CurrentGame, GameInfo};
-use crate::grpc::{CallCreateGame, CallGetPlayerGames, GrpcClient};
+use crate::game::{CurrentGame, GameCellPosition, GameInfo};
+use crate::grpc::{CallCreateGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
-    spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
+    spawn_exit_button, spawn_game_cell_button_bundle, spawn_join_game_button_bundle,
+    spawn_menu_navigation_button, JoinGame,
 };
 use crate::interface::common::button_bundle::{
     menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
 use crate::interface::common::{
-    column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
-    menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
+    column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style,
+    menu_text_bundle, menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
     tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
-    GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH,
+    GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
 };
 use crate::interface::components::AssociatedTextInput;
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
@@ -100,7 +101,9 @@ impl Plugin for InterfacePlugin {
                     settings_submit::<u64>.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (refresh_game_list, handle_player_games_task, join_game)
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
+                    make_turn.run_if(in_state(AppState::Game)),
                     handle_create_game_task,
+                    handle_make_turn_task,
                 ),
             );
     }
@@ -435,11 +438,7 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn setup_game(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    game: Option<Res<CurrentGame>>,
-) {
+fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<CurrentGame>) {
     let text_style = menu_text_style(&asset_server);
 
     commands
@@ -447,49 +446,83 @@ fn setup_game(
         .with_children(|parent| {
             parent.spawn(row_node_bundle()).with_children(|parent| {
                 parent.spawn(menu_text_bundle("Next:", text_style.clone()));
-                if let Some(sprite) = game.as_ref().and_then(|game| game.get_next_player_image()) {
+                if let Some(sprite) = game.get_next_player_image() {
                     parent.spawn(square_ui_image(sprite.clone(), Val::Px(50.0)));
                 }
             });
             parent
                 .spawn(tic_tac_toe_grid_node_bundle())
                 .with_children(|parent| {
-                    for odd in [1i16, 3, 5] {
-                        for even in [2i16, 4] {
-                            // vertical borders
-                            parent.spawn(NodeBundle {
-                                style: Style {
-                                    display: Display::Grid,
-                                    grid_column: GridPlacement::start(even),
-                                    grid_row: GridPlacement::start(odd),
-                                    width: Val::Px(1.0),
+                    for i in 1i16..=5 {
+                        for j in 1i16..=5 {
+                            let i_is_odd = i % 2 != 0;
+                            let j_is_odd = j % 2 != 0;
+                            if i_is_odd && j_is_odd {
+                                // spawn game buttons
+                                let position =
+                                    GameCellPosition::new((i / 2) as u32, (j / 2) as u32);
+                                let style = game_button_style(i, j);
+                                spawn_game_cell_button_bundle(parent, style, position);
+                            }
+                            if i_is_odd && !j_is_odd {
+                                // vertical borders
+                                parent.spawn(NodeBundle {
+                                    style: Style {
+                                        display: Display::Grid,
+                                        grid_column: GridPlacement::start(j),
+                                        grid_row: GridPlacement::start(i),
+                                        width: Val::Px(1.0),
+                                        ..default()
+                                    },
+                                    background_color: BackgroundColor(Color::BLACK),
                                     ..default()
-                                },
-                                background_color: BackgroundColor(Color::BLACK),
-                                ..default()
-                            });
-                            // horizontal borders
-                            parent.spawn(NodeBundle {
-                                style: Style {
-                                    display: Display::Grid,
-                                    grid_column: GridPlacement::start(odd),
-                                    grid_row: GridPlacement::start(even),
-                                    height: Val::Px(1.0),
+                                });
+                                // horizontal borders
+                                parent.spawn(NodeBundle {
+                                    style: Style {
+                                        display: Display::Grid,
+                                        grid_column: GridPlacement::start(i),
+                                        grid_row: GridPlacement::start(j),
+                                        height: Val::Px(1.0),
+                                        ..default()
+                                    },
+                                    background_color: BackgroundColor(Color::BLACK),
                                     ..default()
-                                },
-                                background_color: BackgroundColor(Color::BLACK),
-                                ..default()
-                            });
+                                });
+                            }
                         }
                     }
                 });
         });
 }
 
+fn make_turn(
+    game_cell: Query<
+        (Entity, &Interaction, &GameCellPosition),
+        (With<Button>, Without<Children>, Changed<Interaction>),
+    >,
+    mut commands: Commands,
+    game: Res<CurrentGame>,
+    asset_server: Res<AssetServer>,
+    client: ResMut<GrpcClient>,
+) {
+    if let Some((entity, _, &pos)) = game_cell
+        .iter()
+        .find(|(_, &i, _)| i == Interaction::Pressed)
+    {
+        if let Some(task) = client.make_turn(game.id(), game.user_id(), pos) {
+            commands.entity(entity).insert(CallMakeTurn(task));
+        } else {
+            println!("grpc server is down");
+            play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+        }
+    }
+}
+
 fn refresh_game_list(
+    game_lists: Query<Entity, (With<GameList>, Without<CallGetPlayerGames>)>,
     mut commands: Commands,
     mut timer: ResMut<RefreshGamesTimer>,
-    game_lists: Query<Entity, (With<GameList>, Without<CallGetPlayerGames>)>,
     client: ResMut<GrpcClient>,
     asset_server: Res<AssetServer>,
     settings: Res<Settings>,
@@ -523,15 +556,16 @@ fn refresh_game_list(
 }
 
 fn handle_player_games_task(
+    mut game_lists: Query<(Entity, &mut GameList, &mut CallGetPlayerGames)>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut game_lists: Query<(Entity, &mut GameList, &mut CallGetPlayerGames)>,
 ) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
     for (entity, mut list, mut task) in game_lists.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
+            commands.entity(entity).remove::<CallGetPlayerGames>();
             match res {
                 Ok(response) => {
                     let games: Result<Vec<GameInfo>, _> = response
@@ -546,7 +580,6 @@ fn handle_player_games_task(
                             commands
                                 .entity(entity)
                                 .despawn_descendants()
-                                .remove::<CallGetPlayerGames>()
                                 .with_children(|parent| {
                                     if games.is_empty() {
                                         parent.spawn(menu_text_bundle(
@@ -590,8 +623,7 @@ fn handle_player_games_task(
                                         &format!("Server error: {}", err),
                                         text_style.clone(),
                                     ));
-                                })
-                                .remove::<CallGetPlayerGames>();
+                                });
                         }
                     }
                 }
@@ -604,8 +636,7 @@ fn handle_player_games_task(
                                 &format!("Server error: {}", err.code().description()),
                                 text_style.clone(),
                             ));
-                        })
-                        .remove::<CallGetPlayerGames>();
+                        });
                 }
             }
         }
@@ -613,13 +644,14 @@ fn handle_player_games_task(
 }
 
 fn handle_create_game_task(
+    mut create_game: Query<(Entity, &mut CallCreateGame, &GameInfo)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     asset_server: Res<AssetServer>,
-    mut create_game: Query<(Entity, &mut CallCreateGame, &GameInfo)>,
 ) {
     for (entity, mut task, game) in create_game.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
+            commands.entity(entity).despawn();
             match res {
                 Ok(response) => {
                     let game_id = response.into_inner().game_id;
@@ -649,7 +681,60 @@ fn handle_create_game_task(
                     play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
                 }
             };
-            commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn handle_make_turn_task(
+    mut make_turn: Query<(Entity, &mut CallMakeTurn)>,
+    mut commands: Commands,
+    mut game: Option<ResMut<CurrentGame>>,
+    asset_server: Res<AssetServer>,
+) {
+    for (entity, mut task) in make_turn.iter_mut() {
+        if let Some(res) = block_on(future::poll_once(&mut task.0)) {
+            commands.entity(entity).remove::<CallMakeTurn>();
+            let game = match &mut game {
+                Some(game) => game,
+                None => {
+                    println!("no current game, dropping MakeTurn response");
+                    continue;
+                }
+            };
+            match res {
+                Ok(response) => {
+                    if let Some(next) = game.get_next_player() {
+                        if next != game.user_id() {
+                            println!("state is already updated, skip handling MakeTurn response");
+                            continue;
+                        }
+                    }
+                    if let Some(new_state) = response.into_inner().game_state {
+                        if let Some(image) = game.get_player_image(&game.user_id()) {
+                            commands.entity(entity).with_children(|parent| {
+                                parent.spawn(square_ui_image(image.clone(), Val::Percent(100.0)));
+                            });
+                        }
+                        play_sound(&mut commands, &asset_server, TURN_SOUND_PATH);
+                        // TODO: move state conversion into some method
+                        let state = if let Some(next) = new_state.next_player_id {
+                            GameState::Turn(next)
+                        } else if let Some(winner) = new_state.winner {
+                            GameState::Finished(FinishedState::Win(winner))
+                        } else {
+                            GameState::Finished(FinishedState::Draw)
+                        };
+                        game.set_state(state);
+                    } else {
+                        println!("MakeTurn returned empty response");
+                        play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                    }
+                }
+                Err(err) => {
+                    println!("MakeTurn request failed: {}", err);
+                    play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                }
+            }
         }
     }
 }

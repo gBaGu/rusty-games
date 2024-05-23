@@ -1,10 +1,12 @@
 use bevy::hierarchy::{BuildChildren, ChildBuilder};
-use bevy::prelude::{default, Bundle, ButtonBundle, TextBundle, UiImage, Component, Deref};
+use bevy::prelude::{
+    default, BackgroundColor, Bundle, ButtonBundle, Color, Component, Deref, TextBundle, UiImage,
+};
 use bevy::text::TextStyle;
 use bevy::ui::Style;
 
 use crate::app_state::{AppState, AppStateTransition};
-use crate::game::GameInfo;
+use crate::game::{GameCellPosition, GameInfo};
 
 #[derive(Clone, Debug, Deref, Component)]
 pub struct JoinGame(pub GameInfo);
@@ -19,6 +21,12 @@ pub struct MenuNavigationButtonBundle {
 pub struct JoinGameButtonBundle {
     button: ButtonBundle,
     join: JoinGame,
+}
+
+#[derive(Bundle)]
+pub struct GameCellButtonBundle {
+    button: ButtonBundle,
+    position: GameCellPosition,
 }
 
 pub fn spawn_exit_button(
@@ -80,5 +88,22 @@ pub fn spawn_join_game_button_bundle(
         })
         .with_children(|parent| {
             parent.spawn(TextBundle::from_section(text, text_style));
+        });
+}
+
+pub fn spawn_game_cell_button_bundle(
+    builder: &mut ChildBuilder,
+    style: Style,
+    position: GameCellPosition,
+) {
+    builder
+        .spawn(GameCellButtonBundle {
+            button: ButtonBundle {
+                style,
+                background_color: BackgroundColor(Color::YELLOW_GREEN),
+                image: UiImage::default(),
+                ..default()
+            },
+            position,
         });
 }

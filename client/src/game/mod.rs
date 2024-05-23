@@ -8,6 +8,35 @@ use game_server::game::game::{FinishedState, GameState};
 
 use crate::grpc::proto;
 
+#[derive(Clone, Copy, Debug, Component)]
+pub struct GameCellPosition {
+    row: u32,
+    col: u32,
+}
+
+impl GameCellPosition {
+    pub fn new(row: u32, col: u32) -> Self {
+        Self { row, col }
+    }
+
+    pub fn row(&self) -> u32 {
+        self.row
+    }
+
+    pub fn col(&self) -> u32 {
+        self.col
+    }
+}
+
+impl From<GameCellPosition> for proto::Position {
+    fn from(value: GameCellPosition) -> Self {
+        Self {
+            row: value.row,
+            col: value.col,
+        }
+    }
+}
+
 #[derive(Clone, Component, Debug)]
 pub struct GameInfo {
     pub id: u64,
@@ -60,8 +89,19 @@ impl CurrentGame {
         }
     }
 
-    pub fn get_player_image(&self, id: &u64) -> Option<&Handle<Image>> {
-        self.images.get(id)
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn user_id(&self) -> u64 {
+        self.user_id
+    }
+
+    pub fn get_next_player(&self) -> Option<u64> {
+        if let GameState::Turn(id) = self.state {
+            return Some(id);
+        }
+        None
     }
 
     pub fn get_next_player_image(&self) -> Option<&Handle<Image>> {
@@ -69,5 +109,13 @@ impl CurrentGame {
             return self.get_player_image(&id);
         }
         None
+    }
+
+    pub fn get_player_image(&self, id: &u64) -> Option<&Handle<Image>> {
+        self.images.get(id)
+    }
+
+    pub fn set_state(&mut self, state: GameState) {
+        self.state = state;
     }
 }

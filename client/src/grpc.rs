@@ -1,10 +1,12 @@
 use std::time::Duration;
 
+use crate::game::GameCellPosition;
 use async_compat::CompatExt;
 use bevy::prelude::{Component, Deref, DerefMut, Res, ResMut, Resource, TimerMode};
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
 use bevy::time::{Time, Timer};
 use game_server::rpc_server::rpc::RpcResult;
+use prost::Message;
 use tonic::transport;
 use tonic::Request;
 
@@ -49,6 +51,27 @@ impl GrpcClient {
         Some(task)
     }
 
+    pub fn make_turn(
+        &self,
+        game_id: u64,
+        player_id: u64,
+        pos: GameCellPosition,
+    ) -> Option<Task<RpcResult<proto::MakeTurnReply>>> {
+        let mut client = self.inner.as_ref().cloned()?;
+        let position: proto::Position = pos.into();
+        let task = IoTaskPool::get().spawn(async move {
+            client
+                .make_turn(Request::new(proto::MakeTurnRequest {
+                    game_type: proto::GameType::TicTacToe.into(),
+                    game_id,
+                    player_id,
+                    turn_data: position.encode_to_vec(),
+                }))
+                .await
+        });
+        Some(task)
+    }
+
     pub fn load_player_games(
         &self,
         player_id: u64,
@@ -80,6 +103,10 @@ impl Default for ReconnectTimer {
 /// Task component for creating game over grpc
 #[derive(Component, Deref)]
 pub struct CallCreateGame(pub Task<RpcResult<proto::CreateGameReply>>);
+
+/// Task component for updating game over grpc
+#[derive(Component, Deref)]
+pub struct CallMakeTurn(pub Task<RpcResult<proto::MakeTurnReply>>);
 
 /// Task component for loading player games over grpc
 #[derive(Component, Deref)]
