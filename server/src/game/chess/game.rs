@@ -135,6 +135,7 @@ pub struct Chess {
 impl Game for Chess {
     type TurnData = TurnData;
     type Players = PlayerPool<Player>;
+    type Board = Grid<Cell, Row, Col>;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
         let [id1, id2]: [_; 2] = players
@@ -221,6 +222,10 @@ impl Game for Chess {
         self.move_piece(data.from, data.to)?;
 
         self.update_state()
+    }
+
+    fn board(&self) -> &Self::Board {
+        &self.board
     }
 
     fn players(&self) -> &Self::Players {

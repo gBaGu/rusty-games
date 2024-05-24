@@ -180,6 +180,7 @@ impl FromProtobuf for Index {
 impl Game for TicTacToe {
     type TurnData = Index;
     type Players = PlayerPool<Player>;
+    type Board = Grid<Cell, FieldRow, FieldCol>;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
         let [id1, id2]: [_; 2] = players
@@ -216,6 +217,10 @@ impl Game for TicTacToe {
         *cell = Some(sign);
 
         self.update_state()
+    }
+
+    fn board(&self) -> &Self::Board {
+        &self.field
     }
 
     fn players(&self) -> &Self::Players {

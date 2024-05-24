@@ -1,6 +1,7 @@
 use std::num::TryFromIntError;
 
 use crate::game::error::GameError;
+use crate::game::grid::{Grid, WithLength};
 use crate::game::player_pool::{PlayerId, PlayerQueue, WithPlayerId};
 
 pub type GameResult<T> = Result<T, GameError>;
@@ -55,12 +56,30 @@ impl TryFrom<crate::proto::GameState> for GameState {
     }
 }
 
+pub trait GameBoard {
+    type Item;
+    fn get_content(&self) -> Vec<Vec<Self::Item>>;
+}
+
+impl<T: Clone, Row: WithLength, Col: WithLength> GameBoard for Grid<T, Row, Col> {
+    type Item = T;
+
+    fn get_content(&self) -> Vec<Vec<Self::Item>> {
+        self.iter()
+            .map(|row| row.iter().cloned().collect())
+            .collect()
+    }
+}
+
 pub trait Game: Sized {
     type TurnData: FromProtobuf;
     type Players: PlayerQueue;
+    type Board: GameBoard;
 
     fn new(players: &[PlayerId]) -> GameResult<Self>;
     fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState>;
+
+    fn board(&self) -> &Self::Board;
 
     fn players(&self) -> &Self::Players;
     fn players_mut(&mut self) -> &mut Self::Players;
@@ -80,6 +99,10 @@ pub trait Game: Sized {
     fn set_winner(&mut self, id: PlayerId) -> GameState {
         self.set_state(GameState::Finished(FinishedState::Win(id)));
         self.state()
+    }
+
+    fn get_board_content(&self) -> Vec<Vec<<Self::Board as GameBoard>::Item>> {
+        self.board().get_content()
     }
 
     fn get_current_player(&mut self) -> GameResult<&<Self::Players as PlayerQueue>::Item> {
