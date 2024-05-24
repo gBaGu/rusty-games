@@ -11,6 +11,7 @@ use bevy::utils::default;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
+use crate::interface::components::NextPlayerImage;
 
 pub const X_SPRITE_PATH: &str = "sprites/X.png";
 pub const O_SPRITE_PATH: &str = "sprites/O.png";
@@ -133,6 +134,23 @@ pub fn tic_tac_toe_grid_node_bundle() -> NodeBundle {
 }
 
 // Image
+
+pub fn next_player_image(image: Handle<Image>, size: Val) -> impl Bundle {
+    (
+        NodeBundle {
+            style: Style {
+                width: size,
+                height: size,
+                margin: UiRect::all(Val::Px(10.0)),
+                ..default()
+            },
+            background_color: BackgroundColor(Color::WHITE),
+            ..default()
+        },
+        UiImage::new(image),
+        NextPlayerImage,
+    )
+}
 
 pub fn square_ui_image(image: Handle<Image>, size: Val) -> impl Bundle {
     (
