@@ -36,9 +36,10 @@ use crate::interface::common::button_bundle::{
 };
 use crate::interface::common::{
     column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style,
-    menu_text_bundle, menu_text_input_bundle, menu_text_style, next_player_image, row_node_bundle,
-    square_ui_image, tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
-    GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
+    menu_text_bundle, menu_text_input_bundle, menu_text_style, next_player_image,
+    overlapping_flex_node_bundle, row_node_bundle, square_ui_image, tic_tac_toe_grid_node_bundle,
+    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH,
+    TURN_SOUND_PATH, X_SPRITE_PATH,
 };
 use crate::interface::components::{AssociatedTextInput, NextPlayerImage};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
@@ -75,11 +76,18 @@ struct NextTurn(u64);
 #[derive(Debug, Deref, Event)]
 struct GameOver(FinishedState);
 
+// TODO: replace with actual game with bot
+#[derive(Debug, Event)]
+struct MockBotGame {
+    user_id: u64,
+}
+
 pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(TextInputPlugin)
+            .add_event::<MockBotGame>()
             .add_event::<TurnSuccess>()
             .add_event::<NextTurn>()
             .add_event::<GameOver>()
@@ -117,14 +125,17 @@ impl Plugin for InterfacePlugin {
                     (refresh_game_list, handle_player_games_task, join_game)
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task,
+                    handle_make_turn_task,
                     (
                         make_turn,
-                        handle_make_turn_task,
                         handle_turn_success,
-                        handle_next_turn,
-                        handle_game_over,
+                        handle_next_turn.after(handle_turn_success),
+                        handle_game_over.after(handle_turn_success),
                     )
                         .run_if(in_state(AppState::Game).and_then(resource_exists::<CurrentGame>)),
+                    create_mock_bot_game
+                        .after(state_transition)
+                        .run_if(in_state(AppState::Menu(MenuState::PlayWithBot))),
                 ),
             );
     }
@@ -143,6 +154,7 @@ fn state_transition(
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     mut exit: EventWriter<AppExit>,
+    mut mock_bot_game: EventWriter<MockBotGame>,
     app_state: Res<State<AppState>>,
     settings: Res<Settings>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -183,6 +195,16 @@ fn state_transition(
                             play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
                         }
                     }
+                } else if *app_state.get() == AppState::Menu(MenuState::PlayWithBot)
+                    && new_state == AppState::Game
+                {
+                    if let Some(user_id) = settings.user_id() {
+                        mock_bot_game.send(MockBotGame { user_id });
+                        println!("state transition: {:?}", new_state);
+                        next_app_state.set(new_state);
+                    } else {
+                        play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                    }
                 } else {
                     // regular state transition
                     println!("state transition: {:?}", new_state);
@@ -193,6 +215,29 @@ fn state_transition(
                 exit.send(AppExit);
             }
         }
+    }
+}
+
+fn create_mock_bot_game(
+    mut commands: Commands,
+    mut game_over: EventWriter<GameOver>,
+    mut mock_bot_game: EventReader<MockBotGame>,
+    asset_server: Res<AssetServer>,
+) {
+    if let Some(&MockBotGame { user_id }) = mock_bot_game.read().last() {
+        let x_img = asset_server.load(X_SPRITE_PATH);
+        let o_img = asset_server.load(O_SPRITE_PATH);
+        commands.insert_resource(CurrentGame::new(
+            user_id,
+            GameInfo {
+                id: 0,
+                state: GameState::Finished(FinishedState::Draw),
+                players: vec![user_id],
+            },
+            x_img,
+            o_img,
+        ));
+        game_over.send(GameOver(FinishedState::Draw));
     }
 }
 
@@ -788,14 +833,12 @@ fn handle_turn_success(
 fn handle_next_turn(
     mut next_player_image: Query<&mut UiImage, With<NextPlayerImage>>,
     mut next_turn: EventReader<NextTurn>,
-    game: Option<Res<CurrentGame>>,
+    game: Res<CurrentGame>,
 ) {
     if let Some(event) = next_turn.read().last() {
-        if let Some(game) = game {
-            if let Some(&ref next_image) = game.get_player_image(event) {
-                if let Ok(mut image) = next_player_image.get_single_mut() {
-                    *image = UiImage::new(next_image.clone());
-                }
+        if let Some(&ref next_image) = game.get_player_image(event) {
+            if let Ok(mut image) = next_player_image.get_single_mut() {
+                *image = UiImage::new(next_image.clone());
             }
         }
     }
@@ -821,19 +864,21 @@ fn handle_game_over(
             FinishedState::Draw => "It's a draw!",
         };
         commands
-            .spawn(global_column_node_bundle())
+            .spawn(overlapping_flex_node_bundle())
             .with_children(|parent| {
-                parent.spawn(menu_text_bundle(
-                    &format!("Game over. {}", text),
-                    text_style.clone(),
-                ));
-                spawn_menu_navigation_button(
-                    parent,
-                    style,
-                    text_style,
-                    "Main menu",
-                    AppState::Menu(MenuState::Main),
-                );
+                parent.spawn(column_node_bundle()).with_children(|parent| {
+                    parent.spawn(menu_text_bundle(
+                        &format!("Game over. {}", text),
+                        text_style.clone(),
+                    ));
+                    spawn_menu_navigation_button(
+                        parent,
+                        style,
+                        text_style,
+                        "Main menu",
+                        AppState::Menu(MenuState::Main),
+                    );
+                });
             });
     }
 }

@@ -1,5 +1,6 @@
 use bevy::asset::{AssetServer, Handle};
 use bevy::ecs::bundle::Bundle;
+use bevy::prelude::Display::Flex;
 use bevy::render::{color::Color, texture::Image};
 use bevy::text::TextStyle;
 use bevy::ui::node_bundles::{ButtonBundle, NodeBundle, TextBundle};
@@ -101,6 +102,21 @@ pub fn row_node_bundle() -> NodeBundle {
     }
 }
 
+pub fn overlapping_flex_node_bundle() -> NodeBundle {
+    NodeBundle {
+        style: Style {
+            display: Flex,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            height: Val::Percent(100.0),
+            width: Val::Percent(100.0),
+            ..default()
+        },
+        background_color: BackgroundColor(Color::DARK_GRAY.with_a(0.95)),
+        ..default()
+    }
+}
+
 pub fn tic_tac_toe_grid_node_bundle() -> NodeBundle {
     NodeBundle {
         style: Style {
@@ -191,17 +207,6 @@ pub mod button_bundle {
     use crate::interface::components::AssociatedTextInput;
     use crate::settings::{Settings, SubmitTextInputSetting};
     use bevy::prelude::Entity;
-
-    pub fn exit(style: Style) -> impl Bundle {
-        (
-            ButtonBundle {
-                style,
-                image: UiImage::default(),
-                ..default()
-            },
-            AppStateTransition(None),
-        )
-    }
 
     pub fn menu_navigation(style: Style, new_state: AppState) -> impl Bundle {
         (
