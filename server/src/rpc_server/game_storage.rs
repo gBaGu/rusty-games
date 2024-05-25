@@ -162,7 +162,7 @@ fn get_game<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult
     let board = game
         .board()
         .get_content()
-        .iter()
+        .into_iter()
         .flatten()
         .map(|item| item.to_protobuf())
         .collect();

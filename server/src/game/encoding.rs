@@ -1,7 +1,7 @@
 use std::num::TryFromIntError;
 use prost::Message;
-use crate::game::game::BoardCell;
 
+use crate::game::game::BoardCell;
 use crate::proto::Maybe;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
@@ -25,20 +25,21 @@ pub trait FromProtobuf: Sized {
 }
 
 pub trait ToProtobuf {
-    fn to_protobuf(&self) -> Vec<u8>;
+    fn to_protobuf(self) -> Vec<u8>;
 }
 
 impl<T: prost::Message> ToProtobuf for T {
-    fn to_protobuf(&self) -> Vec<u8> {
+    fn to_protobuf(self) -> Vec<u8> {
         self.encode_to_vec()
     }
 }
 
 impl<T: ToProtobuf> ToProtobuf for BoardCell<T> {
-    fn to_protobuf(&self) -> Vec<u8> {
-        let item = self.as_ref().and_then(|val| {
-            Some(val.to_protobuf())
-        });
-        Maybe { item }.encode_to_vec()
+    fn to_protobuf(self) -> Vec<u8> {
+        let mut maybe = Maybe::default();
+        if let BoardCell(Some(val)) = self {
+            maybe.item = Some(val.to_protobuf());
+        }
+        maybe.encode_to_vec()
     }
 }

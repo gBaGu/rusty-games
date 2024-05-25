@@ -1,4 +1,5 @@
 mod index;
 mod turn_data;
-mod types;
-pub(crate) mod game;
+
+pub mod game;
+pub mod types;
