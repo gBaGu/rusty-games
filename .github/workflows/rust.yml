@@ -16,6 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Installing dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y -qq libasound2-dev libssl-dev libpulse-dev libdbus-1-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
