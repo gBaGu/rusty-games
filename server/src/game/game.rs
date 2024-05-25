@@ -1,4 +1,5 @@
 use std::ops::{Deref, DerefMut};
+
 use crate::game::encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
 use crate::game::error::GameError;
 use crate::game::grid::{Grid, WithLength};

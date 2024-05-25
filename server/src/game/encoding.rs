@@ -1,5 +1,5 @@
-use std::num::TryFromIntError;
 use prost::Message;
+use std::num::TryFromIntError;
 
 use crate::game::game::BoardCell;
 use crate::proto::Maybe;
