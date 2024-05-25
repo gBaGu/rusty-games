@@ -4,8 +4,10 @@ use std::collections::HashMap;
 
 use bevy::asset::Handle;
 use bevy::prelude::{Component, Image, Resource};
-use game_server::game::game::{FromProtobufError, GameState};
+use game_server::game::game::GameState;
+use game_server::game::encoding::FromProtobufError;
 use game_server::proto;
+use prost::Message;
 
 #[derive(Clone, Copy, Debug, Component)]
 pub struct GameCellPosition {
@@ -44,9 +46,9 @@ pub struct GameInfo {
 }
 
 impl TryFrom<proto::GameInfo> for GameInfo {
-    type Error = error::GameError;
+    type Error = FromProtobufError;
 
-    fn try_from(value: proto::GameInfo) -> Result<Self, error::GameError> {
+    fn try_from(value: proto::GameInfo) -> Result<Self, Self::Error> {
         let state = value
             .game_state
             .ok_or(FromProtobufError::MessageDataMissing {
@@ -57,6 +59,46 @@ impl TryFrom<proto::GameInfo> for GameInfo {
             players: value.players,
             state: state.try_into()?,
         })
+    }
+}
+
+pub struct FullGameInto {
+    pub info: GameInfo,
+    pub board: Vec<Vec<u64>>,
+}
+
+impl TryFrom<proto::GameInfo> for FullGameInto {
+    type Error = FromProtobufError;
+
+    fn try_from(value: proto::GameInfo) -> Result<Self, Self::Error> {
+        let mut full_info = Self {
+            info: GameInfo::try_from(value.clone())?,
+            board: Vec::<Vec<u64>>::with_capacity(3),
+        };
+        if value.board.is_empty() {
+            return Err(FromProtobufError::MessageDataMissing {
+                missing_field: "board".to_string(),
+            });
+        }
+        for row in value.board.chunks(3) {
+            let row: Vec<_> = row
+                .iter()
+                .map(|val| u64::decode(val.as_slice()))
+                .collect::<Result<_, _>>()?;
+            if row.len() != 3 {
+                return Err(FromProtobufError::InvalidProtobufMessage {
+                    reason: format!("invalid board length: expected=9, found={}", value.board.len())
+                });
+            }
+            full_info.board.push(row);
+        }
+        if full_info.board.len() != 3 {
+            return Err(FromProtobufError::InvalidProtobufMessage {
+                reason: format!("invalid board length: expected=9, found={}", value.board.len())
+            });
+        }
+
+        Ok(full_info)
     }
 }
 

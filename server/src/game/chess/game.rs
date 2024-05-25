@@ -6,11 +6,11 @@ use crate::game::chess::index::{Col, Index, Row};
 use crate::game::chess::turn_data::TurnData;
 use crate::game::chess::types::{MoveType, Piece, PieceKind, Team};
 use crate::game::error::GameError;
-use crate::game::game::{Game, GameResult, GameState};
+use crate::game::game::{BoardCell, Game, GameResult, GameState};
 use crate::game::grid::{Grid, WithGridIndex, WithLength};
 use crate::game::player_pool::{PlayerId, PlayerPool, PlayerQueue, WithPlayerId};
 
-type Cell = Option<Piece>;
+type Cell = BoardCell<Piece>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
@@ -34,32 +34,32 @@ fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, Row, Col> {
     let mut board = Grid::default();
     // init pawns
     for i in 0..=Col::max().0 {
-        *board.get_mut_ref(Index::new(Row::max() - 1, Col(i))) = Some(Piece::create_pawn(player1));
-        *board.get_mut_ref(Index::new(Row(1), Col(i))) = Some(Piece::create_pawn(player2));
+        *board.get_mut_ref(Index::new(Row::max() - 1, Col(i))) = Piece::create_pawn(player1).into();
+        *board.get_mut_ref(Index::new(Row(1), Col(i))) = Piece::create_pawn(player2).into();
     }
     // init rooks
-    *board.get_mut_ref(Index::new(Row::max(), Col(0))) = Some(Piece::create_rook(player1));
-    *board.get_mut_ref(Index::new(Row::max(), Col::max())) = Some(Piece::create_rook(player1));
-    *board.get_mut_ref(Index::new(Row(0), Col(0))) = Some(Piece::create_rook(player2));
-    *board.get_mut_ref(Index::new(Row(0), Col::max())) = Some(Piece::create_rook(player2));
+    *board.get_mut_ref(Index::new(Row::max(), Col(0))) = Piece::create_rook(player1).into();
+    *board.get_mut_ref(Index::new(Row::max(), Col::max())) = Piece::create_rook(player1).into();
+    *board.get_mut_ref(Index::new(Row(0), Col(0))) = Piece::create_rook(player2).into();
+    *board.get_mut_ref(Index::new(Row(0), Col::max())) = Piece::create_rook(player2).into();
     // init knights
-    *board.get_mut_ref(Index::new(Row::max(), Col(1))) = Some(Piece::create_knight(player1));
+    *board.get_mut_ref(Index::new(Row::max(), Col(1))) = Piece::create_knight(player1).into();
     *board.get_mut_ref(Index::new(Row::max(), Col::max() - 1)) =
-        Some(Piece::create_knight(player1));
-    *board.get_mut_ref(Index::new(Row(0), Col(1))) = Some(Piece::create_knight(player2));
-    *board.get_mut_ref(Index::new(Row(0), Col::max() - 1)) = Some(Piece::create_knight(player2));
+        Piece::create_knight(player1).into();
+    *board.get_mut_ref(Index::new(Row(0), Col(1))) = Piece::create_knight(player2).into();
+    *board.get_mut_ref(Index::new(Row(0), Col::max() - 1)) = Piece::create_knight(player2).into();
     // init bishops
-    *board.get_mut_ref(Index::new(Row::max(), Col(2))) = Some(Piece::create_bishop(player1));
+    *board.get_mut_ref(Index::new(Row::max(), Col(2))) = Piece::create_bishop(player1).into();
     *board.get_mut_ref(Index::new(Row::max(), Col::max() - 2)) =
-        Some(Piece::create_bishop(player1));
-    *board.get_mut_ref(Index::new(Row(0), Col(2))) = Some(Piece::create_bishop(player2));
-    *board.get_mut_ref(Index::new(Row(0), Col::max() - 2)) = Some(Piece::create_bishop(player2));
+        Piece::create_bishop(player1).into();
+    *board.get_mut_ref(Index::new(Row(0), Col(2))) = Piece::create_bishop(player2).into();
+    *board.get_mut_ref(Index::new(Row(0), Col::max() - 2)) = Piece::create_bishop(player2).into();
     // init queens
-    *board.get_mut_ref(Index::new(Row::max(), Col(3))) = Some(Piece::create_queen(player1));
-    *board.get_mut_ref(Index::new(Row(0), Col(3))) = Some(Piece::create_queen(player2));
+    *board.get_mut_ref(Index::new(Row::max(), Col(3))) = Piece::create_queen(player1).into();
+    *board.get_mut_ref(Index::new(Row(0), Col(3))) = Piece::create_queen(player2).into();
     // init kings
-    *board.get_mut_ref(Index::new(Row::max(), Col(4))) = Some(Piece::create_king(player1));
-    *board.get_mut_ref(Index::new(Row(0), Col(4))) = Some(Piece::create_king(player2));
+    *board.get_mut_ref(Index::new(Row::max(), Col(4))) = Piece::create_king(player1).into();
+    *board.get_mut_ref(Index::new(Row(0), Col(4))) = Piece::create_king(player2).into();
 
     board
 }
@@ -297,7 +297,7 @@ impl Chess {
                 from.row().into(),
                 from.col().into(),
             ))?;
-        let old_to = std::mem::replace(self.get_cell_mut(to), Some(piece));
+        let old_to = std::mem::replace(self.get_cell_mut(to), piece.into());
         Ok(old_to)
     }
 
@@ -381,8 +381,8 @@ impl Chess {
     }
 
     fn get_attack_threats(&self, pos: Index, player: &Player) -> Vec<Index> {
-        let is_occupied = |(pos, cell): (_, &Cell)| {
-            if let Some(piece) = cell {
+        let get_occupied = |(pos, cell): (_, &Cell)| {
+            if let BoardCell(Some(piece)) = cell {
                 return Some((pos, *piece));
             }
             None
@@ -399,12 +399,12 @@ impl Chess {
 
         // get first occupied cell which is enemy (if any) for each diagonal
         let threats = diag_tl
-            .find_map(is_occupied)
+            .find_map(get_occupied)
             .into_iter()
             .filter(is_enemy)
-            .chain(diag_tr.find_map(is_occupied).into_iter().filter(is_enemy))
-            .chain(diag_br.find_map(is_occupied).into_iter().filter(is_enemy))
-            .chain(diag_bl.find_map(is_occupied).into_iter().filter(is_enemy))
+            .chain(diag_tr.find_map(get_occupied).into_iter().filter(is_enemy))
+            .chain(diag_br.find_map(get_occupied).into_iter().filter(is_enemy))
+            .chain(diag_bl.find_map(get_occupied).into_iter().filter(is_enemy))
             // filter pieces that can attack diagonally
             .filter(|&(enemy_pos, enemy_piece)| match enemy_piece.kind {
                 PieceKind::Bishop | PieceKind::Queen => true,
@@ -421,12 +421,12 @@ impl Chess {
             .chain(
                 // get first occupied cell which is enemy (if any) for each horizontal and vertical line
                 right
-                    .find_map(is_occupied)
+                    .find_map(get_occupied)
                     .into_iter()
                     .filter(is_enemy)
-                    .chain(left.find_map(is_occupied).into_iter().filter(is_enemy))
-                    .chain(top.find_map(is_occupied).into_iter().filter(is_enemy))
-                    .chain(bot.find_map(is_occupied).into_iter().filter(is_enemy))
+                    .chain(left.find_map(get_occupied).into_iter().filter(is_enemy))
+                    .chain(top.find_map(get_occupied).into_iter().filter(is_enemy))
+                    .chain(bot.find_map(get_occupied).into_iter().filter(is_enemy))
                     // filter pieces that can attack horizontally or vertically
                     .filter(|&(enemy_pos, enemy_piece)| match enemy_piece.kind {
                         PieceKind::Rook | PieceKind::Queen => true,
@@ -470,7 +470,7 @@ impl Chess {
             .ok_or(GameError::PlayerNotFound)?;
         let mut res = vec![];
         let empty_cell_or_enemy = |(index, cell): (Index, &Cell)| {
-            if cell.is_none() || matches!(cell, Some(p) if p.is_enemy(piece.owner)) {
+            if cell.is_none() || matches!(cell, BoardCell(Some(p)) if p.is_enemy(piece.owner)) {
                 return Some(index);
             }
             None
@@ -615,7 +615,7 @@ impl Chess {
         let mut pieces = vec![];
         for row in 0..=Row::max().0 {
             for col in 0..=Col::max().0 {
-                if let Some(piece) = self.get_cell(Index::new(Row(row), Col(col))) {
+                if let BoardCell(Some(piece)) = self.get_cell(Index::new(Row(row), Col(col))) {
                     if !piece.is_enemy(id) {
                         pieces.push(Index::new(Row(row), Col(col)));
                     }
@@ -720,7 +720,7 @@ mod test {
             }
         }
         for &(idx, piece) in pieces {
-            *chess.get_cell_mut(idx) = Some(piece);
+            *chess.get_cell_mut(idx) = piece.into();
         }
         Ok(chess)
     }
@@ -966,20 +966,20 @@ mod test {
         let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
 
         // add threatening rook
-        *chess.get_cell_mut(a1) = Some(Piece::create_rook(PLAYER2));
+        *chess.get_cell_mut(a1) = Piece::create_rook(PLAYER2).into();
 
         // add protecting pawn
-        *chess.get_cell_mut(c1) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(c1) = Piece::create_pawn(PLAYER1).into();
         // white pawn cannot move because it would put king in check
         assert!(chess.get_moves(c1).unwrap().is_empty());
 
         // add protecting knight
-        *chess.get_cell_mut(c1) = Some(Piece::create_knight(PLAYER1));
+        *chess.get_cell_mut(c1) = Piece::create_knight(PLAYER1).into();
         // white knight cannot move because it would put king in check
         assert!(chess.get_moves(c1).unwrap().is_empty());
 
         // add protecting rook
-        *chess.get_cell_mut(c1) = Some(Piece::create_rook(PLAYER1));
+        *chess.get_cell_mut(c1) = Piece::create_rook(PLAYER1).into();
         // white rook can move only on the threat line
         itertools::assert_equal(sorted(chess.get_moves(c1).unwrap()), [a1, b1, d1]);
 
@@ -987,15 +987,15 @@ mod test {
         chess.get_cell_mut(c1).take();
         chess.get_cell_mut(a1).take();
         // new threatening bishop
-        *chess.get_cell_mut(a5) = Some(Piece::create_bishop(PLAYER2));
+        *chess.get_cell_mut(a5) = Piece::create_bishop(PLAYER2).into();
 
         // add protecting bishop
-        *chess.get_cell_mut(c3) = Some(Piece::create_bishop(PLAYER1));
+        *chess.get_cell_mut(c3) = Piece::create_bishop(PLAYER1).into();
         // white bishop can move only on the threat line
         itertools::assert_equal(sorted(chess.get_moves(c3).unwrap()), [a5, b4, d2]);
 
         // add protecting queen
-        *chess.get_cell_mut(c3) = Some(Piece::create_queen(PLAYER1));
+        *chess.get_cell_mut(c3) = Piece::create_queen(PLAYER1).into();
         // white bishop can move only on the threat line
         itertools::assert_equal(sorted(chess.get_moves(c3).unwrap()), [a5, b4, d2]);
     }
@@ -1036,9 +1036,9 @@ mod test {
         // white king has 3 options to move
         itertools::assert_equal(sorted(chess.get_moves(g2).unwrap()), [f2, f1, g1]);
         // create obstacles and check that there is no options for the king to move
-        *chess.get_cell_mut(f2) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(f1) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(g1) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(f2) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(f1) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(g1) = Piece::create_pawn(PLAYER1).into();
         assert!(chess.get_moves(g2).unwrap().is_empty());
     }
 
@@ -1049,7 +1049,7 @@ mod test {
         let [_, _, _, _, e8, f8, g8, _]: [_; 8] = row_indices(Row(0)).try_into().unwrap();
         let [_, _, _, _, e7, f7, _, _]: [_; 8] = row_indices(Row(1)).try_into().unwrap();
         let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
-        *chess.get_cell_mut(g1) = Some(Piece::create_knight(PLAYER1));
+        *chess.get_cell_mut(g1) = Piece::create_knight(PLAYER1).into();
 
         // white king has 5 options to move and 1 options for castling
         // because g1 is occupied by knight
@@ -1075,7 +1075,7 @@ mod test {
         let [_, _, c4, d4, e4, _, _, h4]: [_; 8] = row_indices(Row::max() - 3).try_into().unwrap();
         let [a5, _, c5, _, e5, _, g5, _]: [_; 8] = row_indices(Row::max() - 4).try_into().unwrap();
         let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
-        *chess.get_cell_mut(g1) = Some(Piece::create_knight(PLAYER1));
+        *chess.get_cell_mut(g1) = Piece::create_knight(PLAYER1).into();
 
         itertools::assert_equal(sorted(chess.get_moves(g1).unwrap()), [f3, h3, e2]);
         chess.update(PLAYER1, TurnData::new(g1, f3)).unwrap();
@@ -1103,11 +1103,11 @@ mod test {
 
         itertools::assert_equal(sorted(chess.get_moves(b3).unwrap()), [a5, c5, d4, d2, c1]);
         // create obstacles and check that there is no options for the knight to move
-        *chess.get_cell_mut(a5) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(c5) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d4) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d2) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(c1) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(a5) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(c5) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d4) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d2) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(c1) = Piece::create_pawn(PLAYER1).into();
         assert!(chess.get_moves(b3).unwrap().is_empty());
     }
 
@@ -1118,7 +1118,7 @@ mod test {
         let e6 = Index::new(Row(2), Col(4));
         let c8 = Index::new(Row(0), Col(2));
         let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
-        *chess.get_cell_mut(f1) = Some(Piece::create_bishop(PLAYER1));
+        *chess.get_cell_mut(f1) = Piece::create_bishop(PLAYER1).into();
 
         itertools::assert_equal(
             sorted(chess.get_moves(f1).unwrap()),
@@ -1153,13 +1153,13 @@ mod test {
         );
         // create obstacles and check that there is no options for the bishop to move
         *chess.get_cell_mut(e6.move_up(1).and_then(|idx| idx.move_left(1)).unwrap()) =
-            Some(Piece::create_pawn(PLAYER1));
+            Piece::create_pawn(PLAYER1).into();
         *chess.get_cell_mut(e6.move_up(1).and_then(|idx| idx.move_right(1)).unwrap()) =
-            Some(Piece::create_pawn(PLAYER1));
+            Piece::create_pawn(PLAYER1).into();
         *chess.get_cell_mut(e6.move_down(1).and_then(|idx| idx.move_left(1)).unwrap()) =
-            Some(Piece::create_pawn(PLAYER1));
+            Piece::create_pawn(PLAYER1).into();
         *chess.get_cell_mut(e6.move_down(1).and_then(|idx| idx.move_right(1)).unwrap()) =
-            Some(Piece::create_pawn(PLAYER1));
+            Piece::create_pawn(PLAYER1).into();
         assert!(chess.get_moves(e6).unwrap().is_empty());
     }
 
@@ -1195,10 +1195,10 @@ mod test {
             sorted(orthogonal_moves(d4)),
         );
         // create obstacles and check that there is no options for the rook to move
-        *chess.get_cell_mut(d4.move_up(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d4.move_down(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d4.move_right(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d4.move_left(1).unwrap()) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d4.move_up(1).unwrap()) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d4.move_down(1).unwrap()) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d4.move_right(1).unwrap()) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d4.move_left(1).unwrap()) = Piece::create_pawn(PLAYER1).into();
         assert!(chess.get_moves(d4).unwrap().is_empty());
     }
 
@@ -1208,7 +1208,7 @@ mod test {
         let [_, b2, c2, d2, ..]: [_; 8] = row_indices(Row::max() - 1).try_into().unwrap();
         let [_, b3, c3, d3, ..]: [_; 8] = row_indices(Row::max() - 2).try_into().unwrap();
         let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
-        *chess.get_cell_mut(d1) = Some(Piece::create_queen(PLAYER1));
+        *chess.get_cell_mut(d1) = Piece::create_queen(PLAYER1).into();
 
         itertools::assert_equal(
             sorted(chess.get_moves(d1).unwrap()),
@@ -1223,16 +1223,16 @@ mod test {
             sorted(orthogonal_moves(c2).into_iter().chain(diagonal_moves(c2))),
         );
         // create obstacles and check that there is only 3 options left for the queen to move
-        *chess.get_cell_mut(b2) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(b3) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(c3) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d3) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d2) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(b2) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(b3) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(c3) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d3) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d2) = Piece::create_pawn(PLAYER1).into();
         itertools::assert_equal(sorted(chess.get_moves(c2).unwrap()), [b1, c1, d1]);
         // close rest of the options
-        *chess.get_cell_mut(b1) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(c1) = Some(Piece::create_pawn(PLAYER1));
-        *chess.get_cell_mut(d1) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(b1) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(c1) = Piece::create_pawn(PLAYER1).into();
+        *chess.get_cell_mut(d1) = Piece::create_pawn(PLAYER1).into();
         assert!(chess.get_moves(c2).unwrap().is_empty());
     }
 
@@ -1341,10 +1341,10 @@ mod test {
             chess.update(PLAYER1, TurnData::new(e1, g1)).unwrap();
             chess.update(PLAYER2, TurnData::new(e8, g8)).unwrap();
 
-            assert_eq!(*chess.get_cell(g1), Some(Piece::create_king(PLAYER1)));
-            assert_eq!(*chess.get_cell(g8), Some(Piece::create_king(PLAYER2)));
-            assert_eq!(*chess.get_cell(f1), Some(Piece::create_rook(PLAYER1)));
-            assert_eq!(*chess.get_cell(f8), Some(Piece::create_rook(PLAYER2)));
+            assert_eq!(*chess.get_cell(g1), Piece::create_king(PLAYER1).into());
+            assert_eq!(*chess.get_cell(g8), Piece::create_king(PLAYER2).into());
+            assert_eq!(*chess.get_cell(f1), Piece::create_rook(PLAYER1).into());
+            assert_eq!(*chess.get_cell(f8), Piece::create_rook(PLAYER2).into());
         }
         {
             // test left castling for both kings
@@ -1357,10 +1357,10 @@ mod test {
             chess.update(PLAYER1, TurnData::new(e1, c1)).unwrap();
             chess.update(PLAYER2, TurnData::new(e8, c8)).unwrap();
 
-            assert_eq!(*chess.get_cell(c1), Some(Piece::create_king(PLAYER1)));
-            assert_eq!(*chess.get_cell(c8), Some(Piece::create_king(PLAYER2)));
-            assert_eq!(*chess.get_cell(d1), Some(Piece::create_rook(PLAYER1)));
-            assert_eq!(*chess.get_cell(d8), Some(Piece::create_rook(PLAYER2)));
+            assert_eq!(*chess.get_cell(c1), Piece::create_king(PLAYER1).into());
+            assert_eq!(*chess.get_cell(c8), Piece::create_king(PLAYER2).into());
+            assert_eq!(*chess.get_cell(d1), Piece::create_rook(PLAYER1).into());
+            assert_eq!(*chess.get_cell(d8), Piece::create_rook(PLAYER2).into());
         }
     }
 
@@ -1416,7 +1416,7 @@ mod test {
         chess.get_cell_mut(g8).take();
 
         // white knight at b1 forbids left castling for white king
-        *chess.get_cell_mut(b1) = Some(Piece::create_knight(PLAYER1));
+        *chess.get_cell_mut(b1) = Piece::create_knight(PLAYER1).into();
         assert_eq!(
             chess.can_castle(PLAYER1).unwrap(),
             CastleOptions {
@@ -1436,7 +1436,7 @@ mod test {
         );
 
         // white knights at b1 and g1 forbid castling for both sides for white king
-        *chess.get_cell_mut(b1) = Some(Piece::create_knight(PLAYER1));
+        *chess.get_cell_mut(b1) = Piece::create_knight(PLAYER1).into();
         assert_eq!(chess.can_castle(PLAYER1).unwrap(), CastleOptions::none());
 
         // cleanup
@@ -1465,7 +1465,7 @@ mod test {
         let a8 = Index::new(Row(0), Col(0));
         let d8 = Index::new(Row(0), Col(3));
         let mut chess = create_board_kings_and_rooks_only(PLAYER1, PLAYER2).unwrap();
-        *chess.get_cell_mut(d8) = Some(Piece::create_queen(PLAYER2));
+        *chess.get_cell_mut(d8) = Piece::create_queen(PLAYER2).into();
 
         // white king is not in check
         chess.update_check(&Player::new(PLAYER1, Team::White));
@@ -1523,23 +1523,23 @@ mod test {
         let player2 = Player::new(PLAYER2, Team::Black);
 
         // pawn on the same column is not a threat
-        *chess.get_cell_mut(e2) = Some(Piece::create_pawn(PLAYER2));
+        *chess.get_cell_mut(e2) = Piece::create_pawn(PLAYER2).into();
         assert!(chess.get_attack_threats(e1, &player1).is_empty());
         // pawn on the adjacent column is a threat
-        *chess.get_cell_mut(d2) = Some(Piece::create_pawn(PLAYER2));
+        *chess.get_cell_mut(d2) = Piece::create_pawn(PLAYER2).into();
         itertools::assert_equal(chess.get_attack_threats(e1, &player1), [d2]);
         // add another threatening pawn
-        *chess.get_cell_mut(f2) = Some(Piece::create_pawn(PLAYER2));
+        *chess.get_cell_mut(f2) = Piece::create_pawn(PLAYER2).into();
         itertools::assert_equal(sorted(chess.get_attack_threats(e1, &player1)), [d2, f2]);
 
         // pawn on the same column is not a threat
-        *chess.get_cell_mut(e7) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(e7) = Piece::create_pawn(PLAYER1).into();
         assert!(chess.get_attack_threats(e8, &player2).is_empty());
         // pawn on the adjacent column is a threat
-        *chess.get_cell_mut(d7) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(d7) = Piece::create_pawn(PLAYER1).into();
         itertools::assert_equal(chess.get_attack_threats(e8, &player2), [d7]);
         // add another threatening pawn
-        *chess.get_cell_mut(f7) = Some(Piece::create_pawn(PLAYER1));
+        *chess.get_cell_mut(f7) = Piece::create_pawn(PLAYER1).into();
         itertools::assert_equal(sorted(chess.get_attack_threats(e8, &player2)), [d7, f7]);
 
         // cleanup
@@ -1548,19 +1548,19 @@ mod test {
         }
 
         // create knights in front of a white king and check that none of them is a threat
-        *chess.get_cell_mut(e2) = Some(Piece::create_knight(PLAYER2));
-        *chess.get_cell_mut(d2) = Some(Piece::create_knight(PLAYER2));
-        *chess.get_cell_mut(f2) = Some(Piece::create_knight(PLAYER2));
+        *chess.get_cell_mut(e2) = Piece::create_knight(PLAYER2).into();
+        *chess.get_cell_mut(d2) = Piece::create_knight(PLAYER2).into();
+        *chess.get_cell_mut(f2) = Piece::create_knight(PLAYER2).into();
         assert!(chess.get_attack_threats(e1, &player1).is_empty());
 
         // knight on c2 is a threat
-        *chess.get_cell_mut(c2) = Some(Piece::create_knight(PLAYER2));
+        *chess.get_cell_mut(c2) = Piece::create_knight(PLAYER2).into();
         itertools::assert_equal(chess.get_attack_threats(e1, &player1), [c2]);
 
         // more knights to the god of knights
-        *chess.get_cell_mut(d3) = Some(Piece::create_knight(PLAYER2));
-        *chess.get_cell_mut(f3) = Some(Piece::create_knight(PLAYER2));
-        *chess.get_cell_mut(g2) = Some(Piece::create_knight(PLAYER2));
+        *chess.get_cell_mut(d3) = Piece::create_knight(PLAYER2).into();
+        *chess.get_cell_mut(f3) = Piece::create_knight(PLAYER2).into();
+        *chess.get_cell_mut(g2) = Piece::create_knight(PLAYER2).into();
         itertools::assert_equal(
             sorted(chess.get_attack_threats(e1, &player1)),
             [d3, f3, c2, g2],
@@ -1572,15 +1572,15 @@ mod test {
         }
 
         // create black king that is far from the white one and is not a threat
-        *chess.get_cell_mut(e3) = Some(Piece::create_king(PLAYER2));
+        *chess.get_cell_mut(e3) = Piece::create_king(PLAYER2).into();
         assert!(chess.get_attack_threats(e1, &player1).is_empty());
 
         // create threatening black kings in every possible position
-        *chess.get_cell_mut(d1) = Some(Piece::create_king(PLAYER2));
-        *chess.get_cell_mut(d2) = Some(Piece::create_king(PLAYER2));
-        *chess.get_cell_mut(e2) = Some(Piece::create_king(PLAYER2));
-        *chess.get_cell_mut(f2) = Some(Piece::create_king(PLAYER2));
-        *chess.get_cell_mut(f1) = Some(Piece::create_king(PLAYER2));
+        *chess.get_cell_mut(d1) = Piece::create_king(PLAYER2).into();
+        *chess.get_cell_mut(d2) = Piece::create_king(PLAYER2).into();
+        *chess.get_cell_mut(e2) = Piece::create_king(PLAYER2).into();
+        *chess.get_cell_mut(f2) = Piece::create_king(PLAYER2).into();
+        *chess.get_cell_mut(f1) = Piece::create_king(PLAYER2).into();
         itertools::assert_equal(
             sorted(chess.get_attack_threats(e1, &player1)),
             [d2, e2, f2, d1, f1],
@@ -1592,18 +1592,18 @@ mod test {
         }
 
         // create bishops that are positioned orthogonally and aren't threatening white king
-        *chess.get_cell_mut(d1) = Some(Piece::create_bishop(PLAYER2));
-        *chess.get_cell_mut(e2) = Some(Piece::create_bishop(PLAYER2));
-        *chess.get_cell_mut(f1) = Some(Piece::create_bishop(PLAYER2));
+        *chess.get_cell_mut(d1) = Piece::create_bishop(PLAYER2).into();
+        *chess.get_cell_mut(e2) = Piece::create_bishop(PLAYER2).into();
+        *chess.get_cell_mut(f1) = Piece::create_bishop(PLAYER2).into();
         assert!(chess.get_attack_threats(e1, &player1).is_empty());
 
         // create two threatening black bishops
-        *chess.get_cell_mut(c3) = Some(Piece::create_bishop(PLAYER2));
-        *chess.get_cell_mut(g3) = Some(Piece::create_bishop(PLAYER2));
+        *chess.get_cell_mut(c3) = Piece::create_bishop(PLAYER2).into();
+        *chess.get_cell_mut(g3) = Piece::create_bishop(PLAYER2).into();
         itertools::assert_equal(sorted(chess.get_attack_threats(e1, &player1)), [c3, g3]);
 
         // create one threatening bishop closer to king that one of the other two
-        *chess.get_cell_mut(d2) = Some(Piece::create_bishop(PLAYER2));
+        *chess.get_cell_mut(d2) = Piece::create_bishop(PLAYER2).into();
         itertools::assert_equal(sorted(chess.get_attack_threats(e1, &player1)), [g3, d2]);
 
         // cleanup
@@ -1612,18 +1612,18 @@ mod test {
         }
 
         // create rooks that are positioned diagonally and aren't threatening white king
-        *chess.get_cell_mut(d2) = Some(Piece::create_rook(PLAYER2));
-        *chess.get_cell_mut(f2) = Some(Piece::create_rook(PLAYER2));
+        *chess.get_cell_mut(d2) = Piece::create_rook(PLAYER2).into();
+        *chess.get_cell_mut(f2) = Piece::create_rook(PLAYER2).into();
         assert!(chess.get_attack_threats(e1, &player1).is_empty());
 
         // create three threatening black rooks
-        *chess.get_cell_mut(c1) = Some(Piece::create_rook(PLAYER2));
-        *chess.get_cell_mut(g1) = Some(Piece::create_rook(PLAYER2));
-        *chess.get_cell_mut(e3) = Some(Piece::create_rook(PLAYER2));
+        *chess.get_cell_mut(c1) = Piece::create_rook(PLAYER2).into();
+        *chess.get_cell_mut(g1) = Piece::create_rook(PLAYER2).into();
+        *chess.get_cell_mut(e3) = Piece::create_rook(PLAYER2).into();
         itertools::assert_equal(sorted(chess.get_attack_threats(e1, &player1)), [e3, c1, g1]);
 
         // create one threatening rook closer to king that one of the other three
-        *chess.get_cell_mut(d1) = Some(Piece::create_rook(PLAYER2));
+        *chess.get_cell_mut(d1) = Piece::create_rook(PLAYER2).into();
         itertools::assert_equal(sorted(chess.get_attack_threats(e1, &player1)), [e3, d1, g1]);
 
         // cleanup
@@ -1632,26 +1632,26 @@ mod test {
         }
 
         // create 4 non-threatening queens
-        *chess.get_cell_mut(c2) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(g2) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(d3) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(f3) = Some(Piece::create_queen(PLAYER2));
+        *chess.get_cell_mut(c2) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(g2) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(d3) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(f3) = Piece::create_queen(PLAYER2).into();
         assert!(chess.get_attack_threats(e1, &player1).is_empty());
 
         // create 5 threatening black queens
-        *chess.get_cell_mut(c3) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(g3) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(c1) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(g1) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(e3) = Some(Piece::create_queen(PLAYER2));
+        *chess.get_cell_mut(c3) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(g3) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(c1) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(g1) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(e3) = Piece::create_queen(PLAYER2).into();
         itertools::assert_equal(
             sorted(chess.get_attack_threats(e1, &player1)),
             [c3, e3, g3, c1, g1],
         );
 
         // create two threatening queens closer to king that two of the other five
-        *chess.get_cell_mut(f1) = Some(Piece::create_queen(PLAYER2));
-        *chess.get_cell_mut(e2) = Some(Piece::create_queen(PLAYER2));
+        *chess.get_cell_mut(f1) = Piece::create_queen(PLAYER2).into();
+        *chess.get_cell_mut(e2) = Piece::create_queen(PLAYER2).into();
         itertools::assert_equal(
             sorted(chess.get_attack_threats(e1, &player1)),
             [c3, g3, e2, c1, f1],

@@ -1,4 +1,5 @@
 use crate::game::chess::index::{Col, Index, Row};
+use crate::game::encoding::ToProtobuf;
 use crate::game::grid::WithLength;
 use crate::game::player_pool::PlayerId;
 
@@ -61,6 +62,12 @@ pub enum PieceKind {
 pub struct Piece {
     pub kind: PieceKind,
     pub owner: PlayerId,
+}
+
+impl ToProtobuf for Piece {
+    fn to_protobuf(&self) -> Vec<u8> {
+        todo!()
+    }
 }
 
 impl Piece {
