@@ -28,6 +28,22 @@ pub trait ToProtobuf {
     fn to_protobuf(self) -> Vec<u8>;
 }
 
+impl<T: Default + prost::Message> FromProtobuf for T {
+    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
+        Ok(T::decode(buf)?)
+    }
+}
+
+impl<T: FromProtobuf> FromProtobuf for BoardCell<T> {
+    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
+        let maybe = Maybe::decode(buf)?;
+        match maybe.item {
+            Some(bytes) => Ok(T::from_protobuf(&bytes)?.into()),
+            None => Ok(Self::default())
+        }
+    }
+}
+
 impl<T: prost::Message> ToProtobuf for T {
     fn to_protobuf(self) -> Vec<u8> {
         self.encode_to_vec()
