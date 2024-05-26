@@ -25,8 +25,8 @@ jobs:
         unzip protoc-3.15.8-linux-aarch_64.zip -d protoc3
         sudo mv protoc3/bin/* /usr/local/bin/
         sudo mv protoc3/include/* /usr/local/include/
-        protoc --version
         uname -m
+        protoc --version
     - name: Build
       run: cargo build --verbose
     - name: Run tests
