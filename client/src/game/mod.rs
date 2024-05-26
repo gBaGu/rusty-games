@@ -138,6 +138,7 @@ impl CurrentGame {
         None
     }
 
+    #[allow(dead_code)]
     pub fn get_next_player_image(&self) -> Option<&Handle<Image>> {
         if let GameState::Turn(id) = self.state {
             return self.get_player_image(&id);

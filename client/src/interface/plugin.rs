@@ -8,12 +8,12 @@ use bevy::ecs::change_detection::{Res, ResMut};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::event::EventWriter;
 use bevy::ecs::query::{Changed, With, Without};
-use bevy::ecs::schedule::common_conditions::{in_state, resource_exists};
+use bevy::ecs::schedule::common_conditions::{any_with_component, in_state, not, resource_exists};
 use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnExit, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, Children, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{any_with_component, Deref, DerefMut, Event, EventReader, not, Resource, Time, TimerMode};
+use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource, Time, TimerMode};
 use bevy::render::color::Color;
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::Timer;
@@ -34,8 +34,14 @@ use crate::interface::buttons::{
 use crate::interface::common::button_bundle::{
     menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
-use crate::interface::common::{column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style, menu_text_bundle, menu_text_input_bundle, menu_text_style, next_player_image, overlapping_flex_node_bundle, row_node_bundle, square_ui_image, tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH, GAME_REFRESH_INTERVAL_SEC};
-use crate::interface::components::{AssociatedTextInput, NextPlayerImage};
+use crate::interface::common::{
+    column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style,
+    menu_text_bundle, menu_text_input_bundle, menu_text_style, overlapping_flex_node_bundle,
+    row_node_bundle, square_ui_image, tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH,
+    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT,
+    O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
+};
+use crate::interface::components::{empty_next_player_image, AssociatedTextInput, NextPlayerImage};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::settings::{Settings, SubmitTextInputSetting};
 
@@ -71,16 +77,19 @@ impl Default for RefreshGameTimer {
 }
 
 #[derive(Debug, Deref, Event)]
-struct GameInfoReceived(FullGameInfo);
+struct GameStateUpdated(GameState);
 
-#[derive(Clone, Copy, Debug, Event)]
-struct TurnSuccess {
-    new_state: GameState,
-    cell_entity: Entity,
+#[derive(Debug)]
+enum CellQueryData {
+    Entity(Entity),
+    CellPosition { row: usize, col: usize },
 }
 
-#[derive(Debug, Deref, Event)]
-struct NextTurn(u64);
+#[derive(Debug, Event)]
+struct CellUpdated {
+    query_data: CellQueryData,
+    player_id: u64,
+}
 
 #[derive(Debug, Deref, Event)]
 struct GameOver(FinishedState);
@@ -97,9 +106,8 @@ impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(TextInputPlugin)
             .add_event::<MockBotGame>()
-            .add_event::<GameInfoReceived>()
-            .add_event::<TurnSuccess>()
-            .add_event::<NextTurn>()
+            .add_event::<GameStateUpdated>()
+            .add_event::<CellUpdated>()
             .add_event::<GameOver>()
             .init_resource::<RefreshGamesTimer>()
             .init_resource::<RefreshGameTimer>()
@@ -141,10 +149,9 @@ impl Plugin for InterfacePlugin {
                     (
                         make_turn,
                         refresh_game_board.run_if(not(any_with_component::<CallGetGame>)),
-                        handle_full_game_info.after(handle_get_game_task),
-                        handle_turn_success,
-                        handle_next_turn.after(handle_turn_success),
-                        handle_game_over.after(handle_turn_success),
+                        handle_cell_updated,
+                        handle_state_updated,
+                        handle_game_over.after(handle_state_updated),
                     )
                         .run_if(in_state(AppState::Game).and_then(resource_exists::<CurrentGame>)),
                     create_mock_bot_game
@@ -524,7 +531,7 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<CurrentGame>) {
+fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
 
     commands
@@ -532,9 +539,7 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<
         .with_children(|parent| {
             parent.spawn(row_node_bundle()).with_children(|parent| {
                 parent.spawn(menu_text_bundle("Next:", text_style.clone()));
-                if let Some(sprite) = game.get_next_player_image() {
-                    parent.spawn(next_player_image(sprite.clone(), Val::Px(50.0)));
-                }
+                parent.spawn(empty_next_player_image(Val::Px(MENU_ITEM_HEIGHT)));
             });
             parent
                 .spawn(tic_tac_toe_grid_node_bundle())
@@ -746,6 +751,7 @@ fn handle_create_game_task(
     mut create_game: Query<(Entity, &mut CallCreateGame, &GameInfo)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
+    mut state_updated: EventWriter<GameStateUpdated>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task, game) in create_game.iter_mut() {
@@ -768,6 +774,7 @@ fn handle_create_game_task(
                             o_img,
                         ));
                         println!("starting created game: {}", game_id);
+                        state_updated.send(GameStateUpdated(game.state));
                         next_app_state.set(AppState::Game);
                         play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
                     } else {
@@ -788,7 +795,8 @@ fn handle_make_turn_task(
     mut make_turn: Query<(Entity, &mut CallMakeTurn, &GameCellPosition)>,
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
-    mut success: EventWriter<TurnSuccess>,
+    mut cell_updated: EventWriter<CellUpdated>,
+    mut state_updated: EventWriter<GameStateUpdated>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task, pos) in make_turn.iter_mut() {
@@ -814,11 +822,15 @@ fn handle_make_turn_task(
                         let state = new_state.try_into();
                         match state {
                             Ok(state) => {
+                                println!("updating state on successful turn");
                                 game.set_cell((pos.row as usize, pos.col as usize), user_id);
-                                success.send(TurnSuccess {
-                                    new_state: state,
-                                    cell_entity: entity,
+                                game.set_state(state);
+                                cell_updated.send(CellUpdated {
+                                    query_data: CellQueryData::Entity(entity),
+                                    player_id: user_id,
                                 });
+                                state_updated.send(GameStateUpdated(state));
+                                play_sound(&mut commands, &asset_server, TURN_SOUND_PATH);
                             }
                             Err(err) => {
                                 println!("failed to convert game state: {}", err);
@@ -842,7 +854,8 @@ fn handle_get_game_task(
     mut get_game: Query<(Entity, &mut CallGetGame)>,
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
-    mut game_info_received: EventWriter<GameInfoReceived>,
+    mut cell_updated: EventWriter<CellUpdated>,
+    mut state_updated: EventWriter<GameStateUpdated>,
 ) {
     for (entity, mut task) in get_game.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
@@ -868,7 +881,25 @@ fn handle_get_game_task(
                                 continue;
                             }
                         };
-                        game_info_received.send(GameInfoReceived(full_info));
+                        for (i, row) in full_info.board.iter().enumerate() {
+                            for (j, cell) in row.iter().enumerate() {
+                                if let BoardCell(Some(player)) = cell {
+                                    let local_cell = game.board()[i][j];
+                                    if local_cell.is_none() {
+                                        game.set_state(full_info.info.state);
+                                        game.set_cell((i, j), *player);
+                                        state_updated.send(GameStateUpdated(full_info.info.state));
+                                        cell_updated.send(CellUpdated {
+                                            query_data: CellQueryData::CellPosition {
+                                                row: i,
+                                                col: j,
+                                            },
+                                            player_id: *player,
+                                        });
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         println!("GetGame returned empty response");
                     }
@@ -881,80 +912,69 @@ fn handle_get_game_task(
     }
 }
 
-fn handle_full_game_info(
+fn handle_cell_updated(
     buttons: Query<(Entity, &GameCellPosition), With<Button>>,
     mut commands: Commands,
-    mut game_over: EventWriter<GameOver>,
-    mut game_info_received: EventReader<GameInfoReceived>,
-    mut game: ResMut<CurrentGame>,
+    mut cell_updated: EventReader<CellUpdated>,
+    game: Res<CurrentGame>,
 ) {
-    for event in game_info_received.read() {
-        for (i, row) in event.board.iter().enumerate() {
-            for (j, cell) in row.iter().enumerate() {
-                if let BoardCell(Some(player)) = cell {
-                    let local_cell = game.board()[i][j];
-                    if local_cell.is_none() {
-                        game.set_state(event.info.state);
-                        game.set_cell((i, j), *player);
-                        if let Some(image) = game.get_player_image(player) {
-                            if let Some((entity, _)) = buttons
-                                .iter()
-                                .find(|(_, pos)| pos.row as usize == i && pos.col as usize == j)
-                            {
-                                commands.entity(entity).with_children(|parent| {
-                                    parent
-                                        .spawn(square_ui_image(image.clone(), Val::Percent(100.0)));
-                                });
-                            }
+    for event in cell_updated.read() {
+        if let Some(img) = game.get_player_image(&event.player_id) {
+            let entity = match event.query_data {
+                CellQueryData::Entity(entity) => entity,
+                CellQueryData::CellPosition { row, col } => {
+                    match buttons
+                        .iter()
+                        .find(|(_, pos)| pos.row as usize == row && pos.col as usize == col)
+                    {
+                        Some((entity, _)) => entity,
+                        None => {
+                            println!("unable to get button with position: ({}, {})", row, col);
+                            continue;
                         }
                     }
                 }
-            }
-        }
-        if let GameState::Finished(finished) = event.info.state {
-            game_over.send(GameOver(finished));
+            };
+            commands.entity(entity).with_children(|parent| {
+                parent.spawn(square_ui_image(img.clone(), Val::Percent(100.0)));
+            });
         }
     }
 }
 
-fn handle_turn_success(
+fn handle_state_updated(
+    mut next_player_image: Query<
+        (Entity, &mut BackgroundColor, Option<&mut UiImage>),
+        With<NextPlayerImage>,
+    >,
     mut commands: Commands,
-    mut game: ResMut<CurrentGame>,
-    mut success: EventReader<TurnSuccess>,
-    mut next_turn: EventWriter<NextTurn>,
+    mut state_updated: EventReader<GameStateUpdated>,
     mut game_over: EventWriter<GameOver>,
-    asset_server: Res<AssetServer>,
+    game: Res<CurrentGame>,
 ) {
-    for event in success.read() {
-        game.set_state(event.new_state);
-        match event.new_state {
+    if let Some(event) = state_updated.read().last() {
+        println!("received GameStateUpdated: {:?}", event);
+        match event.0 {
             GameState::Turn(id) => {
-                next_turn.send(NextTurn(id));
+                if let Some(&ref next_img) = game.get_player_image(&id) {
+                    match next_player_image.get_single_mut() {
+                        Ok((_, _, Some(mut img))) => *img = UiImage::new(next_img.clone()),
+                        Ok((entity, mut bc, None)) => {
+                            *bc = BackgroundColor(Color::WHITE);
+                            commands
+                                .entity(entity)
+                                .insert(UiImage::new(next_img.clone()));
+                        }
+                        Err(err) => println!("failed to get NextPlayerImage: {}", err),
+                    };
+                } else {
+                    println!("failed to get image for player: {}", id);
+                }
             }
             GameState::Finished(f) => {
                 game_over.send(GameOver(f));
             }
         };
-        if let Some(image) = game.get_player_image(&game.user_id()) {
-            commands.entity(event.cell_entity).with_children(|parent| {
-                parent.spawn(square_ui_image(image.clone(), Val::Percent(100.0)));
-            });
-        }
-        play_sound(&mut commands, &asset_server, TURN_SOUND_PATH);
-    }
-}
-
-fn handle_next_turn(
-    mut next_player_image: Query<&mut UiImage, With<NextPlayerImage>>,
-    mut next_turn: EventReader<NextTurn>,
-    game: Res<CurrentGame>,
-) {
-    if let Some(event) = next_turn.read().last() {
-        if let Some(&ref next_image) = game.get_player_image(event) {
-            if let Ok(mut image) = next_player_image.get_single_mut() {
-                *image = UiImage::new(next_image.clone());
-            }
-        }
     }
 }
 
