@@ -5,7 +5,8 @@ use tonic::{Request, Response, Status, Streaming};
 
 use crate::proto::{
     game_server::Game, CreateGameReply, CreateGameRequest, DeleteGameReply, DeleteGameRequest,
-    GameType, GetPlayerGamesReply, GetPlayerGamesRequest, MakeTurnReply, MakeTurnRequest,
+    GameType, GetGameReply, GetGameRequest, GetPlayerGamesReply, GetPlayerGamesRequest,
+    MakeTurnReply, MakeTurnRequest,
 };
 use crate::rpc_server::game_storage::GameStorage;
 
@@ -99,6 +100,23 @@ impl Game for GameImpl {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(DeleteGameReply {}))
+    }
+
+    async fn get_game(&self, request: Request<GetGameRequest>) -> RpcResult<GetGameReply> {
+        println!("Got request {:?}", request);
+
+        let request = request.into_inner();
+        let game_type = GameType::try_from(request.game_type)
+            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let game_id = request.game_id;
+        let info = self
+            .games
+            .get_game(game_type, game_id)
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(GetGameReply {
+            game_info: Some(info),
+        }))
     }
 
     async fn get_player_games(

@@ -1,7 +1,7 @@
 use prost::Message;
 
 use crate::game::chess::index::{Col, Index, Row};
-use crate::game::game::{FromProtobuf, FromProtobufError};
+use crate::game::encoding::{FromProtobuf, FromProtobufError};
 use crate::proto::PositionPair;
 
 #[derive(Clone, Copy, Debug)]

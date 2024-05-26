@@ -1,6 +1,10 @@
+use prost::Message;
+
 use crate::game::chess::index::{Col, Index, Row};
+use crate::game::encoding::ToProtobuf;
 use crate::game::grid::WithLength;
 use crate::game::player_pool::PlayerId;
+use crate::proto;
 
 #[derive(Debug, PartialEq)]
 pub enum MoveType {
@@ -61,6 +65,12 @@ pub enum PieceKind {
 pub struct Piece {
     pub kind: PieceKind,
     pub owner: PlayerId,
+}
+
+impl ToProtobuf for Piece {
+    fn to_protobuf(self) -> Vec<u8> {
+        <Self as Into<proto::ChessPiece>>::into(self).encode_to_vec()
+    }
 }
 
 impl Piece {

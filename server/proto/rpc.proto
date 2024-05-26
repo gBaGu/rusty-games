@@ -1,7 +1,8 @@
 syntax = "proto3";
 package game;
 
-import public "game.proto";
+import public "common.proto";
+import public "chess.proto";
 
 service Game {
   rpc CreateGame (CreateGameRequest) returns (CreateGameReply);
@@ -9,6 +10,7 @@ service Game {
   rpc MakeTurnStreaming (stream MakeTurnRequest) returns (stream MakeTurnReply);
   rpc DeleteGame (DeleteGameRequest) returns (DeleteGameReply);
 
+  rpc GetGame (GetGameRequest) returns (GetGameReply);
   rpc GetPlayerGames (GetPlayerGamesRequest) returns (GetPlayerGamesReply);
 }
 
@@ -40,6 +42,15 @@ message DeleteGameRequest {
 
 message DeleteGameReply {
 
+}
+
+message GetGameRequest {
+  GameType game_type = 1;
+  uint64 game_id = 2;
+}
+
+message GetGameReply {
+  GameInfo game_info = 1;
 }
 
 message GetPlayerGamesRequest {

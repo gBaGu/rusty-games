@@ -12,7 +12,6 @@ use bevy::utils::default;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
-use crate::interface::components::NextPlayerImage;
 
 pub const X_SPRITE_PATH: &str = "sprites/X.png";
 pub const O_SPRITE_PATH: &str = "sprites/O.png";
@@ -28,6 +27,7 @@ pub const MENU_ITEM_WIDTH: f32 = 300.0;
 pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
 pub const MENU_FONT_SIZE: f32 = 40.0;
 pub const MENU_TEXT_COLOR: Color = Color::OLIVE;
+pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
 // Styles
@@ -150,23 +150,6 @@ pub fn tic_tac_toe_grid_node_bundle() -> NodeBundle {
 }
 
 // Image
-
-pub fn next_player_image(image: Handle<Image>, size: Val) -> impl Bundle {
-    (
-        NodeBundle {
-            style: Style {
-                width: size,
-                height: size,
-                margin: UiRect::all(Val::Px(10.0)),
-                ..default()
-            },
-            background_color: BackgroundColor(Color::WHITE),
-            ..default()
-        },
-        UiImage::new(image),
-        NextPlayerImage,
-    )
-}
 
 pub fn square_ui_image(image: Handle<Image>, size: Val) -> impl Bundle {
     (

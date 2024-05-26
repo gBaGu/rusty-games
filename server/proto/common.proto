@@ -16,8 +16,14 @@ message GameState {
 
 message GameInfo {
   uint64 game_id = 1;
-  repeated uint64 players = 2;
-  GameState game_state = 3;
+  GameState game_state = 2;
+  repeated uint64 players = 3;
+  repeated bytes board = 4;
+}
+
+// Wrapper type for Option<T>
+message Maybe {
+  optional bytes item = 1;
 }
 
 message Position {

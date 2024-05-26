@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use crate::game::chess::game::Chess;
-use crate::game::game::{FromProtobuf, FromProtobufError, Game};
-use crate::game::player_pool::{PlayerQueue, WithPlayerId};
+use crate::game::encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
+use crate::game::game::{Game, GameBoard};
+use crate::game::player_pool::PlayerQueue;
 use crate::game::{error::GameError, player_pool::PlayerId, tic_tac_toe::TicTacToe};
 use crate::proto;
 
@@ -88,6 +89,18 @@ impl GameStorage {
         }
     }
 
+    pub fn get_game(
+        &self,
+        game_type: proto::GameType,
+        player_id: GameId,
+    ) -> GameStorageResult<proto::GameInfo> {
+        match game_type {
+            proto::GameType::TicTacToe => get_game(&self.tic_tac_toe, player_id),
+            proto::GameType::Chess => get_game(&self.chess, player_id),
+            proto::GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
+        }
+    }
+
     pub fn get_player_games(
         &self,
         game_type: proto::GameType,
@@ -143,6 +156,24 @@ fn delete<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult<(
     Ok(())
 }
 
+fn get_game<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult<proto::GameInfo> {
+    let guard = mutex.lock()?;
+    let game = guard.get(&id).ok_or(GameStorageError::NoSuchGame { id })?;
+    let board = game
+        .board()
+        .get_content()
+        .into_iter()
+        .flatten()
+        .map(|item| item.to_protobuf())
+        .collect();
+    Ok(proto::GameInfo {
+        game_id: id,
+        players: game.get_player_ids(),
+        game_state: Some(game.state().into()),
+        board,
+    })
+}
+
 fn get_player_games<T: Game>(
     mutex: &Mutex<GameMap<T>>,
     player_id: PlayerId,
@@ -152,16 +183,11 @@ fn get_player_games<T: Game>(
         .iter()
         .filter_map(|(id, game)| {
             if game.players().find_by_id(player_id).is_some() {
-                let player_ids = game
-                    .players()
-                    .get_all()
-                    .iter()
-                    .map(|p| p.get_id())
-                    .collect();
                 return Some(proto::GameInfo {
                     game_id: *id,
-                    players: player_ids,
+                    players: game.get_player_ids(),
                     game_state: Some(game.state().into()),
+                    board: vec![],
                 });
             }
             None

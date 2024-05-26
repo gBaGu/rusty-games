@@ -1,0 +1,17 @@
+syntax = "proto3";
+package game;
+
+enum ChessPieceKind {
+  PIECE_KIND_UNSPECIFIED = 0;
+  PIECE_KIND_PAWN = 1;
+  PIECE_KIND_BISHOP = 2;
+  PIECE_KIND_KNIGHT = 3;
+  PIECE_KIND_ROOK = 4;
+  PIECE_KIND_QUEEN = 5;
+  PIECE_KIND_KING = 6;
+}
+
+message ChessPiece {
+  ChessPieceKind kind = 1;
+  uint64 owner = 2;
+}

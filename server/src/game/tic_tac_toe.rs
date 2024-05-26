@@ -1,30 +1,24 @@
 use generic_array::typenum::Unsigned;
 use prost::Message;
 
-use crate::game::game::{FromProtobuf, FromProtobufError, Game, GameResult, GameState};
+use crate::game::encoding::{FromProtobuf, FromProtobufError};
+use crate::game::game::{BoardCell, Game, GameResult, GameState};
 use crate::game::{
     error::GameError,
     grid::{Grid, GridIndex, WithLength},
-    player_pool::{PlayerId, PlayerPool, PlayerQueue, WithPlayerId},
+    player_pool::{PlayerId, PlayerPool, WithPlayerId},
     tic_tac_toe,
 };
 use crate::proto::Position;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Sign {
-    X,
-    O,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Player {
     id: PlayerId,
-    sign: Sign,
 }
 
 impl Player {
-    pub fn new(id: PlayerId, sign: Sign) -> Player {
-        Self { id, sign }
+    pub fn new(id: PlayerId) -> Player {
+        Self { id }
     }
 }
 
@@ -155,7 +149,7 @@ fn winning_combinations() -> [(Index, Index, Index); 8] {
     ]
 }
 
-type Cell = Option<Sign>;
+type Cell = BoardCell<PlayerId>;
 
 #[derive(Debug)]
 pub struct TicTacToe {
@@ -180,6 +174,7 @@ impl FromProtobuf for Index {
 impl Game for TicTacToe {
     type TurnData = Index;
     type Players = PlayerPool<Player>;
+    type Board = Grid<Cell, FieldRow, FieldCol>;
 
     fn new(players: &[PlayerId]) -> GameResult<Self> {
         let [id1, id2]: [_; 2] = players
@@ -188,8 +183,8 @@ impl Game for TicTacToe {
         if id1 == id2 {
             return Err(GameError::DuplicatePlayerId);
         }
-        let p1 = Player::new(id1, Sign::X);
-        let p2 = Player::new(id2, Sign::O);
+        let p1 = Player::new(id1);
+        let p2 = Player::new(id2);
         Ok(Self {
             players: Self::Players::new([p1, p2].to_vec()),
             state: GameState::Turn(p1.id),
@@ -205,7 +200,7 @@ impl Game for TicTacToe {
             return Err(GameError::not_your_turn(self.get_current_player()?.id, id));
         }
 
-        let sign = self.get_current_player()?.sign;
+        let player_id = self.get_current_player()?.id;
         let cell = self.get_cell_mut(data);
         if cell.is_some() {
             return Err(GameError::cell_is_occupied(
@@ -213,9 +208,13 @@ impl Game for TicTacToe {
                 data.col().into(),
             ));
         }
-        *cell = Some(sign);
+        *cell = player_id.into();
 
         self.update_state()
+    }
+
+    fn board(&self) -> &Self::Board {
+        &self.field
     }
 
     fn players(&self) -> &Self::Players {
@@ -236,12 +235,6 @@ impl Game for TicTacToe {
 }
 
 impl TicTacToe {
-    pub fn get_player_by_sign(&self, sign: Sign) -> GameResult<&Player> {
-        self.players
-            .find(|player| player.sign == sign)
-            .ok_or(GameError::PlayerNotFound)
-    }
-
     fn get_cell(&self, position: Index) -> &Cell {
         self.field.get_ref(position)
     }
@@ -252,19 +245,18 @@ impl TicTacToe {
 
     fn update_state(&mut self) -> GameResult<GameState> {
         for (idx1, idx2, idx3) in winning_combinations() {
-            if let (Some(s1), Some(s2), Some(s3)) = (
+            if let (BoardCell(Some(p1)), BoardCell(Some(p2)), BoardCell(Some(p3))) = (
                 self.get_cell(idx1),
                 self.get_cell(idx2),
                 self.get_cell(idx3),
             ) {
-                if s1 == s2 && s2 == s3 {
-                    let player = self.get_player_by_sign(*s1)?;
-                    return Ok(self.set_winner(player.id));
+                if p1 == p2 && p2 == p3 {
+                    return Ok(self.set_winner(*p1));
                 }
             }
         }
 
-        if self.field.iter().flatten().all(|s| s.is_some()) {
+        if self.field.iter().flatten().all(|cell| cell.is_some()) {
             return Ok(self.set_draw());
         }
 
