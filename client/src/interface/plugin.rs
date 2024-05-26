@@ -13,7 +13,7 @@ use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnEx
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, Children, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource, Time, TimerMode};
+use bevy::prelude::{any_with_component, Deref, DerefMut, Event, EventReader, not, Resource, Time, TimerMode};
 use bevy::render::color::Color;
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::Timer;
@@ -34,13 +34,7 @@ use crate::interface::buttons::{
 use crate::interface::common::button_bundle::{
     menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
-use crate::interface::common::{
-    column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style,
-    menu_text_bundle, menu_text_input_bundle, menu_text_style, next_player_image,
-    overlapping_flex_node_bundle, row_node_bundle, square_ui_image, tic_tac_toe_grid_node_bundle,
-    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH,
-    TURN_SOUND_PATH, X_SPRITE_PATH,
-};
+use crate::interface::common::{column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style, menu_text_bundle, menu_text_input_bundle, menu_text_style, next_player_image, overlapping_flex_node_bundle, row_node_bundle, square_ui_image, tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH, GAME_REFRESH_INTERVAL_SEC};
 use crate::interface::components::{AssociatedTextInput, NextPlayerImage};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::settings::{Settings, SubmitTextInputSetting};
@@ -59,6 +53,18 @@ impl Default for RefreshGamesTimer {
     fn default() -> Self {
         Self(Timer::from_seconds(
             GAME_LIST_REFRESH_INTERVAL_SEC,
+            TimerMode::Repeating,
+        ))
+    }
+}
+
+#[derive(Deref, DerefMut, Resource)]
+struct RefreshGameTimer(pub Timer);
+
+impl Default for RefreshGameTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(
+            GAME_REFRESH_INTERVAL_SEC,
             TimerMode::Repeating,
         ))
     }
@@ -96,6 +102,7 @@ impl Plugin for InterfacePlugin {
             .add_event::<NextTurn>()
             .add_event::<GameOver>()
             .init_resource::<RefreshGamesTimer>()
+            .init_resource::<RefreshGameTimer>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
             .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
             .add_systems(
@@ -133,7 +140,8 @@ impl Plugin for InterfacePlugin {
                     handle_get_game_task,
                     (
                         make_turn,
-                        handle_full_game_info,
+                        refresh_game_board.run_if(not(any_with_component::<CallGetGame>)),
+                        handle_full_game_info.after(handle_get_game_task),
                         handle_turn_success,
                         handle_next_turn.after(handle_turn_success),
                         handle_game_over.after(handle_turn_success),
@@ -611,7 +619,6 @@ fn refresh_game_list(
         for entity in game_lists.iter() {
             if let Some(id) = settings.user_id() {
                 if let Some(task) = client.load_player_games(id) {
-                    println!("attach task to entity");
                     commands.entity(entity).insert(CallGetPlayerGames(task));
                 } else {
                     commands
@@ -629,6 +636,20 @@ fn refresh_game_list(
                         parent.spawn(menu_text_bundle("No user id provided", text_style.clone()));
                     });
             }
+        }
+    }
+}
+
+fn refresh_game_board(
+    mut commands: Commands,
+    mut timer: ResMut<RefreshGamesTimer>,
+    game: Res<CurrentGame>,
+    client: ResMut<GrpcClient>,
+    time: Res<Time>,
+) {
+    if timer.tick(time.delta()).just_finished() {
+        if let Some(task) = client.load_game(game.id()) {
+            commands.spawn(CallGetGame(task));
         }
     }
 }
@@ -764,13 +785,13 @@ fn handle_create_game_task(
 }
 
 fn handle_make_turn_task(
-    mut make_turn: Query<(Entity, &mut CallMakeTurn)>,
+    mut make_turn: Query<(Entity, &mut CallMakeTurn, &GameCellPosition)>,
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
     mut success: EventWriter<TurnSuccess>,
     asset_server: Res<AssetServer>,
 ) {
-    for (entity, mut task) in make_turn.iter_mut() {
+    for (entity, mut task, pos) in make_turn.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
             commands.entity(entity).remove::<CallMakeTurn>();
             let game = match &mut game {
@@ -780,10 +801,11 @@ fn handle_make_turn_task(
                     continue;
                 }
             };
+            let user_id = game.user_id();
             match res {
                 Ok(response) => {
                     if let Some(next) = game.get_next_player() {
-                        if next != game.user_id() {
+                        if next != user_id {
                             println!("state is already updated, skip handling MakeTurn response");
                             continue;
                         }
@@ -792,6 +814,7 @@ fn handle_make_turn_task(
                         let state = new_state.try_into();
                         match state {
                             Ok(state) => {
+                                game.set_cell((pos.row as usize, pos.col as usize), user_id);
                                 success.send(TurnSuccess {
                                     new_state: state,
                                     cell_entity: entity,
@@ -861,6 +884,7 @@ fn handle_get_game_task(
 fn handle_full_game_info(
     buttons: Query<(Entity, &GameCellPosition), With<Button>>,
     mut commands: Commands,
+    mut game_over: EventWriter<GameOver>,
     mut game_info_received: EventReader<GameInfoReceived>,
     mut game: ResMut<CurrentGame>,
 ) {
@@ -870,6 +894,8 @@ fn handle_full_game_info(
                 if let BoardCell(Some(player)) = cell {
                     let local_cell = game.board()[i][j];
                     if local_cell.is_none() {
+                        game.set_state(event.info.state);
+                        game.set_cell((i, j), *player);
                         if let Some(image) = game.get_player_image(player) {
                             if let Some((entity, _)) = buttons
                                 .iter()
@@ -884,6 +910,9 @@ fn handle_full_game_info(
                     }
                 }
             }
+        }
+        if let GameState::Finished(finished) = event.info.state {
+            game_over.send(GameOver(finished));
         }
     }
 }

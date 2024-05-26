@@ -28,6 +28,7 @@ pub const MENU_ITEM_WIDTH: f32 = 300.0;
 pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
 pub const MENU_FONT_SIZE: f32 = 40.0;
 pub const MENU_TEXT_COLOR: Color = Color::OLIVE;
+pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
 // Styles

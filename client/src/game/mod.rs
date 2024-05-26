@@ -149,6 +149,10 @@ impl CurrentGame {
         self.images.get(id)
     }
 
+    pub fn set_cell(&mut self, pos: (usize, usize), player_id: PlayerId) {
+        self.board[pos.0][pos.1] = player_id.into()
+    }
+
     pub fn set_state(&mut self, state: GameState) {
         self.state = state;
     }
