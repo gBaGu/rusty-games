@@ -12,14 +12,21 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
     - name: Installing dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y -qq libasound2-dev libssl-dev libpulse-dev libdbus-1-dev libudev-dev protobuf-compiler
+        sudo apt-get install -y -qq libasound2-dev libssl-dev libpulse-dev libdbus-1-dev libudev-dev curl unzip
+        cd ~/ && mkdir protobuf && cd protobuf
+        curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v3.15.8/protoc-3.15.8-linux-aarch_64.zip
+        unzip protoc-3.15.8-linux-aarch_64.zip -d protoc3
+        sudo mv protoc3/bin/* /usr/local/bin/
+        sudo mv protoc3/include/* /usr/local/include/
+        protoc --version
+        uname -m
     - name: Build
       run: cargo build --verbose
     - name: Run tests
