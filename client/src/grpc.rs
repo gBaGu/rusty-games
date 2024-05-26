@@ -69,6 +69,22 @@ impl GrpcClient {
         Some(task)
     }
 
+    pub fn load_game(
+        &self,
+        game_id: u64,
+    ) -> Option<Task<RpcResult<proto::GetGameReply>>> {
+        let mut client = self.inner.as_ref().cloned()?;
+        let task = IoTaskPool::get().spawn(async move {
+            client
+                .get_game(Request::new(proto::GetGameRequest {
+                    game_type: proto::GameType::TicTacToe.into(),
+                    game_id,
+                }))
+                .await
+        });
+        Some(task)
+    }
+
     pub fn load_player_games(
         &self,
         player_id: u64,
@@ -104,6 +120,10 @@ pub struct CallCreateGame(pub Task<RpcResult<proto::CreateGameReply>>);
 /// Task component for updating game over grpc
 #[derive(Component, Deref)]
 pub struct CallMakeTurn(pub Task<RpcResult<proto::MakeTurnReply>>);
+
+/// Task component for loading full game data over grpc
+#[derive(Component, Deref)]
+pub struct CallGetGame(pub Task<RpcResult<proto::GetGameReply>>);
 
 /// Task component for loading player games over grpc
 #[derive(Component, Deref)]
