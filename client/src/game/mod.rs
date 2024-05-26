@@ -4,15 +4,15 @@ use std::collections::HashMap;
 
 use bevy::asset::Handle;
 use bevy::prelude::{Component, Image, Resource};
-use game_server::game::game::GameState;
-use game_server::game::encoding::FromProtobufError;
+use game_server::game::encoding::{FromProtobuf, FromProtobufError};
+use game_server::game::game::{BoardCell, GameState};
+use game_server::game::player_pool::PlayerId;
 use game_server::proto;
-use prost::Message;
 
 #[derive(Clone, Copy, Debug, Component)]
 pub struct GameCellPosition {
-    row: u32,
-    col: u32,
+    pub row: u32,
+    pub col: u32,
 }
 
 impl GameCellPosition {
@@ -62,42 +62,39 @@ impl TryFrom<proto::GameInfo> for GameInfo {
     }
 }
 
-pub struct FullGameInto {
+#[derive(Debug)]
+pub struct FullGameInfo {
     pub info: GameInfo,
-    pub board: Vec<Vec<u64>>,
+    pub board: [[BoardCell<PlayerId>; 3]; 3],
 }
 
-impl TryFrom<proto::GameInfo> for FullGameInto {
+impl TryFrom<proto::GameInfo> for FullGameInfo {
     type Error = FromProtobufError;
 
     fn try_from(value: proto::GameInfo) -> Result<Self, Self::Error> {
         let mut full_info = Self {
             info: GameInfo::try_from(value.clone())?,
-            board: Vec::<Vec<u64>>::with_capacity(3),
+            board: Default::default(),
         };
         if value.board.is_empty() {
             return Err(FromProtobufError::MessageDataMissing {
                 missing_field: "board".to_string(),
             });
         }
-        for row in value.board.chunks(3) {
-            let row: Vec<_> = row
-                .iter()
-                .map(|val| u64::decode(val.as_slice()))
-                .collect::<Result<_, _>>()?;
-            if row.len() != 3 {
-                return Err(FromProtobufError::InvalidProtobufMessage {
-                    reason: format!("invalid board length: expected=9, found={}", value.board.len())
-                });
-            }
-            full_info.board.push(row);
-        }
-        if full_info.board.len() != 3 {
+        if value.board.len() != 9 {
             return Err(FromProtobufError::InvalidProtobufMessage {
-                reason: format!("invalid board length: expected=9, found={}", value.board.len())
+                reason: format!(
+                    "invalid board length: expected=9, found={}",
+                    value.board.len()
+                ),
             });
         }
-
+        for (i, row) in value.board.chunks(3).enumerate() {
+            for (j, val) in row.iter().enumerate() {
+                let cell = BoardCell::from_protobuf(&val)?;
+                full_info.board[i][j] = cell;
+            }
+        }
         Ok(full_info)
     }
 }
@@ -108,6 +105,7 @@ pub struct CurrentGame {
     user_id: u64,
     state: GameState,
     images: HashMap<u64, Handle<Image>>,
+    board: [[BoardCell<PlayerId>; 3]; 3]
 }
 
 impl CurrentGame {
@@ -117,6 +115,7 @@ impl CurrentGame {
             user_id,
             state: game.state,
             images: game.players.into_iter().zip([x_img, o_img]).collect(),
+            board: Default::default(),
         }
     }
 
@@ -126,6 +125,10 @@ impl CurrentGame {
 
     pub fn user_id(&self) -> u64 {
         self.user_id
+    }
+
+    pub fn board(&self) -> &[[BoardCell<PlayerId>; 3]] {
+        &self.board
     }
 
     pub fn get_next_player(&self) -> Option<u64> {

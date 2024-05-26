@@ -22,11 +22,11 @@ use bevy::ui::widget::Button;
 use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, UiImage, Val};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
-use game_server::game::game::{FinishedState, GameState};
+use game_server::game::game::{BoardCell, FinishedState, GameState};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::game::{CurrentGame, GameCellPosition, GameInfo};
-use crate::grpc::{CallCreateGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
+use crate::game::{CurrentGame, FullGameInfo, GameCellPosition, GameInfo};
+use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
     spawn_exit_button, spawn_game_cell_button_bundle, spawn_join_game_button_bundle,
     spawn_menu_navigation_button, JoinGame,
@@ -64,6 +64,9 @@ impl Default for RefreshGamesTimer {
     }
 }
 
+#[derive(Debug, Deref, Event)]
+struct GameInfoReceived(FullGameInfo);
+
 #[derive(Clone, Copy, Debug, Event)]
 struct TurnSuccess {
     new_state: GameState,
@@ -88,6 +91,7 @@ impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(TextInputPlugin)
             .add_event::<MockBotGame>()
+            .add_event::<GameInfoReceived>()
             .add_event::<TurnSuccess>()
             .add_event::<NextTurn>()
             .add_event::<GameOver>()
@@ -126,8 +130,10 @@ impl Plugin for InterfacePlugin {
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task,
                     handle_make_turn_task,
+                    handle_get_game_task,
                     (
                         make_turn,
+                        handle_full_game_info,
                         handle_turn_success,
                         handle_next_turn.after(handle_turn_success),
                         handle_game_over.after(handle_turn_success),
@@ -246,6 +252,7 @@ fn join_game(
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     settings: Res<Settings>,
+    grpc_client: Res<GrpcClient>,
     asset_server: Res<AssetServer>,
 ) {
     let user_id = match settings.user_id() {
@@ -264,6 +271,11 @@ fn join_game(
             x_img,
             o_img,
         ));
+        if let Some(task) = grpc_client.load_game(join.id) {
+            commands.spawn(CallGetGame(task));
+        } else {
+            println!("load_game failed");
+        }
         println!("state transition: join game");
         next_app_state.set(AppState::Game);
         play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
@@ -797,6 +809,79 @@ fn handle_make_turn_task(
                 Err(err) => {
                     println!("MakeTurn request failed: {}", err);
                     play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                }
+            }
+        }
+    }
+}
+
+fn handle_get_game_task(
+    mut get_game: Query<(Entity, &mut CallGetGame)>,
+    mut commands: Commands,
+    mut game: Option<ResMut<CurrentGame>>,
+    mut game_info_received: EventWriter<GameInfoReceived>,
+) {
+    for (entity, mut task) in get_game.iter_mut() {
+        if let Some(res) = block_on(future::poll_once(&mut task.0)) {
+            commands.entity(entity).remove::<CallGetGame>();
+            let game = match &mut game {
+                Some(game) => game,
+                None => {
+                    println!("no current game, dropping GetGame response");
+                    continue;
+                }
+            };
+            match res {
+                Ok(response) => {
+                    if let Some(info) = response.into_inner().game_info {
+                        if info.game_id != game.id() {
+                            println!("received game info for other game, dropping");
+                            continue;
+                        }
+                        let full_info = match FullGameInfo::try_from(info) {
+                            Ok(info) => info,
+                            Err(err) => {
+                                println!("failed to decode full game info: {}", err);
+                                continue;
+                            }
+                        };
+                        game_info_received.send(GameInfoReceived(full_info));
+                    } else {
+                        println!("GetGame returned empty response");
+                    }
+                }
+                Err(err) => {
+                    println!("GetGame request failed: {}", err);
+                }
+            }
+        }
+    }
+}
+
+fn handle_full_game_info(
+    buttons: Query<(Entity, &GameCellPosition), With<Button>>,
+    mut commands: Commands,
+    mut game_info_received: EventReader<GameInfoReceived>,
+    mut game: ResMut<CurrentGame>,
+) {
+    for event in game_info_received.read() {
+        for (i, row) in event.board.iter().enumerate() {
+            for (j, cell) in row.iter().enumerate() {
+                if let BoardCell(Some(player)) = cell {
+                    let local_cell = game.board()[i][j];
+                    if local_cell.is_none() {
+                        if let Some(image) = game.get_player_image(player) {
+                            if let Some((entity, _)) = buttons
+                                .iter()
+                                .find(|(_, pos)| pos.row as usize == i && pos.col as usize == j)
+                            {
+                                commands.entity(entity).with_children(|parent| {
+                                    parent
+                                        .spawn(square_ui_image(image.clone(), Val::Percent(100.0)));
+                                });
+                            }
+                        }
+                    }
                 }
             }
         }
