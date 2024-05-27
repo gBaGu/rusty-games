@@ -13,10 +13,10 @@ use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnEx
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, Children, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource, Time, TimerMode};
+use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
 use bevy::render::color::Color;
 use bevy::tasks::{block_on, futures_lite::future};
-use bevy::time::Timer;
+use bevy::time::{Time, Timer, TimerMode};
 use bevy::ui::node_bundles::NodeBundle;
 use bevy::ui::widget::Button;
 use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, UiImage, Val};
@@ -36,12 +36,14 @@ use crate::interface::common::button_bundle::{
 };
 use crate::interface::common::{
     column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style,
-    menu_text_bundle, menu_text_input_bundle, menu_text_style, overlapping_flex_node_bundle,
-    row_node_bundle, square_ui_image, tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT,
-    O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
+    menu_text_bundle, menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
+    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
+    GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT, O_SPRITE_PATH,
+    TURN_SOUND_PATH, X_SPRITE_PATH,
 };
-use crate::interface::components::{empty_next_player_image, AssociatedTextInput, NextPlayerImage};
+use crate::interface::components::{
+    empty_next_player_image, overlay_ui_node, AssociatedTextInput, NextPlayerImage, Overlay,
+};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::settings::{Settings, SubmitTextInputSetting};
 
@@ -132,9 +134,15 @@ impl Plugin for InterfacePlugin {
                 cleanup_ui,
             )
             .add_systems(OnEnter(AppState::Paused), setup_pause)
-            .add_systems(OnExit(AppState::Paused), cleanup_ui)
-            .add_systems(OnEnter(AppState::Game), setup_game)
-            .add_systems(OnExit(AppState::Game), cleanup_ui)
+            .add_systems(OnExit(AppState::Paused), exit_pause)
+            .add_systems(
+                OnEnter(AppState::Game),
+                setup_game.run_if(not(any_with_component::<bevy::ui::Node>)),
+            )
+            .add_systems(
+                OnExit(AppState::Game),
+                cleanup_ui.run_if(not(in_state(AppState::Paused))),
+            )
             .add_systems(
                 Update,
                 (
@@ -504,9 +512,8 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|parent| {
+    commands.spawn(overlay_ui_node()).with_children(|parent| {
+        parent.spawn(column_node_bundle()).with_children(|parent| {
             parent
                 .spawn(menu_navigation(menu_style.clone(), AppState::Game))
                 .with_children(|parent| {
@@ -529,6 +536,23 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
                     parent.spawn(menu_text_bundle("Main menu", text_style.clone()));
                 });
         });
+    });
+}
+
+fn exit_pause(
+    mut commands: Commands,
+    ui_nodes: Query<(Entity, Option<&Overlay>), With<bevy::ui::Node>>,
+    state: Res<State<AppState>>,
+) {
+    if *state.get() == AppState::Game {
+        if let Some((entity, _)) = ui_nodes.iter().find(|(_, overlay)| overlay.is_some()) {
+            commands.entity(entity).despawn_recursive();
+        }
+    } else {
+        for (entity, _) in ui_nodes.iter() {
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -997,22 +1021,20 @@ fn handle_game_over(
             }
             FinishedState::Draw => "It's a draw!",
         };
-        commands
-            .spawn(overlapping_flex_node_bundle())
-            .with_children(|parent| {
-                parent.spawn(column_node_bundle()).with_children(|parent| {
-                    parent.spawn(menu_text_bundle(
-                        &format!("Game over. {}", text),
-                        text_style.clone(),
-                    ));
-                    spawn_menu_navigation_button(
-                        parent,
-                        style,
-                        text_style,
-                        "Main menu",
-                        AppState::Menu(MenuState::Main),
-                    );
-                });
+        commands.spawn(overlay_ui_node()).with_children(|parent| {
+            parent.spawn(column_node_bundle()).with_children(|parent| {
+                parent.spawn(menu_text_bundle(
+                    &format!("Game over. {}", text),
+                    text_style.clone(),
+                ));
+                spawn_menu_navigation_button(
+                    parent,
+                    style,
+                    text_style,
+                    "Main menu",
+                    AppState::Menu(MenuState::Main),
+                );
             });
+        });
     }
 }

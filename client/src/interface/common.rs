@@ -1,6 +1,5 @@
 use bevy::asset::{AssetServer, Handle};
 use bevy::ecs::bundle::Bundle;
-use bevy::prelude::Display::Flex;
 use bevy::render::{color::Color, texture::Image};
 use bevy::text::TextStyle;
 use bevy::ui::node_bundles::{ButtonBundle, NodeBundle, TextBundle};
@@ -98,21 +97,6 @@ pub fn row_node_bundle() -> NodeBundle {
             align_items: AlignItems::Center,
             ..default()
         },
-        ..default()
-    }
-}
-
-pub fn overlapping_flex_node_bundle() -> NodeBundle {
-    NodeBundle {
-        style: Style {
-            display: Flex,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            height: Val::Percent(100.0),
-            width: Val::Percent(100.0),
-            ..default()
-        },
-        background_color: BackgroundColor(Color::DARK_GRAY.with_a(0.95)),
         ..default()
     }
 }
