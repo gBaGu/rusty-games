@@ -96,14 +96,13 @@ pub fn spawn_game_cell_button_bundle(
     style: Style,
     position: GameCellPosition,
 ) {
-    builder
-        .spawn(GameCellButtonBundle {
-            button: ButtonBundle {
-                style,
-                background_color: BackgroundColor(Color::YELLOW_GREEN),
-                image: UiImage::default(),
-                ..default()
-            },
-            position,
-        });
+    builder.spawn(GameCellButtonBundle {
+        button: ButtonBundle {
+            style,
+            background_color: BackgroundColor(Color::YELLOW_GREEN),
+            image: UiImage::default(),
+            ..default()
+        },
+        position,
+    });
 }

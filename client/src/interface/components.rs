@@ -1,6 +1,6 @@
 use bevy::ecs::{component::Component, entity::Entity};
-use bevy::prelude::{default, Bundle, Color, NodeBundle, Val};
-use bevy::ui::{AlignItems, BackgroundColor, FlexDirection, Style};
+use bevy::prelude::{default, Bundle, Color, JustifyContent, NodeBundle, Val};
+use bevy::ui::{AlignItems, BackgroundColor, Display, Style, UiRect};
 
 #[derive(Debug, Component)]
 pub struct AssociatedTextInput(pub Entity);
@@ -32,12 +32,13 @@ pub fn empty_next_player_image(size: Val) -> EmptyNextPlayerImageBundle {
     }
 }
 
-pub fn pause_ui_node() -> impl Bundle {
+pub fn overlay_ui_node() -> impl Bundle {
     (
         NodeBundle {
             style: Style {
-                flex_direction: FlexDirection::Column,
+                display: Display::Flex,
                 align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
                 height: Val::Percent(100.0),
                 width: Val::Percent(100.0),
                 ..default()

@@ -36,12 +36,14 @@ use crate::interface::common::button_bundle::{
 };
 use crate::interface::common::{
     column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style,
-    menu_text_bundle, menu_text_input_bundle, menu_text_style, overlapping_flex_node_bundle,
-    row_node_bundle, square_ui_image, tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT,
-    O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
+    menu_text_bundle, menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
+    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
+    GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT, O_SPRITE_PATH,
+    TURN_SOUND_PATH, X_SPRITE_PATH,
 };
-use crate::interface::components::{empty_next_player_image, pause_ui_node, AssociatedTextInput, NextPlayerImage};
+use crate::interface::components::{
+    empty_next_player_image, overlay_ui_node, AssociatedTextInput, NextPlayerImage, Overlay,
+};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::settings::{Settings, SubmitTextInputSetting};
 
@@ -510,28 +512,30 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
-    commands.spawn(pause_ui_node()).with_children(|parent| {
-        parent
-            .spawn(menu_navigation(menu_style.clone(), AppState::Game))
-            .with_children(|parent| {
-                parent.spawn(menu_text_bundle("Resume", text_style.clone()));
-            });
-        parent
-            .spawn(menu_navigation(
-                menu_style.clone(),
-                AppState::Menu(MenuState::Settings),
-            ))
-            .with_children(|parent| {
-                parent.spawn(menu_text_bundle("Settings", text_style.clone()));
-            });
-        parent
-            .spawn(menu_navigation(
-                menu_style.clone(),
-                AppState::Menu(MenuState::Main),
-            ))
-            .with_children(|parent| {
-                parent.spawn(menu_text_bundle("Main menu", text_style.clone()));
-            });
+    commands.spawn(overlay_ui_node()).with_children(|parent| {
+        parent.spawn(column_node_bundle()).with_children(|parent| {
+            parent
+                .spawn(menu_navigation(menu_style.clone(), AppState::Game))
+                .with_children(|parent| {
+                    parent.spawn(menu_text_bundle("Resume", text_style.clone()));
+                });
+            parent
+                .spawn(menu_navigation(
+                    menu_style.clone(),
+                    AppState::Menu(MenuState::Settings),
+                ))
+                .with_children(|parent| {
+                    parent.spawn(menu_text_bundle("Settings", text_style.clone()));
+                });
+            parent
+                .spawn(menu_navigation(
+                    menu_style.clone(),
+                    AppState::Menu(MenuState::Main),
+                ))
+                .with_children(|parent| {
+                    parent.spawn(menu_text_bundle("Main menu", text_style.clone()));
+                });
+        });
     });
 }
 
@@ -551,7 +555,7 @@ fn exit_pause(
     }
 }
 
-fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<CurrentGame>) {
+fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
 
     commands
@@ -1017,22 +1021,20 @@ fn handle_game_over(
             }
             FinishedState::Draw => "It's a draw!",
         };
-        commands
-            .spawn(overlapping_flex_node_bundle())
-            .with_children(|parent| {
-                parent.spawn(column_node_bundle()).with_children(|parent| {
-                    parent.spawn(menu_text_bundle(
-                        &format!("Game over. {}", text),
-                        text_style.clone(),
-                    ));
-                    spawn_menu_navigation_button(
-                        parent,
-                        style,
-                        text_style,
-                        "Main menu",
-                        AppState::Menu(MenuState::Main),
-                    );
-                });
+        commands.spawn(overlay_ui_node()).with_children(|parent| {
+            parent.spawn(column_node_bundle()).with_children(|parent| {
+                parent.spawn(menu_text_bundle(
+                    &format!("Game over. {}", text),
+                    text_style.clone(),
+                ));
+                spawn_menu_navigation_button(
+                    parent,
+                    style,
+                    text_style,
+                    "Main menu",
+                    AppState::Menu(MenuState::Main),
+                );
             });
+        });
     }
 }
