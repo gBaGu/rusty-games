@@ -3,7 +3,7 @@ mod error;
 use std::collections::HashMap;
 
 use bevy::asset::Handle;
-use bevy::prelude::{Component, Image, Resource};
+use bevy::prelude::{Component, Entity, Image, Resource};
 use game_server::game::encoding::{FromProtobuf, FromProtobufError};
 use game_server::game::game::{BoardCell, GameState};
 use game_server::game::player_pool::PlayerId;
@@ -105,7 +105,8 @@ pub struct CurrentGame {
     user_id: u64,
     state: GameState,
     images: HashMap<u64, Handle<Image>>,
-    board: [[BoardCell<PlayerId>; 3]; 3]
+    board: [[BoardCell<PlayerId>; 3]; 3],
+    board_entity: Option<Entity>,
 }
 
 impl CurrentGame {
@@ -116,6 +117,7 @@ impl CurrentGame {
             state: game.state,
             images: game.players.into_iter().zip([x_img, o_img]).collect(),
             board: Default::default(),
+            board_entity: None,
         }
     }
 
@@ -129,6 +131,10 @@ impl CurrentGame {
 
     pub fn board(&self) -> &[[BoardCell<PlayerId>; 3]] {
         &self.board
+    }
+
+    pub fn board_entity(&self) -> &Option<Entity> {
+        &self.board_entity
     }
 
     pub fn get_next_player(&self) -> Option<u64> {
@@ -148,6 +154,10 @@ impl CurrentGame {
 
     pub fn get_player_image(&self, id: &u64) -> Option<&Handle<Image>> {
         self.images.get(id)
+    }
+
+    pub fn set_board(&mut self, board: Entity) {
+        self.board_entity = Some(board);
     }
 
     pub fn set_cell(&mut self, pos: (usize, usize), player_id: PlayerId) {

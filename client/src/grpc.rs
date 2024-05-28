@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crate::game::GameCellPosition;
 use async_compat::CompatExt;
 use bevy::prelude::{Component, Deref, DerefMut, Res, ResMut, Resource, TimerMode};
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
@@ -52,10 +51,11 @@ impl GrpcClient {
         &self,
         game_id: u64,
         player_id: u64,
-        pos: GameCellPosition,
+        row: u32,
+        col: u32
     ) -> Option<Task<RpcResult<proto::MakeTurnReply>>> {
         let mut client = self.inner.as_ref().cloned()?;
-        let position: proto::Position = pos.into();
+        let position = proto::Position { row, col };
         let task = IoTaskPool::get().spawn(async move {
             client
                 .make_turn(Request::new(proto::MakeTurnRequest {
