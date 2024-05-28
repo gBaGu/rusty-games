@@ -11,35 +11,33 @@ use bevy::ecs::query::{Changed, With, Without};
 use bevy::ecs::schedule::common_conditions::{any_with_component, in_state, not, resource_exists};
 use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnExit, State};
 use bevy::ecs::system::{Commands, Query};
-use bevy::hierarchy::{BuildChildren, Children, DespawnRecursiveExt};
+use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
 use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
 use bevy::render::color::Color;
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::{Time, Timer, TimerMode};
-use bevy::ui::node_bundles::NodeBundle;
 use bevy::ui::widget::Button;
-use bevy::ui::{BackgroundColor, Display, GridPlacement, Interaction, Style, UiImage, Val};
+use bevy::ui::{BackgroundColor, Interaction, UiImage, Val};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 use game_server::game::game::{BoardCell, FinishedState, GameState};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::game::{CurrentGame, FullGameInfo, GameCellPosition, GameInfo};
+use crate::board;
+use crate::game::{CurrentGame, FullGameInfo, GameInfo};
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
-    spawn_exit_button, spawn_game_cell_button_bundle, spawn_join_game_button_bundle,
-    spawn_menu_navigation_button, JoinGame,
+    spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
 };
 use crate::interface::common::button_bundle::{
     menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
 };
 use crate::interface::common::{
-    column_node_bundle, game_button_style, global_column_node_bundle, menu_item_style,
-    menu_text_bundle, menu_text_input_bundle, menu_text_style, row_node_bundle, square_ui_image,
-    tic_tac_toe_grid_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH,
-    GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT, O_SPRITE_PATH,
-    TURN_SOUND_PATH, X_SPRITE_PATH,
+    column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
+    menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
+    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT,
+    O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
 };
 use crate::interface::components::{
     empty_next_player_image, overlay_ui_node, AssociatedTextInput, NextPlayerImage, Overlay,
@@ -81,15 +79,9 @@ impl Default for RefreshGameTimer {
 #[derive(Debug, Deref, Event)]
 struct GameStateUpdated(GameState);
 
-#[derive(Debug)]
-enum CellQueryData {
-    Entity(Entity),
-    CellPosition { row: usize, col: usize },
-}
-
 #[derive(Debug, Event)]
 struct CellUpdated {
-    query_data: CellQueryData,
+    board_pos: board::Position,
     player_id: u64,
 }
 
@@ -555,78 +547,39 @@ fn exit_pause(
     }
 }
 
-fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_game(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    game: Option<ResMut<CurrentGame>>,
+) {
     let text_style = menu_text_style(&asset_server);
 
     commands
         .spawn(global_column_node_bundle())
-        .with_children(|parent| {
-            parent.spawn(row_node_bundle()).with_children(|parent| {
-                parent.spawn(menu_text_bundle("Next:", text_style.clone()));
-                parent.spawn(empty_next_player_image(Val::Px(MENU_ITEM_HEIGHT)));
+        .with_children(|builder| {
+            builder.spawn(row_node_bundle()).with_children(|builder| {
+                builder.spawn(menu_text_bundle("Next:", text_style.clone()));
+                builder.spawn(empty_next_player_image(Val::Px(MENU_ITEM_HEIGHT)));
             });
-            parent
-                .spawn(tic_tac_toe_grid_node_bundle())
-                .with_children(|parent| {
-                    for i in 1i16..=5 {
-                        for j in 1i16..=5 {
-                            let i_is_odd = i % 2 != 0;
-                            let j_is_odd = j % 2 != 0;
-                            if i_is_odd && j_is_odd {
-                                // spawn game buttons
-                                let position =
-                                    GameCellPosition::new((i / 2) as u32, (j / 2) as u32);
-                                let style = game_button_style(i, j);
-                                spawn_game_cell_button_bundle(parent, style, position);
-                            }
-                            if i_is_odd && !j_is_odd {
-                                // vertical borders
-                                parent.spawn(NodeBundle {
-                                    style: Style {
-                                        display: Display::Grid,
-                                        grid_column: GridPlacement::start(j),
-                                        grid_row: GridPlacement::start(i),
-                                        width: Val::Px(1.0),
-                                        ..default()
-                                    },
-                                    background_color: BackgroundColor(Color::BLACK),
-                                    ..default()
-                                });
-                                // horizontal borders
-                                parent.spawn(NodeBundle {
-                                    style: Style {
-                                        display: Display::Grid,
-                                        grid_column: GridPlacement::start(i),
-                                        grid_row: GridPlacement::start(j),
-                                        height: Val::Px(1.0),
-                                        ..default()
-                                    },
-                                    background_color: BackgroundColor(Color::BLACK),
-                                    ..default()
-                                });
-                            }
-                        }
-                    }
-                });
+            if let Some(mut game) = game {
+                let board = builder.spawn(board::BoardBundle::default()).id();
+                game.set_board(board);
+            }
         });
 }
 
 fn make_turn(
-    game_cell: Query<
-        (Entity, &Interaction, &GameCellPosition),
-        (With<Button>, Without<Children>, Changed<Interaction>),
-    >,
     mut commands: Commands,
+    mut board_button_pressed: EventReader<board::ButtonPressed>,
     game: Res<CurrentGame>,
     asset_server: Res<AssetServer>,
     client: ResMut<GrpcClient>,
 ) {
-    if let Some((entity, _, &pos)) = game_cell
-        .iter()
-        .find(|(_, &i, _)| i == Interaction::Pressed)
-    {
-        if let Some(task) = client.make_turn(game.id(), game.user_id(), pos) {
-            commands.entity(entity).insert(CallMakeTurn(task));
+    for event in board_button_pressed.read() {
+        if let Some(task) =
+            client.make_turn(game.id(), game.user_id(), event.pos.row(), event.pos.col())
+        {
+            commands.spawn((CallMakeTurn(task), event.pos));
         } else {
             println!("grpc server is down");
             play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
@@ -816,7 +769,7 @@ fn handle_create_game_task(
 }
 
 fn handle_make_turn_task(
-    mut make_turn: Query<(Entity, &mut CallMakeTurn, &GameCellPosition)>,
+    mut make_turn: Query<(Entity, &mut CallMakeTurn, &board::Position)>,
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
     mut cell_updated: EventWriter<CellUpdated>,
@@ -825,7 +778,7 @@ fn handle_make_turn_task(
 ) {
     for (entity, mut task, pos) in make_turn.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
-            commands.entity(entity).remove::<CallMakeTurn>();
+            commands.entity(entity).despawn();
             let game = match &mut game {
                 Some(game) => game,
                 None => {
@@ -847,10 +800,10 @@ fn handle_make_turn_task(
                         match state {
                             Ok(state) => {
                                 println!("updating state on successful turn");
-                                game.set_cell((pos.row as usize, pos.col as usize), user_id);
+                                game.set_cell((pos.row() as usize, pos.col() as usize), user_id);
                                 game.set_state(state);
                                 cell_updated.send(CellUpdated {
-                                    query_data: CellQueryData::Entity(entity),
+                                    board_pos: *pos,
                                     player_id: user_id,
                                 });
                                 state_updated.send(GameStateUpdated(state));
@@ -914,10 +867,7 @@ fn handle_get_game_task(
                                         game.set_cell((i, j), *player);
                                         state_updated.send(GameStateUpdated(full_info.info.state));
                                         cell_updated.send(CellUpdated {
-                                            query_data: CellQueryData::CellPosition {
-                                                row: i,
-                                                col: j,
-                                            },
+                                            board_pos: board::Position::new(i as u32, j as u32),
                                             player_id: *player,
                                         });
                                     }
@@ -937,32 +887,24 @@ fn handle_get_game_task(
 }
 
 fn handle_cell_updated(
-    buttons: Query<(Entity, &GameCellPosition), With<Button>>,
-    mut commands: Commands,
     mut cell_updated: EventReader<CellUpdated>,
+    mut board_content: EventWriter<board::ButtonContentArrived>,
     game: Res<CurrentGame>,
 ) {
     for event in cell_updated.read() {
-        if let Some(img) = game.get_player_image(&event.player_id) {
-            let entity = match event.query_data {
-                CellQueryData::Entity(entity) => entity,
-                CellQueryData::CellPosition { row, col } => {
-                    match buttons
-                        .iter()
-                        .find(|(_, pos)| pos.row as usize == row && pos.col as usize == col)
-                    {
-                        Some((entity, _)) => entity,
-                        None => {
-                            println!("unable to get button with position: ({}, {})", row, col);
-                            continue;
-                        }
-                    }
-                }
-            };
-            commands.entity(entity).with_children(|parent| {
-                parent.spawn(square_ui_image(img.clone(), Val::Percent(100.0)));
-            });
-        }
+        let Some(img) = game.get_player_image(&event.player_id) else {
+            println!("failed to get player image, dropping event");
+            continue;
+        };
+        let Some(board) = game.board_entity() else {
+            println!("ui board is not set for this game, dropping event");
+            continue;
+        };
+        board_content.send(board::ButtonContentArrived {
+            board: *board,
+            pos: event.board_pos,
+            image: img.clone(),
+        });
     }
 }
 

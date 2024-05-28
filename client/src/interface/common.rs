@@ -1,12 +1,9 @@
-use bevy::asset::{AssetServer, Handle};
+use bevy::asset::AssetServer;
 use bevy::ecs::bundle::Bundle;
-use bevy::render::{color::Color, texture::Image};
+use bevy::render::color::Color;
 use bevy::text::TextStyle;
 use bevy::ui::node_bundles::{ButtonBundle, NodeBundle, TextBundle};
-use bevy::ui::{
-    AlignItems, BackgroundColor, Display, FlexDirection, GridPlacement, GridTrack, JustifyContent,
-    Style, UiImage, UiRect, Val,
-};
+use bevy::ui::{AlignItems, FlexDirection, JustifyContent, Style, UiImage, UiRect, Val};
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
@@ -30,18 +27,6 @@ pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
 // Styles
-
-pub fn game_button_style(col: i16, row: i16) -> Style {
-    Style {
-        width: Val::Percent(100.0),
-        height: Val::Percent(100.0),
-        grid_column: GridPlacement::start(col),
-        grid_row: GridPlacement::start(row),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        ..default()
-    }
-}
 
 pub fn menu_item_style() -> Style {
     Style {
@@ -99,56 +84,6 @@ pub fn row_node_bundle() -> NodeBundle {
         },
         ..default()
     }
-}
-
-pub fn tic_tac_toe_grid_node_bundle() -> NodeBundle {
-    NodeBundle {
-        style: Style {
-            height: Val::Percent(100.0),
-            aspect_ratio: Some(1.0),
-            display: Display::Grid,
-            margin: UiRect::all(Val::Px(20.0)),
-            padding: UiRect::all(Val::Px(20.0)),
-            grid_template_columns: vec![
-                GridTrack::flex(1.0),
-                GridTrack::min_content(),
-                GridTrack::flex(1.0),
-                GridTrack::min_content(),
-                GridTrack::flex(1.0),
-            ],
-            grid_template_rows: vec![
-                GridTrack::flex(1.0),
-                GridTrack::min_content(),
-                GridTrack::flex(1.0),
-                GridTrack::min_content(),
-                GridTrack::flex(1.0),
-            ],
-            row_gap: Val::Px(12.0),
-            column_gap: Val::Px(12.0),
-            justify_content: JustifyContent::Center,
-            ..default()
-        },
-        background_color: BackgroundColor(Color::GRAY),
-        ..default()
-    }
-}
-
-// Image
-
-pub fn square_ui_image(image: Handle<Image>, size: Val) -> impl Bundle {
-    (
-        NodeBundle {
-            style: Style {
-                width: size,
-                height: size,
-                margin: UiRect::all(Val::Px(10.0)),
-                ..default()
-            },
-            background_color: BackgroundColor(Color::WHITE),
-            ..default()
-        },
-        UiImage::new(image),
-    )
 }
 
 // Text
