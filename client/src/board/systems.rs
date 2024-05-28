@@ -5,9 +5,10 @@ use bevy::prelude::{
 };
 use bevy::ui::{node_bundles, UiImage};
 
-use super::components::{Board, ButtonBundle, ContentBundle, Position};
+use super::components::{Board, ButtonBundle, ButtonContentBundle, Position};
 use super::events::{ButtonContentArrived, ButtonPressed};
 
+/// Default style for button image
 fn button_image_style() -> Style {
     Style {
         width: Val::Percent(100.0),
@@ -17,7 +18,10 @@ fn button_image_style() -> Style {
     }
 }
 
-fn grid_item_style(col: i16, row: i16) -> Style {
+/// Default style for a board button.
+/// Accepts `col` and `row` parameters which are used as a [`GridPlacement`]
+/// for `grid_column` and `grid_row` respectively.
+fn board_button_style(col: i16, row: i16) -> Style {
     Style {
         width: Val::Percent(100.0),
         height: Val::Percent(100.0),
@@ -29,6 +33,9 @@ fn grid_item_style(col: i16, row: i16) -> Style {
     }
 }
 
+/// System that fills newly created board with buttons and borders.
+/// For every row and column 1, 3, 5 elements are buttons.
+/// Places in a grid between them are used for borders.
 pub fn create(mut commands: Commands, new_board: Query<Entity, Added<Board>>) {
     for entity in new_board.iter() {
         commands.entity(entity).with_children(|builder| {
@@ -40,7 +47,7 @@ pub fn create(mut commands: Commands, new_board: Query<Entity, Added<Board>>) {
                         let position = Position::new((i / 2) as u32, (j / 2) as u32);
                         builder.spawn(ButtonBundle {
                             button: node_bundles::ButtonBundle {
-                                style: grid_item_style(i, j),
+                                style: board_button_style(i, j),
                                 background_color: BackgroundColor(Color::YELLOW_GREEN),
                                 ..default()
                             },
@@ -80,7 +87,7 @@ pub fn create(mut commands: Commands, new_board: Query<Entity, Added<Board>>) {
     }
 }
 
-/// Check if button is pressed and emit [`ButtonPressed`] event
+/// Check if button is pressed and emit [`ButtonPressed`] event.
 pub fn button_press(
     button: Query<(&Interaction, &Position, &Parent), (With<Button>, Changed<Interaction>)>,
     mut pressed: EventWriter<ButtonPressed>,
@@ -93,7 +100,7 @@ pub fn button_press(
     }
 }
 
-/// Receive [`ButtonContentArrived`] event and make content entity a child of a button entity
+/// Receive [`ButtonContentArrived`] event and make content entity a child of a button entity.
 pub fn add_content(
     mut commands: Commands,
     button: Query<(Entity, &Parent, &Position), With<Button>>,
@@ -108,7 +115,7 @@ pub fn add_content(
                 .entity(entity)
                 .clear_children()
                 .with_children(|builder| {
-                    builder.spawn(ContentBundle {
+                    builder.spawn(ButtonContentBundle {
                         node: NodeBundle {
                             style: button_image_style(),
                             background_color: BackgroundColor(Color::WHITE),
