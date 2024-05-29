@@ -14,11 +14,10 @@ use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
 use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
-use bevy::render::color::Color;
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::{Time, Timer, TimerMode};
 use bevy::ui::widget::Button;
-use bevy::ui::{BackgroundColor, Interaction, UiImage, Val};
+use bevy::ui::Interaction;
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 use game_server::game::game::{BoardCell, FinishedState, GameState};
@@ -36,13 +35,12 @@ use crate::interface::common::button_bundle::{
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT,
-    O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
+    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH,
+    TURN_SOUND_PATH, X_SPRITE_PATH,
 };
-use crate::interface::components::{
-    empty_next_player_image, overlay_ui_node, AssociatedTextInput, NextPlayerImage, Overlay,
-};
+use crate::interface::components::{overlay_ui_node, AssociatedTextInput, Overlay};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
+use crate::interface::ingame::{InGameUI, InGameUIPlugin, PlayerInfoReady};
 use crate::settings::{Settings, SubmitTextInputSetting};
 
 fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
@@ -77,7 +75,7 @@ impl Default for RefreshGameTimer {
 }
 
 #[derive(Debug, Deref, Event)]
-struct GameStateUpdated(GameState);
+pub struct GameStateUpdated(pub GameState);
 
 #[derive(Debug, Event)]
 struct CellUpdated {
@@ -98,7 +96,7 @@ pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(TextInputPlugin)
+        app.add_plugins((InGameUIPlugin, TextInputPlugin))
             .add_event::<MockBotGame>()
             .add_event::<GameStateUpdated>()
             .add_event::<CellUpdated>()
@@ -549,22 +547,38 @@ fn exit_pause(
 
 fn setup_game(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    game: Option<ResMut<CurrentGame>>,
+    mut game: ResMut<CurrentGame>,
+    mut player_info_ready: EventWriter<PlayerInfoReady>,
 ) {
-    let text_style = menu_text_style(&asset_server);
-
     commands
         .spawn(global_column_node_bundle())
         .with_children(|builder| {
-            builder.spawn(row_node_bundle()).with_children(|builder| {
-                builder.spawn(menu_text_bundle("Next:", text_style.clone()));
-                builder.spawn(empty_next_player_image(Val::Px(MENU_ITEM_HEIGHT)));
-            });
-            if let Some(mut game) = game {
-                let board = builder.spawn(board::BoardBundle::default()).id();
-                game.set_board(board);
+            let player_id = game.user_id();
+            let Some(enemy_id) = game.get_enemy() else {
+                println!("CurrentGame is corrupted");
+                return;
+            };
+            builder.spawn((
+                row_node_bundle(),
+                InGameUI {
+                    player_id,
+                    enemy_id,
+                },
+            ));
+            if let Some(image) = game.get_player_image(&player_id) {
+                player_info_ready.send(PlayerInfoReady {
+                    id: player_id,
+                    image: image.clone(),
+                });
             }
+            if let Some(image) = game.get_player_image(&enemy_id) {
+                player_info_ready.send(PlayerInfoReady {
+                    id: enemy_id,
+                    image: image.clone(),
+                });
+            }
+            let board = builder.spawn(board::BoardBundle::default()).id();
+            game.set_board(board);
         });
 }
 
@@ -799,7 +813,6 @@ fn handle_make_turn_task(
                         let state = new_state.try_into();
                         match state {
                             Ok(state) => {
-                                println!("updating state on successful turn");
                                 game.set_cell((pos.row() as usize, pos.col() as usize), user_id);
                                 game.set_state(state);
                                 cell_updated.send(CellUpdated {
@@ -909,34 +922,13 @@ fn handle_cell_updated(
 }
 
 fn handle_state_updated(
-    mut next_player_image: Query<
-        (Entity, &mut BackgroundColor, Option<&mut UiImage>),
-        With<NextPlayerImage>,
-    >,
-    mut commands: Commands,
     mut state_updated: EventReader<GameStateUpdated>,
     mut game_over: EventWriter<GameOver>,
-    game: Res<CurrentGame>,
 ) {
     if let Some(event) = state_updated.read().last() {
         println!("received GameStateUpdated: {:?}", event);
         match event.0 {
-            GameState::Turn(id) => {
-                if let Some(&ref next_img) = game.get_player_image(&id) {
-                    match next_player_image.get_single_mut() {
-                        Ok((_, _, Some(mut img))) => *img = UiImage::new(next_img.clone()),
-                        Ok((entity, mut bc, None)) => {
-                            *bc = BackgroundColor(Color::WHITE);
-                            commands
-                                .entity(entity)
-                                .insert(UiImage::new(next_img.clone()));
-                        }
-                        Err(err) => println!("failed to get NextPlayerImage: {}", err),
-                    };
-                } else {
-                    println!("failed to get image for player: {}", id);
-                }
-            }
+            GameState::Turn(_) => {}
             GameState::Finished(f) => {
                 game_over.send(GameOver(f));
             }

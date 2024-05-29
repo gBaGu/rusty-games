@@ -137,6 +137,10 @@ impl CurrentGame {
         &self.board_entity
     }
 
+    pub fn get_enemy(&self) -> Option<u64> {
+        self.images.keys().find(|&&k| k != self.user_id).cloned()
+    }
+
     pub fn get_next_player(&self) -> Option<u64> {
         if let GameState::Turn(id) = self.state {
             return Some(id);
