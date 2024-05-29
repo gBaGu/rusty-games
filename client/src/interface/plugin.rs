@@ -239,24 +239,25 @@ fn state_transition(
 
 fn create_mock_bot_game(
     mut commands: Commands,
-    mut game_over: EventWriter<GameOver>,
+    mut game_over: EventWriter<GameStateUpdated>,
     mut mock_bot_game: EventReader<MockBotGame>,
     asset_server: Res<AssetServer>,
 ) {
     if let Some(&MockBotGame { user_id }) = mock_bot_game.read().last() {
         let x_img = asset_server.load(X_SPRITE_PATH);
         let o_img = asset_server.load(O_SPRITE_PATH);
-        commands.insert_resource(CurrentGame::new(
+        let game = CurrentGame::new(
             user_id,
             GameInfo {
                 id: 0,
                 state: GameState::Finished(FinishedState::Draw),
-                players: vec![user_id],
+                players: vec![user_id, u64::MAX], // TODO: replace this with bot id
             },
             x_img,
             o_img,
-        ));
-        game_over.send(GameOver(FinishedState::Draw));
+        );
+        game_over.send(GameStateUpdated(game.state()));
+        commands.insert_resource(game);
     }
 }
 
@@ -555,7 +556,7 @@ fn setup_game(
         .with_children(|builder| {
             let player_id = game.user_id();
             let Some(enemy_id) = game.get_enemy() else {
-                println!("CurrentGame is corrupted");
+                println!("unable to get enemy id, CurrentGame is corrupted");
                 return;
             };
             builder.spawn((

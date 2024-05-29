@@ -67,7 +67,6 @@ pub fn handle_state_update(
 ) {
     for event in state_updated.read() {
         if let GameState::Turn(id) = event.0 {
-            println!("in-game: next turn: {}", id);
             for (mut border, info) in player_info.iter_mut() {
                 if info.id == id {
                     *border = info.color.into();
@@ -84,7 +83,7 @@ pub fn handle_state_update(
             let Ok(state_container) = state_container.get_single() else {
                 continue;
             };
-            commands.entity(state_container).clear_children();
+            commands.entity(state_container).despawn_descendants();
         }
     }
 }

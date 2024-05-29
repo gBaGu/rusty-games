@@ -129,6 +129,10 @@ impl CurrentGame {
         self.user_id
     }
 
+    pub fn state(&self) -> GameState {
+        self.state
+    }
+
     pub fn board(&self) -> &[[BoardCell<PlayerId>; 3]] {
         &self.board
     }
