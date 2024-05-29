@@ -13,7 +13,7 @@ use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnEx
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
+use bevy::prelude::{AlignItems, Deref, DerefMut, Display, Event, EventReader, FlexDirection, NodeBundle, Resource, Style, Val};
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::{Time, Timer, TimerMode};
 use bevy::ui::widget::Button;
@@ -549,6 +549,7 @@ fn exit_pause(
 fn setup_game(
     mut commands: Commands,
     mut game: ResMut<CurrentGame>,
+    mut state_updated: EventWriter<GameStateUpdated>,
     mut player_info_ready: EventWriter<PlayerInfoReady>,
 ) {
     commands
@@ -560,7 +561,16 @@ fn setup_game(
                 return;
             };
             builder.spawn((
-                row_node_bundle(),
+                NodeBundle {
+                    style: Style {
+                        display: Display::Flex,
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    ..default()
+                },
                 InGameUI {
                     player_id,
                     enemy_id,
@@ -578,6 +588,7 @@ fn setup_game(
                     image: image.clone(),
                 });
             }
+            state_updated.send(GameStateUpdated(game.state()));
             let board = builder.spawn(board::BoardBundle::default()).id();
             game.set_board(board);
         });
@@ -877,9 +888,7 @@ fn handle_get_game_task(
                                 if let BoardCell(Some(player)) = cell {
                                     let local_cell = game.board()[i][j];
                                     if local_cell.is_none() {
-                                        game.set_state(full_info.info.state);
                                         game.set_cell((i, j), *player);
-                                        state_updated.send(GameStateUpdated(full_info.info.state));
                                         cell_updated.send(CellUpdated {
                                             board_pos: board::Position::new(i as u32, j as u32),
                                             player_id: *player,
@@ -887,6 +896,10 @@ fn handle_get_game_task(
                                     }
                                 }
                             }
+                        }
+                        if full_info.info.state != game.state() {
+                            game.set_state(full_info.info.state);
+                            state_updated.send(GameStateUpdated(full_info.info.state));
                         }
                     } else {
                         println!("GetGame returned empty response");

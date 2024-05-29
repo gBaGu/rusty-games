@@ -51,8 +51,12 @@ impl PlayerInfoContainerBundle {
         Self {
             node: NodeBundle {
                 style: Style {
+                    display: Display::Flex,
+                    flex_basis: Val::Percent(100.0),
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    border: UiRect::all(Val::Px(1.0)),
                     ..default()
                 },
                 ..default()
@@ -98,12 +102,7 @@ impl Default for GameStateContainerBundle {
                     flex_basis: Val::Percent(100.0),
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
-                    margin: UiRect {
-                        left: Val::Auto,
-                        right: Val::Auto,
-                        top: Val::Px(10.0),
-                        bottom: Val::Px(10.0),
-                    },
+                    justify_content: JustifyContent::Center,
                     ..default()
                 },
                 ..default()

@@ -69,6 +69,7 @@ pub fn handle_state_update(
         if let GameState::Turn(id) = event.0 {
             for (mut border, info) in player_info.iter_mut() {
                 if info.id == id {
+                    println!("set border for {:?}, next_player.is_empty(){}, ", info, next_player.is_empty());
                     *border = info.color.into();
                     if let (Ok(mut next_player_image), Some(image)) =
                         (next_player.get_single_mut(), info.image.as_ref())

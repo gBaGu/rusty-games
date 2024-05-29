@@ -10,7 +10,7 @@ use systems::{create, handle_state_update, update_player_info};
 
 pub const FONT_PATH: &str = "fonts/FiraSans-Bold.ttf";
 pub const FONT_SIZE: f32 = 40.0;
-pub const ITEM_HEIGHT: f32 = 50.0;
+pub const ITEM_HEIGHT: f32 = 80.0;
 pub const TEXT_COLOR: Color = Color::OLIVE;
 pub const PLAYER_TURN_COLOR: Color = Color::DARK_GREEN;
 pub const ENEMY_TURN_COLOR: Color = Color::RED;
