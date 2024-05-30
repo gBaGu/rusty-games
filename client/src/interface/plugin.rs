@@ -14,11 +14,10 @@ use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
 use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
-use bevy::render::color::Color;
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::{Time, Timer, TimerMode};
 use bevy::ui::widget::Button;
-use bevy::ui::{BackgroundColor, Interaction, UiImage, Val};
+use bevy::ui::Interaction;
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
 use game_server::game::game::{BoardCell, FinishedState, GameState};
@@ -36,13 +35,12 @@ use crate::interface::common::button_bundle::{
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, MENU_ITEM_HEIGHT,
-    O_SPRITE_PATH, TURN_SOUND_PATH, X_SPRITE_PATH,
+    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH,
+    TURN_SOUND_PATH, X_SPRITE_PATH,
 };
-use crate::interface::components::{
-    empty_next_player_image, overlay_ui_node, AssociatedTextInput, NextPlayerImage, Overlay,
-};
+use crate::interface::components::{overlay_ui_node, AssociatedTextInput, Overlay};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
+use crate::interface::ingame::{InGameUIBundle, InGameUIPlugin, PlayerInfoReady};
 use crate::settings::{Settings, SubmitTextInputSetting};
 
 fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
@@ -77,7 +75,7 @@ impl Default for RefreshGameTimer {
 }
 
 #[derive(Debug, Deref, Event)]
-struct GameStateUpdated(GameState);
+pub struct GameStateUpdated(pub GameState);
 
 #[derive(Debug, Event)]
 struct CellUpdated {
@@ -98,7 +96,7 @@ pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(TextInputPlugin)
+        app.add_plugins((InGameUIPlugin, TextInputPlugin))
             .add_event::<MockBotGame>()
             .add_event::<GameStateUpdated>()
             .add_event::<CellUpdated>()
@@ -241,24 +239,25 @@ fn state_transition(
 
 fn create_mock_bot_game(
     mut commands: Commands,
-    mut game_over: EventWriter<GameOver>,
+    mut game_over: EventWriter<GameStateUpdated>,
     mut mock_bot_game: EventReader<MockBotGame>,
     asset_server: Res<AssetServer>,
 ) {
     if let Some(&MockBotGame { user_id }) = mock_bot_game.read().last() {
         let x_img = asset_server.load(X_SPRITE_PATH);
         let o_img = asset_server.load(O_SPRITE_PATH);
-        commands.insert_resource(CurrentGame::new(
+        let game = CurrentGame::new(
             user_id,
             GameInfo {
                 id: 0,
                 state: GameState::Finished(FinishedState::Draw),
-                players: vec![user_id],
+                players: vec![user_id, u64::MAX], // TODO: replace this with bot id
             },
             x_img,
             o_img,
-        ));
-        game_over.send(GameOver(FinishedState::Draw));
+        );
+        game_over.send(GameStateUpdated(game.state()));
+        commands.insert_resource(game);
     }
 }
 
@@ -549,22 +548,28 @@ fn exit_pause(
 
 fn setup_game(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    game: Option<ResMut<CurrentGame>>,
+    mut game: ResMut<CurrentGame>,
+    mut state_updated: EventWriter<GameStateUpdated>,
+    mut player_info_ready: EventWriter<PlayerInfoReady>,
 ) {
-    let text_style = menu_text_style(&asset_server);
-
     commands
         .spawn(global_column_node_bundle())
         .with_children(|builder| {
-            builder.spawn(row_node_bundle()).with_children(|builder| {
-                builder.spawn(menu_text_bundle("Next:", text_style.clone()));
-                builder.spawn(empty_next_player_image(Val::Px(MENU_ITEM_HEIGHT)));
-            });
-            if let Some(mut game) = game {
-                let board = builder.spawn(board::BoardBundle::default()).id();
-                game.set_board(board);
+            let player_id = game.user_id();
+            let Some(enemy_id) = game.get_enemy() else {
+                println!("unable to get enemy id, CurrentGame is corrupted");
+                return;
+            };
+            builder.spawn(InGameUIBundle::new(player_id, enemy_id));
+            if let Some(image) = game.get_player_image(&player_id) {
+                player_info_ready.send(PlayerInfoReady::new(player_id, image.clone()));
             }
+            if let Some(image) = game.get_player_image(&enemy_id) {
+                player_info_ready.send(PlayerInfoReady::new(enemy_id, image.clone()));
+            }
+            let board = builder.spawn(board::BoardBundle::default()).id();
+            game.set_board(board);
+            state_updated.send(GameStateUpdated(game.state()));
         });
 }
 
@@ -728,7 +733,6 @@ fn handle_create_game_task(
     mut create_game: Query<(Entity, &mut CallCreateGame, &GameInfo)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
-    mut state_updated: EventWriter<GameStateUpdated>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task, game) in create_game.iter_mut() {
@@ -751,7 +755,6 @@ fn handle_create_game_task(
                             o_img,
                         ));
                         println!("starting created game: {}", game_id);
-                        state_updated.send(GameStateUpdated(game.state));
                         next_app_state.set(AppState::Game);
                         play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
                     } else {
@@ -799,7 +802,6 @@ fn handle_make_turn_task(
                         let state = new_state.try_into();
                         match state {
                             Ok(state) => {
-                                println!("updating state on successful turn");
                                 game.set_cell((pos.row() as usize, pos.col() as usize), user_id);
                                 game.set_state(state);
                                 cell_updated.send(CellUpdated {
@@ -863,9 +865,7 @@ fn handle_get_game_task(
                                 if let BoardCell(Some(player)) = cell {
                                     let local_cell = game.board()[i][j];
                                     if local_cell.is_none() {
-                                        game.set_state(full_info.info.state);
                                         game.set_cell((i, j), *player);
-                                        state_updated.send(GameStateUpdated(full_info.info.state));
                                         cell_updated.send(CellUpdated {
                                             board_pos: board::Position::new(i as u32, j as u32),
                                             player_id: *player,
@@ -873,6 +873,10 @@ fn handle_get_game_task(
                                     }
                                 }
                             }
+                        }
+                        if full_info.info.state != game.state() {
+                            game.set_state(full_info.info.state);
+                            state_updated.send(GameStateUpdated(full_info.info.state));
                         }
                     } else {
                         println!("GetGame returned empty response");
@@ -909,34 +913,13 @@ fn handle_cell_updated(
 }
 
 fn handle_state_updated(
-    mut next_player_image: Query<
-        (Entity, &mut BackgroundColor, Option<&mut UiImage>),
-        With<NextPlayerImage>,
-    >,
-    mut commands: Commands,
     mut state_updated: EventReader<GameStateUpdated>,
     mut game_over: EventWriter<GameOver>,
-    game: Res<CurrentGame>,
 ) {
     if let Some(event) = state_updated.read().last() {
         println!("received GameStateUpdated: {:?}", event);
         match event.0 {
-            GameState::Turn(id) => {
-                if let Some(&ref next_img) = game.get_player_image(&id) {
-                    match next_player_image.get_single_mut() {
-                        Ok((_, _, Some(mut img))) => *img = UiImage::new(next_img.clone()),
-                        Ok((entity, mut bc, None)) => {
-                            *bc = BackgroundColor(Color::WHITE);
-                            commands
-                                .entity(entity)
-                                .insert(UiImage::new(next_img.clone()));
-                        }
-                        Err(err) => println!("failed to get NextPlayerImage: {}", err),
-                    };
-                } else {
-                    println!("failed to get image for player: {}", id);
-                }
-            }
+            GameState::Turn(_) => {}
             GameState::Finished(f) => {
                 game_over.send(GameOver(f));
             }

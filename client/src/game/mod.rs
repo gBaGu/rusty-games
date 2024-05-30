@@ -129,12 +129,20 @@ impl CurrentGame {
         self.user_id
     }
 
+    pub fn state(&self) -> GameState {
+        self.state
+    }
+
     pub fn board(&self) -> &[[BoardCell<PlayerId>; 3]] {
         &self.board
     }
 
     pub fn board_entity(&self) -> &Option<Entity> {
         &self.board_entity
+    }
+
+    pub fn get_enemy(&self) -> Option<u64> {
+        self.images.keys().find(|&&k| k != self.user_id).cloned()
     }
 
     pub fn get_next_player(&self) -> Option<u64> {
