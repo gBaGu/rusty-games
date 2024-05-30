@@ -13,7 +13,7 @@ use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnEx
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
+use bevy::prelude::{Deref, DerefMut, EventReader, Resource};
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::{Time, Timer, TimerMode};
 use bevy::ui::widget::Button;
@@ -24,7 +24,7 @@ use game_server::game::game::{BoardCell, FinishedState, GameState};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
-use crate::game::{CurrentGame, FullGameInfo, GameInfo};
+use crate::game::{CellUpdated, CurrentGame, FullGameInfo, GameInfo, GameOver, GamePlugin, MockBotGame, Position, StateUpdated};
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
     spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
@@ -35,8 +35,8 @@ use crate::interface::common::button_bundle::{
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH,
-    TURN_SOUND_PATH, X_SPRITE_PATH,
+    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, TURN_SOUND_PATH,
+    X_SPRITE_PATH,
 };
 use crate::interface::components::{overlay_ui_node, AssociatedTextInput, Overlay};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
@@ -62,47 +62,12 @@ impl Default for RefreshGamesTimer {
     }
 }
 
-#[derive(Deref, DerefMut, Resource)]
-struct RefreshGameTimer(pub Timer);
-
-impl Default for RefreshGameTimer {
-    fn default() -> Self {
-        Self(Timer::from_seconds(
-            GAME_REFRESH_INTERVAL_SEC,
-            TimerMode::Repeating,
-        ))
-    }
-}
-
-#[derive(Debug, Deref, Event)]
-pub struct GameStateUpdated(pub GameState);
-
-#[derive(Debug, Event)]
-struct CellUpdated {
-    board_pos: board::Position,
-    player_id: u64,
-}
-
-#[derive(Debug, Deref, Event)]
-struct GameOver(FinishedState);
-
-// TODO: replace with actual game with bot
-#[derive(Debug, Event)]
-struct MockBotGame {
-    user_id: u64,
-}
-
 pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((InGameUIPlugin, TextInputPlugin))
-            .add_event::<MockBotGame>()
-            .add_event::<GameStateUpdated>()
-            .add_event::<CellUpdated>()
-            .add_event::<GameOver>()
+        app.add_plugins((GamePlugin, InGameUIPlugin, TextInputPlugin))
             .init_resource::<RefreshGamesTimer>()
-            .init_resource::<RefreshGameTimer>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
             .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
             .add_systems(
@@ -239,7 +204,7 @@ fn state_transition(
 
 fn create_mock_bot_game(
     mut commands: Commands,
-    mut game_over: EventWriter<GameStateUpdated>,
+    mut game_over: EventWriter<StateUpdated>,
     mut mock_bot_game: EventReader<MockBotGame>,
     asset_server: Res<AssetServer>,
 ) {
@@ -256,7 +221,7 @@ fn create_mock_bot_game(
             x_img,
             o_img,
         );
-        game_over.send(GameStateUpdated(game.state()));
+        game_over.send(StateUpdated(game.state()));
         commands.insert_resource(game);
     }
 }
@@ -549,7 +514,7 @@ fn exit_pause(
 fn setup_game(
     mut commands: Commands,
     mut game: ResMut<CurrentGame>,
-    mut state_updated: EventWriter<GameStateUpdated>,
+    mut state_updated: EventWriter<StateUpdated>,
     mut player_info_ready: EventWriter<PlayerInfoReady>,
 ) {
     commands
@@ -569,7 +534,7 @@ fn setup_game(
             }
             let board = builder.spawn(board::BoardBundle::default()).id();
             game.set_board(board);
-            state_updated.send(GameStateUpdated(game.state()));
+            state_updated.send(StateUpdated(game.state()));
         });
 }
 
@@ -772,11 +737,11 @@ fn handle_create_game_task(
 }
 
 fn handle_make_turn_task(
-    mut make_turn: Query<(Entity, &mut CallMakeTurn, &board::Position)>,
+    mut make_turn: Query<(Entity, &mut CallMakeTurn, &Position)>,
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
     mut cell_updated: EventWriter<CellUpdated>,
-    mut state_updated: EventWriter<GameStateUpdated>,
+    mut state_updated: EventWriter<StateUpdated>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task, pos) in make_turn.iter_mut() {
@@ -804,11 +769,8 @@ fn handle_make_turn_task(
                             Ok(state) => {
                                 game.set_cell((pos.row() as usize, pos.col() as usize), user_id);
                                 game.set_state(state);
-                                cell_updated.send(CellUpdated {
-                                    board_pos: *pos,
-                                    player_id: user_id,
-                                });
-                                state_updated.send(GameStateUpdated(state));
+                                cell_updated.send(CellUpdated::new(*pos, user_id));
+                                state_updated.send(StateUpdated(state));
                                 play_sound(&mut commands, &asset_server, TURN_SOUND_PATH);
                             }
                             Err(err) => {
@@ -834,7 +796,7 @@ fn handle_get_game_task(
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
     mut cell_updated: EventWriter<CellUpdated>,
-    mut state_updated: EventWriter<GameStateUpdated>,
+    mut state_updated: EventWriter<StateUpdated>,
 ) {
     for (entity, mut task) in get_game.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
@@ -866,17 +828,15 @@ fn handle_get_game_task(
                                     let local_cell = game.board()[i][j];
                                     if local_cell.is_none() {
                                         game.set_cell((i, j), *player);
-                                        cell_updated.send(CellUpdated {
-                                            board_pos: board::Position::new(i as u32, j as u32),
-                                            player_id: *player,
-                                        });
+                                        let pos = Position::new(i as u32, j as u32);
+                                        cell_updated.send(CellUpdated::new(pos, *player));
                                     }
                                 }
                             }
                         }
                         if full_info.info.state != game.state() {
                             game.set_state(full_info.info.state);
-                            state_updated.send(GameStateUpdated(full_info.info.state));
+                            state_updated.send(StateUpdated(full_info.info.state));
                         }
                     } else {
                         println!("GetGame returned empty response");
@@ -896,7 +856,7 @@ fn handle_cell_updated(
     game: Res<CurrentGame>,
 ) {
     for event in cell_updated.read() {
-        let Some(img) = game.get_player_image(&event.player_id) else {
+        let Some(img) = game.get_player_image(&event.player_id()) else {
             println!("failed to get player image, dropping event");
             continue;
         };
@@ -906,18 +866,18 @@ fn handle_cell_updated(
         };
         board_content.send(board::ButtonContentArrived {
             board: *board,
-            pos: event.board_pos,
+            pos: event.pos(),
             image: img.clone(),
         });
     }
 }
 
 fn handle_state_updated(
-    mut state_updated: EventReader<GameStateUpdated>,
+    mut state_updated: EventReader<StateUpdated>,
     mut game_over: EventWriter<GameOver>,
 ) {
     if let Some(event) = state_updated.read().last() {
-        println!("received GameStateUpdated: {:?}", event);
+        println!("received StateUpdated: {:?}", event);
         match event.0 {
             GameState::Turn(_) => {}
             GameState::Finished(f) => {

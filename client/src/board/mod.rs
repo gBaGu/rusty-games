@@ -2,9 +2,9 @@ mod components;
 mod events;
 mod systems;
 
-use bevy::prelude::*;
+use bevy::prelude::{App, Plugin, Update};
 
-pub use components::{BoardBundle, Position};
+pub use components::BoardBundle;
 pub use events::{ButtonContentArrived, ButtonPressed};
 use systems::{add_content, button_press, create};
 

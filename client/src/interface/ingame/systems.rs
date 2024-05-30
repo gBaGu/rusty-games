@@ -1,5 +1,5 @@
 use crate::interface::ingame::events::PlayerInfoReady;
-use crate::interface::plugin::GameStateUpdated;
+use crate::game::StateUpdated;
 use bevy::prelude::*;
 use game_server::game::game::GameState;
 
@@ -63,7 +63,7 @@ pub fn handle_state_update(
     mut player_info: Query<(&mut BorderColor, &PlayerInfo)>,
     mut next_player: Query<&mut UiImage, With<NextPlayer>>,
     state_container: Query<Entity, With<GameStateContainer>>,
-    mut state_updated: EventReader<GameStateUpdated>,
+    mut state_updated: EventReader<StateUpdated>,
 ) {
     for event in state_updated.read() {
         if let GameState::Turn(id) = event.0 {
