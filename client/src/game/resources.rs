@@ -4,11 +4,11 @@ use bevy::prelude::*;
 use game_server::game::game::{BoardCell, GameState};
 use game_server::game::player_pool::PlayerId;
 
-use super::GAME_REFRESH_INTERVAL_SEC;
+use super::{GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
 use crate::game::GameInfo;
 
 #[derive(Deref, DerefMut, Resource)]
-struct RefreshGameTimer(pub Timer);
+pub struct RefreshGameTimer(pub Timer);
 
 impl Default for RefreshGameTimer {
     fn default() -> Self {
@@ -39,6 +39,12 @@ impl CurrentGame {
             board: Default::default(),
             board_entity: None,
         }
+    }
+
+    pub fn new_from_asset_server(user_id: u64, game: GameInfo, asset_server: &AssetServer) -> Self {
+        let x_img = asset_server.load(X_SPRITE_PATH);
+        let o_img = asset_server.load(O_SPRITE_PATH);
+        Self::new(user_id, game, x_img, o_img)
     }
 
     pub fn id(&self) -> u64 {

@@ -28,9 +28,3 @@ impl CellUpdated {
 
 #[derive(Debug, Deref, Event)]
 pub struct GameOver(pub FinishedState);
-
-// TODO: replace with actual game with bot
-#[derive(Debug, Event)]
-pub struct MockBotGame {
-    pub(crate) user_id: u64,
-}

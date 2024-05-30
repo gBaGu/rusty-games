@@ -1,7 +1,11 @@
+use std::future::Future;
+use std::ops::DerefMut;
 use std::time::Duration;
 
 use async_compat::CompatExt;
-use bevy::prelude::{Component, Deref, DerefMut, Res, ResMut, Resource, TimerMode};
+use bevy::prelude::{
+    Commands, Component, Deref, DerefMut, Entity, Res, ResMut, Resource, TimerMode,
+};
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
 use bevy::time::{Time, Timer};
 use game_server::proto;
@@ -52,7 +56,7 @@ impl GrpcClient {
         game_id: u64,
         player_id: u64,
         row: u32,
-        col: u32
+        col: u32,
     ) -> Option<Task<RpcResult<proto::MakeTurnReply>>> {
         let mut client = self.inner.as_ref().cloned()?;
         let position = proto::Position { row, col };
@@ -69,10 +73,7 @@ impl GrpcClient {
         Some(task)
     }
 
-    pub fn load_game(
-        &self,
-        game_id: u64,
-    ) -> Option<Task<RpcResult<proto::GetGameReply>>> {
+    pub fn load_game(&self, game_id: u64) -> Option<Task<RpcResult<proto::GetGameReply>>> {
         let mut client = self.inner.as_ref().cloned()?;
         let task = IoTaskPool::get().spawn(async move {
             client
@@ -113,20 +114,51 @@ impl Default for ReconnectTimer {
     }
 }
 
+/// This struct is intended for use with entities that only needed to wait on a task.
+/// It makes sure that task entity is despawned after successful poll
+pub struct TaskEntity<'a, 'w, 's, F> {
+    pub commands: Commands<'w, 's>,
+    pub entity: Entity,
+    pub task: &'a mut F,
+}
+
+impl<'a, 'w, 's, F> TaskEntity<'a, 'w, 's, F> {
+    pub fn new(commands: Commands<'w, 's>, entity: Entity, task: &'a mut F) -> Self {
+        Self {
+            commands,
+            entity,
+            task,
+        }
+    }
+}
+
+impl<'a, 'w, 's, F, T> TaskEntity<'_, '_, '_, F>
+where
+    F: Future<Output = T> + Unpin,
+{
+    /// Polls future and in case if result is ready adds despawn command to `commands`
+    pub fn poll_once(&mut self) -> Option<T> {
+        block_on(future::poll_once(self.task.deref_mut())).and_then(|res| {
+            self.commands.entity(self.entity).despawn();
+            Some(res)
+        })
+    }
+}
+
 /// Task component for creating game over grpc
-#[derive(Component, Deref)]
+#[derive(Component, Deref, DerefMut)]
 pub struct CallCreateGame(pub Task<RpcResult<proto::CreateGameReply>>);
 
 /// Task component for updating game over grpc
-#[derive(Component, Deref)]
+#[derive(Component, Deref, DerefMut)]
 pub struct CallMakeTurn(pub Task<RpcResult<proto::MakeTurnReply>>);
 
 /// Task component for loading full game data over grpc
-#[derive(Component, Deref)]
+#[derive(Component, Deref, DerefMut)]
 pub struct CallGetGame(pub Task<RpcResult<proto::GetGameReply>>);
 
 /// Task component for loading player games over grpc
-#[derive(Component, Deref)]
+#[derive(Component, Deref, DerefMut)]
 pub struct CallGetPlayerGames(pub Task<RpcResult<proto::GetPlayerGamesReply>>);
 
 pub fn reconnect(

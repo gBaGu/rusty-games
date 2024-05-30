@@ -9,9 +9,6 @@ use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
 
-pub const X_SPRITE_PATH: &str = "sprites/X.png";
-pub const O_SPRITE_PATH: &str = "sprites/O.png";
-
 pub const CONFIRMATION_SOUND_PATH: &str = "audio/confirmation.ogg";
 pub const ERROR_SOUND_PATH: &str = "audio/error.ogg";
 pub const TURN_SOUND_PATH: &str = "audio/turn.ogg";

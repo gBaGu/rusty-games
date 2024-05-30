@@ -4,6 +4,7 @@ mod grpc;
 mod interface;
 mod settings;
 mod board;
+mod commands;
 
 use bevy::app::{App, Startup, Update};
 use bevy::prelude::{Camera2dBundle, Commands, DefaultPlugins};
