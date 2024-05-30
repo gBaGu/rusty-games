@@ -41,6 +41,33 @@ fn image_node_bundle() -> NodeBundle {
 }
 
 #[derive(Bundle)]
+pub struct InGameUIBundle {
+    pub node: NodeBundle,
+    pub in_game_ui: InGameUI,
+}
+
+impl InGameUIBundle {
+    pub fn new(player_id: u64, enemy_id: u64) -> Self {
+        Self {
+            node: NodeBundle {
+                style: Style {
+                    display: Display::Flex,
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                ..default()
+            },
+            in_game_ui: InGameUI {
+                player_id,
+                enemy_id,
+            },
+        }
+    }
+}
+
+#[derive(Bundle)]
 pub struct PlayerInfoContainerBundle {
     pub node: NodeBundle,
     pub info: PlayerInfo,

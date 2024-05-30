@@ -13,7 +13,7 @@ use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnEx
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{AlignItems, Deref, DerefMut, Display, Event, EventReader, FlexDirection, NodeBundle, Resource, Style, Val};
+use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::{Time, Timer, TimerMode};
 use bevy::ui::widget::Button;
@@ -40,7 +40,7 @@ use crate::interface::common::{
 };
 use crate::interface::components::{overlay_ui_node, AssociatedTextInput, Overlay};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
-use crate::interface::ingame::{InGameUI, InGameUIPlugin, PlayerInfoReady};
+use crate::interface::ingame::{InGameUIBundle, InGameUIPlugin, PlayerInfoReady};
 use crate::settings::{Settings, SubmitTextInputSetting};
 
 fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
@@ -560,37 +560,16 @@ fn setup_game(
                 println!("unable to get enemy id, CurrentGame is corrupted");
                 return;
             };
-            builder.spawn((
-                NodeBundle {
-                    style: Style {
-                        display: Display::Flex,
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    ..default()
-                },
-                InGameUI {
-                    player_id,
-                    enemy_id,
-                },
-            ));
+            builder.spawn(InGameUIBundle::new(player_id, enemy_id));
             if let Some(image) = game.get_player_image(&player_id) {
-                player_info_ready.send(PlayerInfoReady {
-                    id: player_id,
-                    image: image.clone(),
-                });
+                player_info_ready.send(PlayerInfoReady::new(player_id, image.clone()));
             }
             if let Some(image) = game.get_player_image(&enemy_id) {
-                player_info_ready.send(PlayerInfoReady {
-                    id: enemy_id,
-                    image: image.clone(),
-                });
+                player_info_ready.send(PlayerInfoReady::new(enemy_id, image.clone()));
             }
-            state_updated.send(GameStateUpdated(game.state()));
             let board = builder.spawn(board::BoardBundle::default()).id();
             game.set_board(board);
+            state_updated.send(GameStateUpdated(game.state()));
         });
 }
 
@@ -754,7 +733,6 @@ fn handle_create_game_task(
     mut create_game: Query<(Entity, &mut CallCreateGame, &GameInfo)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
-    mut state_updated: EventWriter<GameStateUpdated>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task, game) in create_game.iter_mut() {
@@ -777,7 +755,6 @@ fn handle_create_game_task(
                             o_img,
                         ));
                         println!("starting created game: {}", game_id);
-                        state_updated.send(GameStateUpdated(game.state));
                         next_app_state.set(AppState::Game);
                         play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
                     } else {

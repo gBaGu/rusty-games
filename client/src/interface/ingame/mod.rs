@@ -4,7 +4,7 @@ mod systems;
 
 use bevy::prelude::*;
 
-pub use components::InGameUI;
+pub use components::{InGameUIBundle};
 pub use events::PlayerInfoReady;
 use systems::{create, handle_state_update, update_player_info};
 
