@@ -9,9 +9,6 @@ use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
 
-pub const X_SPRITE_PATH: &str = "sprites/X.png";
-pub const O_SPRITE_PATH: &str = "sprites/O.png";
-
 pub const CONFIRMATION_SOUND_PATH: &str = "audio/confirmation.ogg";
 pub const ERROR_SOUND_PATH: &str = "audio/error.ogg";
 pub const TURN_SOUND_PATH: &str = "audio/turn.ogg";
@@ -23,7 +20,6 @@ pub const MENU_ITEM_WIDTH: f32 = 300.0;
 pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
 pub const MENU_FONT_SIZE: f32 = 40.0;
 pub const MENU_TEXT_COLOR: Color = Color::OLIVE;
-pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
 // Styles

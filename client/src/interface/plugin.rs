@@ -3,7 +3,6 @@ use std::str::FromStr;
 
 use bevy::app::{App, AppExit, Plugin, Update};
 use bevy::asset::AssetServer;
-use bevy::audio::AudioBundle;
 use bevy::ecs::change_detection::{Res, ResMut};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::event::EventWriter;
@@ -13,18 +12,21 @@ use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnEx
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{Deref, DerefMut, Event, EventReader, Resource};
+use bevy::prelude::{Deref, DerefMut, EventReader, Resource};
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::{Time, Timer, TimerMode};
 use bevy::ui::widget::Button;
 use bevy::ui::Interaction;
 use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
-use game_server::game::game::{BoardCell, FinishedState, GameState};
+use game_server::game::game::{FinishedState, GameState};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
-use crate::game::{CurrentGame, FullGameInfo, GameInfo};
+use crate::commands::CommandsExt;
+use crate::game::{
+    CellUpdated, CurrentGame, GameInfo, GameOver, GamePlugin, StateUpdated, SuccessfulTurn,
+};
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
     spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
@@ -35,20 +37,12 @@ use crate::interface::common::button_bundle::{
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH,
-    TURN_SOUND_PATH, X_SPRITE_PATH,
+    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, TURN_SOUND_PATH,
 };
 use crate::interface::components::{overlay_ui_node, AssociatedTextInput, Overlay};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use crate::interface::ingame::{InGameUIBundle, InGameUIPlugin, PlayerInfoReady};
 use crate::settings::{Settings, SubmitTextInputSetting};
-
-fn play_sound(commands: &mut Commands, asset_server: &AssetServer, sound_path: &'static str) {
-    commands.spawn(AudioBundle {
-        source: asset_server.load(sound_path),
-        ..default()
-    });
-}
 
 #[derive(Deref, DerefMut, Resource)]
 struct RefreshGamesTimer(pub Timer);
@@ -62,47 +56,12 @@ impl Default for RefreshGamesTimer {
     }
 }
 
-#[derive(Deref, DerefMut, Resource)]
-struct RefreshGameTimer(pub Timer);
-
-impl Default for RefreshGameTimer {
-    fn default() -> Self {
-        Self(Timer::from_seconds(
-            GAME_REFRESH_INTERVAL_SEC,
-            TimerMode::Repeating,
-        ))
-    }
-}
-
-#[derive(Debug, Deref, Event)]
-pub struct GameStateUpdated(pub GameState);
-
-#[derive(Debug, Event)]
-struct CellUpdated {
-    board_pos: board::Position,
-    player_id: u64,
-}
-
-#[derive(Debug, Deref, Event)]
-struct GameOver(FinishedState);
-
-// TODO: replace with actual game with bot
-#[derive(Debug, Event)]
-struct MockBotGame {
-    user_id: u64,
-}
-
 pub struct InterfacePlugin;
 
 impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((InGameUIPlugin, TextInputPlugin))
-            .add_event::<MockBotGame>()
-            .add_event::<GameStateUpdated>()
-            .add_event::<CellUpdated>()
-            .add_event::<GameOver>()
+        app.add_plugins((GamePlugin, InGameUIPlugin, TextInputPlugin))
             .init_resource::<RefreshGamesTimer>()
-            .init_resource::<RefreshGameTimer>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
             .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
             .add_systems(
@@ -142,19 +101,13 @@ impl Plugin for InterfacePlugin {
                     (refresh_game_list, handle_player_games_task, join_game)
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task,
-                    handle_make_turn_task,
-                    handle_get_game_task,
                     (
                         make_turn,
-                        refresh_game_board.run_if(not(any_with_component::<CallGetGame>)),
                         handle_cell_updated,
-                        handle_state_updated,
-                        handle_game_over.after(handle_state_updated),
+                        handle_game_over,
+                        handle_successful_turn,
                     )
                         .run_if(in_state(AppState::Game).and_then(resource_exists::<CurrentGame>)),
-                    create_mock_bot_game
-                        .after(state_transition)
-                        .run_if(in_state(AppState::Menu(MenuState::PlayWithBot))),
                 ),
             );
     }
@@ -173,7 +126,6 @@ fn state_transition(
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     mut exit: EventWriter<AppExit>,
-    mut mock_bot_game: EventWriter<MockBotGame>,
     app_state: Res<State<AppState>>,
     settings: Res<Settings>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -202,27 +154,31 @@ fn state_transition(
                         if let Ok(opponent_id) = val.0.parse::<u64>() {
                             if let Some(user_id) = settings.user_id() {
                                 if let Some(task) = grpc_client.create_game(user_id, opponent_id) {
-                                    let game = GameInfo {
-                                        id: 0, // TODO: consider making optional to show that game is not created yet
-                                        state: GameState::Turn(user_id),
-                                        players: vec![user_id, opponent_id],
-                                    };
-                                    commands.spawn((CallCreateGame(task), game));
+                                    commands.spawn(CallCreateGame(task));
                                 }
                             }
                         } else {
-                            play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                         }
                     }
                 } else if *app_state.get() == AppState::Menu(MenuState::PlayWithBot)
                     && new_state == AppState::Game
                 {
                     if let Some(user_id) = settings.user_id() {
-                        mock_bot_game.send(MockBotGame { user_id });
+                        let game = CurrentGame::new_from_asset_server(
+                            user_id,
+                            GameInfo {
+                                id: 0,
+                                state: GameState::Finished(FinishedState::Draw),
+                                players: vec![user_id, u64::MAX], // TODO: replace this with bot id
+                            },
+                            &asset_server,
+                        );
+                        commands.insert_resource(game);
                         println!("state transition: {:?}", new_state);
                         next_app_state.set(new_state);
                     } else {
-                        play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                     }
                 } else {
                     // regular state transition
@@ -234,30 +190,6 @@ fn state_transition(
                 exit.send(AppExit);
             }
         }
-    }
-}
-
-fn create_mock_bot_game(
-    mut commands: Commands,
-    mut game_over: EventWriter<GameStateUpdated>,
-    mut mock_bot_game: EventReader<MockBotGame>,
-    asset_server: Res<AssetServer>,
-) {
-    if let Some(&MockBotGame { user_id }) = mock_bot_game.read().last() {
-        let x_img = asset_server.load(X_SPRITE_PATH);
-        let o_img = asset_server.load(O_SPRITE_PATH);
-        let game = CurrentGame::new(
-            user_id,
-            GameInfo {
-                id: 0,
-                state: GameState::Finished(FinishedState::Draw),
-                players: vec![user_id, u64::MAX], // TODO: replace this with bot id
-            },
-            x_img,
-            o_img,
-        );
-        game_over.send(GameStateUpdated(game.state()));
-        commands.insert_resource(game);
     }
 }
 
@@ -277,13 +209,10 @@ fn join_game(
         }
     };
     if let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) {
-        let x_img = asset_server.load(X_SPRITE_PATH);
-        let o_img = asset_server.load(O_SPRITE_PATH);
-        commands.insert_resource(CurrentGame::new(
+        commands.insert_resource(CurrentGame::new_from_asset_server(
             user_id,
             join.deref().clone(),
-            x_img,
-            o_img,
+            &asset_server,
         ));
         if let Some(task) = grpc_client.load_game(join.id) {
             commands.spawn(CallGetGame(task));
@@ -292,7 +221,7 @@ fn join_game(
         }
         println!("state transition: join game");
         next_app_state.set(AppState::Game);
-        play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
+        commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
     }
 }
 
@@ -325,9 +254,9 @@ fn settings_submit<T: FromStr + 'static>(
             {
                 if let Ok(val) = val.0.parse::<T>() {
                     submit_input.submit(&mut settings, val);
-                    play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
+                    commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
                 } else {
-                    play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                    commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                 }
             }
         }
@@ -549,7 +478,7 @@ fn exit_pause(
 fn setup_game(
     mut commands: Commands,
     mut game: ResMut<CurrentGame>,
-    mut state_updated: EventWriter<GameStateUpdated>,
+    mut state_updated: EventWriter<StateUpdated>,
     mut player_info_ready: EventWriter<PlayerInfoReady>,
 ) {
     commands
@@ -569,7 +498,7 @@ fn setup_game(
             }
             let board = builder.spawn(board::BoardBundle::default()).id();
             game.set_board(board);
-            state_updated.send(GameStateUpdated(game.state()));
+            state_updated.send(StateUpdated(game.state()));
         });
 }
 
@@ -587,7 +516,7 @@ fn make_turn(
             commands.spawn((CallMakeTurn(task), event.pos));
         } else {
             println!("grpc server is down");
-            play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
         }
     }
 }
@@ -623,20 +552,6 @@ fn refresh_game_list(
                         parent.spawn(menu_text_bundle("No user id provided", text_style.clone()));
                     });
             }
-        }
-    }
-}
-
-fn refresh_game_board(
-    mut commands: Commands,
-    mut timer: ResMut<RefreshGamesTimer>,
-    game: Res<CurrentGame>,
-    client: ResMut<GrpcClient>,
-    time: Res<Time>,
-) {
-    if timer.tick(time.delta()).just_finished() {
-        if let Some(task) = client.load_game(game.id()) {
-            commands.spawn(CallGetGame(task));
         }
     }
 }
@@ -730,162 +645,47 @@ fn handle_player_games_task(
 }
 
 fn handle_create_game_task(
-    mut create_game: Query<(Entity, &mut CallCreateGame, &GameInfo)>,
+    mut create_game: Query<(Entity, &mut CallCreateGame)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     asset_server: Res<AssetServer>,
 ) {
-    for (entity, mut task, game) in create_game.iter_mut() {
+    for (entity, mut task) in create_game.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
             commands.entity(entity).despawn();
             match res {
                 Ok(response) => {
-                    let game_id = response.into_inner().game_id;
-                    if let Some(&user_id) = game.players.first() {
-                        let x_img = asset_server.load(X_SPRITE_PATH);
-                        let o_img = asset_server.load(O_SPRITE_PATH);
-                        commands.insert_resource(CurrentGame::new(
+                    let Some(game_info) = response.into_inner().game_info else {
+                        println!("received empty CreateGame reply from server");
+                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                        return;
+                    };
+                    let info = match GameInfo::try_from(game_info) {
+                        Ok(info) => info,
+                        Err(err) => {
+                            println!("failed to decode game info: {}", err);
+                            continue;
+                        }
+                    };
+                    if let Some(&user_id) = info.players.first() {
+                        println!("starting created game: {}", info.id);
+                        commands.insert_resource(CurrentGame::new_from_asset_server(
                             user_id,
-                            GameInfo {
-                                id: game_id,
-                                players: game.players.clone(),
-                                state: game.state,
-                            },
-                            x_img,
-                            o_img,
+                            info,
+                            &asset_server,
                         ));
-                        println!("starting created game: {}", game_id);
                         next_app_state.set(AppState::Game);
-                        play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
+                        commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
                     } else {
                         println!("GameInfo is corrupted: players is empty");
-                        play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                     }
                 }
                 Err(err) => {
                     println!("CreateGame request failed: {}", err);
-                    play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                    commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                 }
             };
-        }
-    }
-}
-
-fn handle_make_turn_task(
-    mut make_turn: Query<(Entity, &mut CallMakeTurn, &board::Position)>,
-    mut commands: Commands,
-    mut game: Option<ResMut<CurrentGame>>,
-    mut cell_updated: EventWriter<CellUpdated>,
-    mut state_updated: EventWriter<GameStateUpdated>,
-    asset_server: Res<AssetServer>,
-) {
-    for (entity, mut task, pos) in make_turn.iter_mut() {
-        if let Some(res) = block_on(future::poll_once(&mut task.0)) {
-            commands.entity(entity).despawn();
-            let game = match &mut game {
-                Some(game) => game,
-                None => {
-                    println!("no current game, dropping MakeTurn response");
-                    continue;
-                }
-            };
-            let user_id = game.user_id();
-            match res {
-                Ok(response) => {
-                    if let Some(next) = game.get_next_player() {
-                        if next != user_id {
-                            println!("state is already updated, skip handling MakeTurn response");
-                            continue;
-                        }
-                    }
-                    if let Some(new_state) = response.into_inner().game_state {
-                        let state = new_state.try_into();
-                        match state {
-                            Ok(state) => {
-                                game.set_cell((pos.row() as usize, pos.col() as usize), user_id);
-                                game.set_state(state);
-                                cell_updated.send(CellUpdated {
-                                    board_pos: *pos,
-                                    player_id: user_id,
-                                });
-                                state_updated.send(GameStateUpdated(state));
-                                play_sound(&mut commands, &asset_server, TURN_SOUND_PATH);
-                            }
-                            Err(err) => {
-                                println!("failed to convert game state: {}", err);
-                            }
-                        }
-                    } else {
-                        println!("MakeTurn returned empty response");
-                        play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
-                    }
-                }
-                Err(err) => {
-                    println!("MakeTurn request failed: {}", err);
-                    play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
-                }
-            }
-        }
-    }
-}
-
-fn handle_get_game_task(
-    mut get_game: Query<(Entity, &mut CallGetGame)>,
-    mut commands: Commands,
-    mut game: Option<ResMut<CurrentGame>>,
-    mut cell_updated: EventWriter<CellUpdated>,
-    mut state_updated: EventWriter<GameStateUpdated>,
-) {
-    for (entity, mut task) in get_game.iter_mut() {
-        if let Some(res) = block_on(future::poll_once(&mut task.0)) {
-            commands.entity(entity).remove::<CallGetGame>();
-            let game = match &mut game {
-                Some(game) => game,
-                None => {
-                    println!("no current game, dropping GetGame response");
-                    continue;
-                }
-            };
-            match res {
-                Ok(response) => {
-                    if let Some(info) = response.into_inner().game_info {
-                        if info.game_id != game.id() {
-                            println!("received game info for other game, dropping");
-                            continue;
-                        }
-                        let full_info = match FullGameInfo::try_from(info) {
-                            Ok(info) => info,
-                            Err(err) => {
-                                println!("failed to decode full game info: {}", err);
-                                continue;
-                            }
-                        };
-                        for (i, row) in full_info.board.iter().enumerate() {
-                            for (j, cell) in row.iter().enumerate() {
-                                if let BoardCell(Some(player)) = cell {
-                                    let local_cell = game.board()[i][j];
-                                    if local_cell.is_none() {
-                                        game.set_cell((i, j), *player);
-                                        cell_updated.send(CellUpdated {
-                                            board_pos: board::Position::new(i as u32, j as u32),
-                                            player_id: *player,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        if full_info.info.state != game.state() {
-                            game.set_state(full_info.info.state);
-                            state_updated.send(GameStateUpdated(full_info.info.state));
-                        }
-                    } else {
-                        println!("GetGame returned empty response");
-                    }
-                }
-                Err(err) => {
-                    println!("GetGame request failed: {}", err);
-                }
-            }
         }
     }
 }
@@ -896,7 +696,7 @@ fn handle_cell_updated(
     game: Res<CurrentGame>,
 ) {
     for event in cell_updated.read() {
-        let Some(img) = game.get_player_image(&event.player_id) else {
+        let Some(img) = game.get_player_image(&event.player_id()) else {
             println!("failed to get player image, dropping event");
             continue;
         };
@@ -906,24 +706,19 @@ fn handle_cell_updated(
         };
         board_content.send(board::ButtonContentArrived {
             board: *board,
-            pos: event.board_pos,
+            pos: event.pos(),
             image: img.clone(),
         });
     }
 }
 
-fn handle_state_updated(
-    mut state_updated: EventReader<GameStateUpdated>,
-    mut game_over: EventWriter<GameOver>,
+fn handle_successful_turn(
+    mut commands: Commands,
+    mut successful_turn: EventReader<SuccessfulTurn>,
+    asset_server: Res<AssetServer>,
 ) {
-    if let Some(event) = state_updated.read().last() {
-        println!("received GameStateUpdated: {:?}", event);
-        match event.0 {
-            GameState::Turn(_) => {}
-            GameState::Finished(f) => {
-                game_over.send(GameOver(f));
-            }
-        };
+    for _event in successful_turn.read() {
+        commands.play_sound(&asset_server, TURN_SOUND_PATH);
     }
 }
 

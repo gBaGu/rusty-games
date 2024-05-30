@@ -1,33 +1,11 @@
 use bevy::prelude::{BackgroundColor, Bundle, Color, Component, default, Display, GridTrack, JustifyContent, NodeBundle, Style, UiImage, UiRect, Val};
 use bevy::ui::node_bundles;
 
+use crate::game::Position;
+
 /// Empty component to indicate that an entity is a board.
 #[derive(Debug, Component)]
 pub struct Board;
-
-/// Component that stores a position inside the board.
-#[derive(Clone, Copy, Debug, PartialEq, Component)]
-pub struct Position {
-    row: u32,
-    col: u32,
-}
-
-impl Position {
-    /// Creates [`Position`] from row and col
-    pub fn new(row: u32, col: u32) -> Self {
-        Self { row, col }
-    }
-
-    /// Getter for `self.row`
-    pub fn row(&self) -> u32 {
-        self.row
-    }
-
-    /// Getter for `self.col`
-    pub fn col(&self) -> u32 {
-        self.col
-    }
-}
 
 // Bundles
 

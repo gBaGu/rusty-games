@@ -31,12 +31,14 @@ impl Game for GameImpl {
             .first()
             .cloned()
             .ok_or_else(|| Status::invalid_argument("player ids missing"))?;
-        let game_id = self
+        let game_info = self
             .games
             .create_game(game_type, player1, &request.player_ids)
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(CreateGameReply { game_id }))
+        Ok(Response::new(CreateGameReply {
+            game_info: Some(game_info),
+        }))
     }
 
     async fn make_turn(&self, request: Request<MakeTurnRequest>) -> RpcResult<MakeTurnReply> {

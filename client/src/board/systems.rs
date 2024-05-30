@@ -5,8 +5,9 @@ use bevy::prelude::{
 };
 use bevy::ui::{node_bundles, UiImage};
 
-use super::components::{Board, ButtonBundle, ButtonContentBundle, Position};
+use super::components::{Board, ButtonBundle, ButtonContentBundle};
 use super::events::{ButtonContentArrived, ButtonPressed};
+use crate::game::Position;
 
 /// Default style for button image
 fn button_image_style() -> Style {

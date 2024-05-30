@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::board::components::Position;
+use crate::game::Position;
 
 /// Event emitted when board button is pressed.
 /// Contains entity of a board whose button was pressed

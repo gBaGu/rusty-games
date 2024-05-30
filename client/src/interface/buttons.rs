@@ -4,7 +4,7 @@ use bevy::text::TextStyle;
 use bevy::ui::Style;
 
 use crate::app_state::{AppState, AppStateTransition};
-use crate::game::{GameCellPosition, GameInfo};
+use crate::game::GameInfo;
 
 #[derive(Clone, Debug, Deref, Component)]
 pub struct JoinGame(pub GameInfo);
@@ -19,12 +19,6 @@ pub struct MenuNavigationButtonBundle {
 pub struct JoinGameButtonBundle {
     button: ButtonBundle,
     join: JoinGame,
-}
-
-#[derive(Bundle)]
-pub struct GameCellButtonBundle {
-    button: ButtonBundle,
-    position: GameCellPosition,
 }
 
 pub fn spawn_exit_button(
