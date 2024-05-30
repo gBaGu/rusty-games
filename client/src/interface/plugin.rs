@@ -24,7 +24,10 @@ use game_server::game::game::{BoardCell, FinishedState, GameState};
 
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
-use crate::game::{CellUpdated, CurrentGame, FullGameInfo, GameInfo, GameOver, GamePlugin, MockBotGame, Position, StateUpdated};
+use crate::game::{
+    CellUpdated, CurrentGame, FullGameInfo, GameInfo, GameOver, GamePlugin, MockBotGame, Position,
+    StateUpdated,
+};
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
     spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
@@ -167,12 +170,7 @@ fn state_transition(
                         if let Ok(opponent_id) = val.0.parse::<u64>() {
                             if let Some(user_id) = settings.user_id() {
                                 if let Some(task) = grpc_client.create_game(user_id, opponent_id) {
-                                    let game = GameInfo {
-                                        id: 0, // TODO: consider making optional to show that game is not created yet
-                                        state: GameState::Turn(user_id),
-                                        players: vec![user_id, opponent_id],
-                                    };
-                                    commands.spawn((CallCreateGame(task), game));
+                                    commands.spawn(CallCreateGame(task));
                                 }
                             }
                         } else {
@@ -695,31 +693,33 @@ fn handle_player_games_task(
 }
 
 fn handle_create_game_task(
-    mut create_game: Query<(Entity, &mut CallCreateGame, &GameInfo)>,
+    mut create_game: Query<(Entity, &mut CallCreateGame)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     asset_server: Res<AssetServer>,
 ) {
-    for (entity, mut task, game) in create_game.iter_mut() {
+    for (entity, mut task) in create_game.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
             commands.entity(entity).despawn();
             match res {
                 Ok(response) => {
-                    let game_id = response.into_inner().game_id;
-                    if let Some(&user_id) = game.players.first() {
+                    let Some(game_info) = response.into_inner().game_info else {
+                        println!("received empty CreateGame reply from server");
+                        play_sound(&mut commands, &asset_server, ERROR_SOUND_PATH);
+                        return;
+                    };
+                    let info = match GameInfo::try_from(game_info) {
+                        Ok(info) => info,
+                        Err(err) => {
+                            println!("failed to decode game info: {}", err);
+                            continue;
+                        }
+                    };
+                    if let Some(&user_id) = info.players.first() {
+                        println!("starting created game: {}", info.id);
                         let x_img = asset_server.load(X_SPRITE_PATH);
                         let o_img = asset_server.load(O_SPRITE_PATH);
-                        commands.insert_resource(CurrentGame::new(
-                            user_id,
-                            GameInfo {
-                                id: game_id,
-                                players: game.players.clone(),
-                                state: game.state,
-                            },
-                            x_img,
-                            o_img,
-                        ));
-                        println!("starting created game: {}", game_id);
+                        commands.insert_resource(CurrentGame::new(user_id, info, x_img, o_img));
                         next_app_state.set(AppState::Game);
                         play_sound(&mut commands, &asset_server, CONFIRMATION_SOUND_PATH);
                     } else {

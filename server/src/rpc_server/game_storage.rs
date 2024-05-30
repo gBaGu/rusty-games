@@ -54,13 +54,12 @@ impl GameStorage {
         game_type: proto::GameType,
         creator: PlayerId,
         players: &[PlayerId],
-    ) -> GameStorageResult<GameId> {
+    ) -> GameStorageResult<proto::GameInfo> {
         match game_type {
-            proto::GameType::TicTacToe => create(&self.tic_tac_toe, creator, players)?,
-            proto::GameType::Chess => create(&self.chess, creator, players)?,
+            proto::GameType::TicTacToe => create(&self.tic_tac_toe, creator, players),
+            proto::GameType::Chess => create(&self.chess, creator, players),
             proto::GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
         }
-        Ok(creator)
     }
 
     pub fn update_game(
@@ -118,16 +117,22 @@ fn create<T: Game>(
     mutex: &Mutex<GameMap<T>>,
     id: GameId,
     players: &[PlayerId],
-) -> GameStorageResult<()> {
+) -> GameStorageResult<proto::GameInfo> {
     let mut guard = mutex.lock()?;
-    match guard.entry(id) {
+    return match guard.entry(id) {
         Entry::Vacant(e) => {
             let game = T::new(players)?;
+            let info = proto::GameInfo {
+                game_id: id,
+                players: game.get_player_ids(),
+                game_state: Some(game.state().into()),
+                board: vec![],
+            };
             e.insert(game);
+            Ok(info)
         }
-        Entry::Occupied(_) => return Err(GameStorageError::DuplicateGame),
-    }
-    Ok(())
+        Entry::Occupied(_) => Err(GameStorageError::DuplicateGame),
+    };
 }
 
 fn update<T: Game>(

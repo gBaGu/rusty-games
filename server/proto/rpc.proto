@@ -21,7 +21,7 @@ message CreateGameRequest {
 }
 
 message CreateGameReply {
-  uint64 game_id = 1;
+  GameInfo game_info = 1;
 }
 
 message MakeTurnRequest {
