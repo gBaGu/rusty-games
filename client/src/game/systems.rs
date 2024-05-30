@@ -2,17 +2,19 @@ use bevy::prelude::*;
 use game_server::game::game::{BoardCell, GameState};
 
 use super::resources::RefreshGameTimer;
-use super::{CellUpdated, CurrentGame, FullGameInfo, GameOver, Position, StateUpdated};
+use super::{
+    CellUpdated, CurrentGame, FullGameInfo, GameOver, Position, StateUpdated, SuccessfulTurn,
+};
 use crate::commands::CommandsExt;
 use crate::grpc::{CallGetGame, CallMakeTurn, GrpcClient, TaskEntity};
-use crate::interface::common::{ERROR_SOUND_PATH, TURN_SOUND_PATH};
+use crate::interface::common::ERROR_SOUND_PATH;
 
 /// Emit StateUpdated once the game is initialized
 pub fn game_initialized(mut state_updated: EventWriter<StateUpdated>, game: Res<CurrentGame>) {
     state_updated.send(StateUpdated(game.state()));
 }
 
-pub fn refresh_game_board(
+pub fn refresh_game(
     mut commands: Commands,
     mut timer: ResMut<RefreshGameTimer>,
     game: Res<CurrentGame>,
@@ -32,6 +34,7 @@ pub fn handle_turn(
     mut game: Option<ResMut<CurrentGame>>,
     mut cell_updated: EventWriter<CellUpdated>,
     mut state_updated: EventWriter<StateUpdated>,
+    mut successful_turn: EventWriter<SuccessfulTurn>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task, pos) in make_turn.iter_mut() {
@@ -56,7 +59,7 @@ pub fn handle_turn(
                                 game.set_state(state);
                                 cell_updated.send(CellUpdated::new(*pos, user_id));
                                 state_updated.send(StateUpdated(state));
-                                commands.play_sound(&asset_server, TURN_SOUND_PATH);
+                                successful_turn.send(SuccessfulTurn::new(*pos, user_id));
                             }
                             Err(err) => {
                                 println!("failed to convert game state: {}", err);

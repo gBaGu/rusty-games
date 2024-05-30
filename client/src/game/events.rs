@@ -26,5 +26,28 @@ impl CellUpdated {
     }
 }
 
+#[derive(Debug, Event)]
+#[allow(dead_code)]
+pub struct SuccessfulTurn {
+    pos: Position,
+    player_id: u64,
+}
+
+impl SuccessfulTurn {
+    pub fn new(pos: Position, player_id: u64) -> Self {
+        Self { pos, player_id }
+    }
+
+    #[allow(dead_code)]
+    pub fn player_id(&self) -> u64 {
+        self.player_id
+    }
+
+    #[allow(dead_code)]
+    pub fn pos(&self) -> Position {
+        self.pos
+    }
+}
+
 #[derive(Debug, Deref, Event)]
 pub struct GameOver(pub FinishedState);

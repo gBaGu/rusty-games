@@ -24,7 +24,9 @@ use game_server::game::game::{FinishedState, GameState};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
 use crate::commands::CommandsExt;
-use crate::game::{CellUpdated, CurrentGame, GameInfo, GameOver, GamePlugin, StateUpdated};
+use crate::game::{
+    CellUpdated, CurrentGame, GameInfo, GameOver, GamePlugin, StateUpdated, SuccessfulTurn,
+};
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
     spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
@@ -35,7 +37,7 @@ use crate::interface::common::button_bundle::{
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC,
+    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, TURN_SOUND_PATH,
 };
 use crate::interface::components::{overlay_ui_node, AssociatedTextInput, Overlay};
 use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
@@ -99,7 +101,12 @@ impl Plugin for InterfacePlugin {
                     (refresh_game_list, handle_player_games_task, join_game)
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task,
-                    (make_turn, handle_cell_updated, handle_game_over)
+                    (
+                        make_turn,
+                        handle_cell_updated,
+                        handle_game_over,
+                        handle_successful_turn,
+                    )
                         .run_if(in_state(AppState::Game).and_then(resource_exists::<CurrentGame>)),
                 ),
             );
@@ -702,6 +709,16 @@ fn handle_cell_updated(
             pos: event.pos(),
             image: img.clone(),
         });
+    }
+}
+
+fn handle_successful_turn(
+    mut commands: Commands,
+    mut successful_turn: EventReader<SuccessfulTurn>,
+    asset_server: Res<AssetServer>,
+) {
+    for _event in successful_turn.read() {
+        commands.play_sound(&asset_server, TURN_SOUND_PATH);
     }
 }
 
