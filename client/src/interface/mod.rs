@@ -14,7 +14,7 @@ use crate::app_state::{AppState, MenuState};
 use crate::game::CurrentGame;
 use events::SubmitPressed;
 use ingame::InGameUIPlugin;
-use resources::RefreshGamesTimer;
+use resources::{RefreshGamesTimer, Settings};
 use systems::*;
 
 pub struct InterfacePlugin;
@@ -23,6 +23,7 @@ impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((InGameUIPlugin, TextInputPlugin))
             .init_resource::<RefreshGamesTimer>()
+            .init_resource::<Settings>()
             .add_event::<SubmitPressed>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
             .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
@@ -60,7 +61,7 @@ impl Plugin for InterfacePlugin {
                     state_transition,
                     submit_press,
                     text_input_focus,
-                    settings_submit::<u64>.run_if(in_state(AppState::Menu(MenuState::Settings))),
+                    submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (refresh_game_list, handle_player_games_task, create_game, join_game)
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task,

@@ -1,7 +1,7 @@
-use crate::app_state::{AppState, AppStateTransition};
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
+use crate::app_state::{AppState, AppStateTransition};
 use crate::game::GameInfo;
 
 #[derive(Clone, Debug, Deref, Component)]
@@ -12,6 +12,13 @@ pub struct SubmitButton {
     pub source: Entity,
 }
 
+/// Tag type to mark input components that they are used to set setting
+#[derive(Debug, Component)]
+pub enum Setting {
+    UserId,
+}
+
+/// Tag type to mark input components that they are used to create game
 #[derive(Component)]
 pub struct CreateGame;
 
@@ -84,24 +91,6 @@ impl JoinGameButtonBundle {
 }
 
 #[derive(Bundle)]
-pub struct TextInputNodeBundle {
-    pub node: NodeBundle,
-    pub input: TextInputBundle,
-}
-
-impl TextInputNodeBundle {
-    pub fn new(style: Style, text_style: TextStyle) -> Self {
-        Self {
-            node: NodeBundle { style, ..default() },
-            input: TextInputBundle {
-                text_style: TextInputTextStyle(text_style),
-                ..default()
-            },
-        }
-    }
-}
-
-#[derive(Bundle)]
 pub struct SubmitButtonBundle {
     pub button: ButtonBundle,
     pub submit: SubmitButton,
@@ -117,6 +106,26 @@ impl SubmitButtonBundle {
 }
 
 #[derive(Bundle)]
+pub struct SettingTextInputBundle {
+    pub node: NodeBundle,
+    pub text_input: TextInputBundle,
+    pub setting: Setting,
+}
+
+impl SettingTextInputBundle {
+    pub fn new(style: Style, text_style: TextStyle, setting: Setting) -> Self {
+        Self {
+            node: NodeBundle { style, ..default() },
+            text_input: TextInputBundle {
+                text_style: TextInputTextStyle(text_style),
+                ..default()
+            },
+            setting,
+        }
+    }
+}
+
+#[derive(Bundle)]
 pub struct NetworkGameTextInputBundle {
     pub node: NodeBundle,
     pub text_input: TextInputBundle,
@@ -124,7 +133,7 @@ pub struct NetworkGameTextInputBundle {
 }
 
 impl NetworkGameTextInputBundle {
-    pub fn new(text_style: TextStyle, style: Style) -> Self {
+    pub fn new(style: Style, text_style: TextStyle) -> Self {
         Self {
             node: NodeBundle { style, ..default() },
             text_input: TextInputBundle {

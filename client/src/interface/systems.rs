@@ -1,5 +1,4 @@
 use std::ops::Deref;
-use std::str::FromStr;
 
 use bevy::app::AppExit;
 use bevy::asset::AssetServer;
@@ -22,12 +21,12 @@ use game_server::game::game::{FinishedState, GameState};
 
 use super::components::{
     CreateGame, JoinGame, JoinGameButtonBundle, MenuNavigationButtonBundle,
-    NetworkGameTextInputBundle, Overlay, OverlayNodeBundle, SubmitButton, SubmitButtonBundle,
-    TextInputNodeBundle,
+    NetworkGameTextInputBundle, Overlay, OverlayNodeBundle, Setting, SettingTextInputBundle,
+    SubmitButton, SubmitButtonBundle,
 };
 use super::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use super::ingame::{InGameUIBundle, PlayerInfoReady};
-use super::resources::RefreshGamesTimer;
+use super::resources::{RefreshGamesTimer, Settings};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
 use crate::commands::{CommandsExt, EntityCommandsExt};
@@ -38,7 +37,6 @@ use crate::interface::common::{
     row_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
 };
 use crate::interface::events::SubmitPressed;
-use crate::settings::{submit_text_input_setting, Settings, SubmitTextInputSetting};
 
 pub fn state_transition(
     menu_items: Query<(&Interaction, &AppStateTransition), (With<Button>, Changed<Interaction>)>,
@@ -167,9 +165,8 @@ pub fn create_game(
                     return;
                 }
             }
-        } else {
-            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
         }
+        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
     };
     for event in submit_pressed.read() {
         let Some((_, input)) = text_input.iter().find(|(e, _)| *e == event.source) else {
@@ -185,30 +182,36 @@ pub fn create_game(
     }
 }
 
-pub fn settings_submit<T: FromStr + 'static>(
-    submit_button: Query<
-        (&Interaction, &SubmitTextInputSetting<T>),
-        (With<Button>, Changed<Interaction>),
-    >,
-    text_input: Query<(Entity, &TextInputValue)>,
+pub fn submit_setting(
+    text_input: Query<(Entity, &TextInputValue, &Setting)>,
     mut commands: Commands,
+    mut submit_pressed: EventReader<SubmitPressed>,
+    mut text_input_submit: EventReader<TextInputSubmitEvent>,
     mut settings: ResMut<Settings>,
     asset_server: Res<AssetServer>,
 ) {
-    for (interaction, submit_input) in submit_button.iter() {
-        if *interaction == Interaction::Pressed {
-            if let Some((_, val)) = text_input
-                .iter()
-                .find(|(e, _)| *e == submit_input.associated_input())
-            {
-                if let Ok(val) = val.0.parse::<T>() {
-                    submit_input.submit(&mut settings, val);
-                    commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
-                } else {
-                    commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                }
+    let mut submit = |input: &str, setting: &Setting| match setting {
+        Setting::UserId => {
+            if let Ok(val) = input.parse::<u64>() {
+                settings.set_user_id(val);
+                commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
+            } else {
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             }
         }
+    };
+    for event in submit_pressed.read() {
+        let Some((_, input, setting)) = text_input.iter().find(|(e, _, _)| *e == event.source)
+        else {
+            continue;
+        };
+        submit(&input.0, setting);
+    }
+    for event in text_input_submit.read() {
+        let Some((_, _, setting)) = text_input.iter().find(|(e, _, _)| *e == event.entity) else {
+            continue;
+        };
+        submit(&event.value, setting);
     }
 }
 
@@ -250,19 +253,19 @@ pub fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer
             builder.spawn(row_node_bundle()).with_children(|builder| {
                 builder.spawn(TextBundle::from_section("Set user id:", text_style.clone()));
                 let input = builder
-                    .spawn(TextInputNodeBundle::new(style.clone(), text_style.clone()))
+                    .spawn(SettingTextInputBundle::new(
+                        style.clone(),
+                        text_style.clone(),
+                        Setting::UserId,
+                    ))
                     .id();
                 builder
-                    .spawn(submit_text_input_setting(
-                        style.clone(),
-                        input,
-                        Settings::set_user_id,
-                    ))
+                    .spawn(SubmitButtonBundle::new(style.clone(), input))
                     .with_child(TextBundle::from_section("Save", text_style.clone()));
             });
             builder
                 .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
+                    style,
                     AppState::Menu(MenuState::Main),
                 ))
                 .with_child(TextBundle::from_section("Back", text_style));
@@ -310,8 +313,8 @@ pub fn setup_play_over_network_menu(
                 builder.spawn(TextBundle::from_section("Opponent id:", text_style.clone()));
                 let input = builder
                     .spawn(NetworkGameTextInputBundle::new(
-                        text_style.clone(),
                         style.clone(),
+                        text_style.clone(),
                     ))
                     .id();
                 builder
