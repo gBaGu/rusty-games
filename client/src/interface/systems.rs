@@ -11,6 +11,7 @@ use bevy::ecs::schedule::{NextState, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
+use bevy::prelude::TextBundle;
 use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::Time;
 use bevy::ui::widget::Button;
@@ -20,28 +21,24 @@ use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputV
 use game_server::game::game::{FinishedState, GameState};
 
 use super::components::{
-    overlay_ui_node, CreateGame, NetworkGameTextInputBundle, Overlay, SubmitButton,
-    SubmitButtonBundle,
+    CreateGame, JoinGame, JoinGameButtonBundle, MenuNavigationButtonBundle,
+    NetworkGameTextInputBundle, Overlay, OverlayNodeBundle, SubmitButton, SubmitButtonBundle,
+    TextInputNodeBundle,
 };
 use super::game_list::{GameList, GameListBundle, LoadingGameListBundle};
 use super::ingame::{InGameUIBundle, PlayerInfoReady};
 use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
-use crate::commands::CommandsExt;
+use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{CellUpdated, CurrentGame, GameInfo, GameOver, StateUpdated, SuccessfulTurn};
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
-use crate::interface::buttons::{
-    spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
-};
-use crate::interface::common::button_bundle::{menu_navigation, submit_text_input_setting};
 use crate::interface::common::{
-    column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
-    menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, TURN_SOUND_PATH,
+    column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_style,
+    row_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
 };
 use crate::interface::events::SubmitPressed;
-use crate::settings::{Settings, SubmitTextInputSetting};
+use crate::settings::{submit_text_input_setting, Settings, SubmitTextInputSetting};
 
 pub fn state_transition(
     menu_items: Query<(&Interaction, &AppStateTransition), (With<Button>, Changed<Interaction>)>,
@@ -189,18 +186,18 @@ pub fn create_game(
 }
 
 pub fn settings_submit<T: FromStr + 'static>(
-    submit_buttons: Query<
+    submit_button: Query<
         (&Interaction, &SubmitTextInputSetting<T>),
         (With<Button>, Changed<Interaction>),
     >,
-    text_inputs: Query<(Entity, &TextInputValue)>,
+    text_input: Query<(Entity, &TextInputValue)>,
     mut commands: Commands,
     mut settings: ResMut<Settings>,
     asset_server: Res<AssetServer>,
 ) {
-    for (interaction, submit_input) in submit_buttons.iter() {
+    for (interaction, submit_input) in submit_button.iter() {
         if *interaction == Interaction::Pressed {
-            if let Some((_, val)) = text_inputs
+            if let Some((_, val)) = text_input
                 .iter()
                 .find(|(e, _)| *e == submit_input.associated_input())
             {
@@ -223,92 +220,77 @@ pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui:
 
 pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
-    let menu_style = menu_item_style();
+    let style = menu_item_style();
 
     commands
         .spawn(global_column_node_bundle())
-        .with_children(|parent| {
-            spawn_menu_navigation_button(
-                parent,
-                menu_style.clone(),
-                text_style.clone(),
-                "Play",
-                AppState::Menu(MenuState::PlayWithBot),
-            );
-            spawn_menu_navigation_button(
-                parent,
-                menu_style.clone(),
-                text_style.clone(),
-                "Network",
-                AppState::Menu(MenuState::PlayOverNetwork),
-            );
-            spawn_menu_navigation_button(
-                parent,
-                menu_style.clone(),
-                text_style.clone(),
-                "Settings",
-                AppState::Menu(MenuState::Settings),
-            );
-            spawn_exit_button(parent, menu_style, text_style, "Exit");
+        .with_children(|builder| {
+            for (state, text) in [
+                (AppState::Menu(MenuState::PlayWithBot), "Play"),
+                (AppState::Menu(MenuState::PlayOverNetwork), "Network"),
+                (AppState::Menu(MenuState::Settings), "Settings"),
+            ] {
+                builder
+                    .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
+                    .with_child(TextBundle::from_section(text, text_style.clone()));
+            }
+            builder
+                .spawn(MenuNavigationButtonBundle::exit(style))
+                .with_child(TextBundle::from_section("Exit", text_style));
         });
 }
 
 pub fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
-    let menu_style = menu_item_style();
+    let style = menu_item_style();
 
     commands
         .spawn(global_column_node_bundle())
-        .with_children(|parent| {
-            parent.spawn(row_node_bundle()).with_children(|parent| {
-                parent.spawn(menu_text_bundle("Set user id:", text_style.clone()));
-                let input_id = parent
-                    .spawn(menu_text_input_bundle(
-                        text_style.clone(),
-                        menu_style.clone(),
-                    ))
+        .with_children(|builder| {
+            builder.spawn(row_node_bundle()).with_children(|builder| {
+                builder.spawn(TextBundle::from_section("Set user id:", text_style.clone()));
+                let input = builder
+                    .spawn(TextInputNodeBundle::new(style.clone(), text_style.clone()))
                     .id();
-                parent
+                builder
                     .spawn(submit_text_input_setting(
-                        menu_style.clone(),
-                        input_id,
+                        style.clone(),
+                        input,
                         Settings::set_user_id,
                     ))
-                    .with_children(|parent| {
-                        parent.spawn(menu_text_bundle("Save", text_style.clone()));
-                    });
+                    .with_child(TextBundle::from_section("Save", text_style.clone()));
             });
-            parent
-                .spawn(menu_navigation(
-                    menu_style.clone(),
+            builder
+                .spawn(MenuNavigationButtonBundle::new(
+                    style.clone(),
                     AppState::Menu(MenuState::Main),
                 ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Back", text_style.clone()));
-                });
+                .with_child(TextBundle::from_section("Back", text_style));
         });
 }
 
 pub fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
-    let menu_style = menu_item_style();
+    let style = menu_item_style();
 
     commands
         .spawn(global_column_node_bundle())
-        .with_children(|parent| {
-            parent
-                .spawn(menu_navigation(menu_style.clone(), AppState::Game))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Play with bot", text_style.clone()));
-                });
-            parent
-                .spawn(menu_navigation(
-                    menu_style.clone(),
+        .with_children(|builder| {
+            builder
+                .spawn(MenuNavigationButtonBundle::new(
+                    style.clone(),
+                    AppState::Game,
+                ))
+                .with_child(TextBundle::from_section(
+                    "Play with bot",
+                    text_style.clone(),
+                ));
+            builder
+                .spawn(MenuNavigationButtonBundle::new(
+                    style.clone(),
                     AppState::Menu(MenuState::Main),
                 ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Back", text_style.clone()));
-                });
+                .with_child(TextBundle::from_section("Back", text_style));
         });
 }
 
@@ -323,88 +305,76 @@ pub fn setup_play_over_network_menu(
 
     commands
         .spawn(global_column_node_bundle())
-        .with_children(|parent| {
-            parent.spawn(row_node_bundle()).with_children(|parent| {
-                parent.spawn(menu_text_bundle("Opponent id:", text_style.clone()));
-                let input = parent
+        .with_children(|builder| {
+            builder.spawn(row_node_bundle()).with_children(|builder| {
+                builder.spawn(TextBundle::from_section("Opponent id:", text_style.clone()));
+                let input = builder
                     .spawn(NetworkGameTextInputBundle::new(
                         text_style.clone(),
                         style.clone(),
                     ))
                     .id();
-                parent
+                builder
                     .spawn(SubmitButtonBundle::new(style.clone(), input))
-                    .with_children(|parent| {
-                        parent.spawn(menu_text_bundle("Create game", text_style.clone()));
-                    });
+                    .with_child(TextBundle::from_section("Create game", text_style.clone()));
             });
             if let Some(id) = settings.user_id() {
                 if let Some(task) = grpc_client.load_player_games(id) {
-                    parent.spawn(LoadingGameListBundle {
+                    builder.spawn(LoadingGameListBundle {
                         container: column_node_bundle(),
                         games: default(),
                         task: CallGetPlayerGames(task),
                     });
                 } else {
-                    parent
+                    builder
                         .spawn(GameListBundle {
                             container: column_node_bundle(),
                             games: default(),
                         })
-                        .with_children(|parent| {
-                            parent.spawn(menu_text_bundle("Server is down", text_style.clone()));
-                        });
+                        .with_child(TextBundle::from_section(
+                            "Server is down",
+                            text_style.clone(),
+                        ));
                 }
             } else {
-                parent
+                builder
                     .spawn(GameListBundle {
                         container: column_node_bundle(),
                         games: default(),
                     })
-                    .with_children(|parent| {
-                        parent.spawn(menu_text_bundle("No user id provided", text_style.clone()));
-                    });
+                    .with_child(TextBundle::from_section(
+                        "No user id provided",
+                        text_style.clone(),
+                    ));
             }
-            parent
-                .spawn(menu_navigation(
+            builder
+                .spawn(MenuNavigationButtonBundle::new(
                     style.clone(),
                     AppState::Menu(MenuState::Main),
                 ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Back", text_style.clone()));
-                });
+                .with_child(TextBundle::from_section("Back", text_style));
         });
 }
 
 pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
-    let menu_style = menu_item_style();
+    let style = menu_item_style();
 
-    commands.spawn(overlay_ui_node()).with_children(|parent| {
-        parent.spawn(column_node_bundle()).with_children(|parent| {
-            parent
-                .spawn(menu_navigation(menu_style.clone(), AppState::Game))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Resume", text_style.clone()));
-                });
-            parent
-                .spawn(menu_navigation(
-                    menu_style.clone(),
-                    AppState::Menu(MenuState::Settings),
-                ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Settings", text_style.clone()));
-                });
-            parent
-                .spawn(menu_navigation(
-                    menu_style.clone(),
-                    AppState::Menu(MenuState::Main),
-                ))
-                .with_children(|parent| {
-                    parent.spawn(menu_text_bundle("Main menu", text_style.clone()));
-                });
+    commands
+        .spawn(OverlayNodeBundle::default())
+        .with_children(|parent| {
+            parent.spawn(column_node_bundle()).with_children(|parent| {
+                for (state, text) in [
+                    (AppState::Game, "Resume"),
+                    (AppState::Menu(MenuState::Settings), "Settings"),
+                    (AppState::Menu(MenuState::Main), "Main menu"),
+                ] {
+                    parent
+                        .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
+                        .with_child(TextBundle::from_section(text, text_style.clone()));
+                }
+            });
         });
-    });
 }
 
 pub fn exit_pause(
@@ -485,20 +455,18 @@ pub fn refresh_game_list(
                 if let Some(task) = client.load_player_games(id) {
                     commands.entity(entity).insert(CallGetPlayerGames(task));
                 } else {
-                    commands
-                        .entity(entity)
-                        .despawn_descendants()
-                        .with_children(|parent| {
-                            parent.spawn(menu_text_bundle("Server is down", text_style.clone()));
-                        });
+                    commands.entity(entity).despawn_descendants().with_child(
+                        TextBundle::from_section("Server is down", text_style.clone()),
+                    );
                 }
             } else {
                 commands
                     .entity(entity)
                     .despawn_descendants()
-                    .with_children(|parent| {
-                        parent.spawn(menu_text_bundle("No user id provided", text_style.clone()));
-                    });
+                    .with_child(TextBundle::from_section(
+                        "No user id provided",
+                        text_style.clone(),
+                    ));
             }
         }
     }
@@ -510,7 +478,7 @@ pub fn handle_player_games_task(
     asset_server: Res<AssetServer>,
 ) {
     let text_style = menu_text_style(&asset_server);
-    let menu_style = menu_item_style();
+    let style = menu_item_style();
 
     for (entity, mut list, mut task) in game_lists.iter_mut() {
         if let Some(res) = block_on(future::poll_once(&mut task.0)) {
@@ -531,7 +499,7 @@ pub fn handle_player_games_task(
                                 .despawn_descendants()
                                 .with_children(|parent| {
                                     if games.is_empty() {
-                                        parent.spawn(menu_text_bundle(
+                                        parent.spawn(TextBundle::from_section(
                                             "No games available",
                                             text_style.clone(),
                                         ));
@@ -539,53 +507,49 @@ pub fn handle_player_games_task(
                                     }
                                     for game in games.iter() {
                                         parent.spawn(row_node_bundle()).with_children(|parent| {
-                                            parent.spawn(menu_text_bundle(
+                                            parent.spawn(TextBundle::from_section(
                                                 &format!("ID: {}", game.id),
                                                 text_style.clone(),
                                             ));
-                                            parent.spawn(menu_text_bundle(
+                                            parent.spawn(TextBundle::from_section(
                                                 &format!("{:?}", game.state),
                                                 text_style.clone(),
                                             ));
-                                            parent.spawn(menu_text_bundle(
+                                            parent.spawn(TextBundle::from_section(
                                                 &format!("{:?}", game.players),
                                                 text_style.clone(),
                                             ));
-                                            spawn_join_game_button_bundle(
-                                                parent,
-                                                menu_style.clone(),
-                                                text_style.clone(),
-                                                "Join",
-                                                game.clone(),
-                                            );
+                                            parent
+                                                .spawn(JoinGameButtonBundle::new(
+                                                    style.clone(),
+                                                    game.clone(),
+                                                ))
+                                                .with_child(TextBundle::from_section(
+                                                    "Join",
+                                                    text_style.clone(),
+                                                ));
                                         });
                                     }
                                 });
                         }
                         Err(err) => {
                             println!("GetPlayerGames invalid response: {}", err);
-                            commands
-                                .entity(entity)
-                                .despawn_descendants()
-                                .with_children(|parent| {
-                                    parent.spawn(menu_text_bundle(
-                                        &format!("Server error: {}", err),
-                                        text_style.clone(),
-                                    ));
-                                });
+                            commands.entity(entity).despawn_descendants().with_child(
+                                TextBundle::from_section(
+                                    &format!("Server error: {}", err),
+                                    text_style.clone(),
+                                ),
+                            );
                         }
                     }
                 }
                 Err(err) => {
-                    commands
-                        .entity(entity)
-                        .despawn_descendants()
-                        .with_children(|parent| {
-                            parent.spawn(menu_text_bundle(
-                                &format!("Server error: {}", err.code().description()),
-                                text_style.clone(),
-                            ));
-                        });
+                    commands.entity(entity).despawn_descendants().with_child(
+                        TextBundle::from_section(
+                            &format!("Server error: {}", err.code().description()),
+                            text_style.clone(),
+                        ),
+                    );
                 }
             }
         }
@@ -680,29 +644,27 @@ pub fn handle_game_over(
         let text_style = menu_text_style(&asset_server);
         let style = menu_item_style();
         let text = match event.deref() {
-            FinishedState::Win(id) => {
-                if *id == game.user_id() {
-                    "You win!"
-                } else {
-                    "You lose!"
-                }
-            }
+            FinishedState::Win(id) if *id == game.user_id() => "You win!",
+            FinishedState::Win(_) => "You lose!",
             FinishedState::Draw => "It's a draw!",
         };
-        commands.spawn(overlay_ui_node()).with_children(|parent| {
-            parent.spawn(column_node_bundle()).with_children(|parent| {
-                parent.spawn(menu_text_bundle(
-                    &format!("Game over. {}", text),
-                    text_style.clone(),
-                ));
-                spawn_menu_navigation_button(
-                    parent,
-                    style,
-                    text_style,
-                    "Main menu",
-                    AppState::Menu(MenuState::Main),
-                );
+        commands
+            .spawn(OverlayNodeBundle::default())
+            .with_children(|builder| {
+                builder
+                    .spawn(column_node_bundle())
+                    .with_children(|builder| {
+                        builder.spawn(TextBundle::from_section(
+                            &format!("Game over. {}", text),
+                            text_style.clone(),
+                        ));
+                        builder
+                            .spawn(MenuNavigationButtonBundle::new(
+                                style.clone(),
+                                AppState::Menu(MenuState::Main),
+                            ))
+                            .with_child(TextBundle::from_section("Main menu", text_style));
+                    });
             });
-        });
     }
 }

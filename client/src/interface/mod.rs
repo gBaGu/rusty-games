@@ -1,7 +1,6 @@
 pub mod common;
 pub mod systems;
 
-mod buttons;
 mod components;
 mod game_list;
 mod ingame;

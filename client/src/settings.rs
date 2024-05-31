@@ -1,4 +1,4 @@
-use bevy::prelude::{Component, Entity, Resource};
+use bevy::prelude::{default, Bundle, ButtonBundle, Component, Entity, Resource, Style, UiImage};
 
 #[derive(Debug, Default, Resource)]
 pub struct Settings {
@@ -16,7 +16,7 @@ impl Settings {
 }
 
 #[derive(Debug, Component)]
-pub struct SubmitTextInputSetting<T>{
+pub struct SubmitTextInputSetting<T> {
     associated_input: Entity,
     setter: fn(&mut Settings, T),
 }
@@ -36,4 +36,19 @@ impl<T> SubmitTextInputSetting<T> {
     pub fn submit(&self, settings: &mut Settings, value: T) {
         (self.setter)(settings, value);
     }
+}
+
+pub fn submit_text_input_setting<T: 'static>(
+    style: Style,
+    input_id: Entity,
+    setter: fn(&mut Settings, T),
+) -> impl Bundle {
+    (
+        ButtonBundle {
+            style,
+            image: UiImage::default(),
+            ..default()
+        },
+        SubmitTextInputSetting::new(input_id, setter),
+    )
 }
