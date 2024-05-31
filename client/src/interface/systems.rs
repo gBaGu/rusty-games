@@ -1,128 +1,50 @@
 use std::ops::Deref;
 use std::str::FromStr;
 
-use bevy::app::{App, AppExit, Plugin, Update};
+use bevy::app::AppExit;
 use bevy::asset::AssetServer;
 use bevy::ecs::change_detection::{Res, ResMut};
 use bevy::ecs::entity::Entity;
-use bevy::ecs::event::EventWriter;
+use bevy::ecs::event::{EventReader, EventWriter};
 use bevy::ecs::query::{Changed, With, Without};
-use bevy::ecs::schedule::common_conditions::{any_with_component, in_state, not, resource_exists};
-use bevy::ecs::schedule::{Condition, IntoSystemConfigs, NextState, OnEnter, OnExit, State};
+use bevy::ecs::schedule::{NextState, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::{Deref, DerefMut, EventReader, Resource};
 use bevy::tasks::{block_on, futures_lite::future};
-use bevy::time::{Time, Timer, TimerMode};
+use bevy::time::Time;
 use bevy::ui::widget::Button;
 use bevy::ui::Interaction;
 use bevy::utils::default;
-use bevy_simple_text_input::{TextInputInactive, TextInputPlugin, TextInputValue};
+use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
 use game_server::game::game::{FinishedState, GameState};
 
+use super::components::{
+    overlay_ui_node, CreateGame, NetworkGameTextInputBundle, Overlay, SubmitButton,
+    SubmitButtonBundle,
+};
+use super::game_list::{GameList, GameListBundle, LoadingGameListBundle};
+use super::ingame::{InGameUIBundle, PlayerInfoReady};
+use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
 use crate::commands::CommandsExt;
-use crate::game::{
-    CellUpdated, CurrentGame, GameInfo, GameOver, GamePlugin, StateUpdated, SuccessfulTurn,
-};
+use crate::game::{CellUpdated, CurrentGame, GameInfo, GameOver, StateUpdated, SuccessfulTurn};
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
 use crate::interface::buttons::{
     spawn_exit_button, spawn_join_game_button_bundle, spawn_menu_navigation_button, JoinGame,
 };
-use crate::interface::common::button_bundle::{
-    menu_navigation, menu_navigation_with_associated_text_input, submit_text_input_setting,
-};
+use crate::interface::common::button_bundle::{menu_navigation, submit_text_input_setting};
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_bundle,
     menu_text_input_bundle, menu_text_style, row_node_bundle, CONFIRMATION_SOUND_PATH,
-    ERROR_SOUND_PATH, GAME_LIST_REFRESH_INTERVAL_SEC, TURN_SOUND_PATH,
+    ERROR_SOUND_PATH, TURN_SOUND_PATH,
 };
-use crate::interface::components::{overlay_ui_node, AssociatedTextInput, Overlay};
-use crate::interface::game_list::{GameList, GameListBundle, LoadingGameListBundle};
-use crate::interface::ingame::{InGameUIBundle, InGameUIPlugin, PlayerInfoReady};
+use crate::interface::events::SubmitPressed;
 use crate::settings::{Settings, SubmitTextInputSetting};
 
-#[derive(Deref, DerefMut, Resource)]
-struct RefreshGamesTimer(pub Timer);
-
-impl Default for RefreshGamesTimer {
-    fn default() -> Self {
-        Self(Timer::from_seconds(
-            GAME_LIST_REFRESH_INTERVAL_SEC,
-            TimerMode::Repeating,
-        ))
-    }
-}
-
-pub struct InterfacePlugin;
-
-impl Plugin for InterfacePlugin {
-    fn build(&self, app: &mut App) {
-        app.add_plugins((GamePlugin, InGameUIPlugin, TextInputPlugin))
-            .init_resource::<RefreshGamesTimer>()
-            .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
-            .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
-            .add_systems(
-                OnEnter(AppState::Menu(MenuState::Settings)),
-                setup_settings_menu,
-            )
-            .add_systems(OnExit(AppState::Menu(MenuState::Settings)), cleanup_ui)
-            .add_systems(
-                OnEnter(AppState::Menu(MenuState::PlayWithBot)),
-                setup_play_with_bot_menu,
-            )
-            .add_systems(OnExit(AppState::Menu(MenuState::PlayWithBot)), cleanup_ui)
-            .add_systems(
-                OnEnter(AppState::Menu(MenuState::PlayOverNetwork)),
-                setup_play_over_network_menu,
-            )
-            .add_systems(
-                OnExit(AppState::Menu(MenuState::PlayOverNetwork)),
-                cleanup_ui,
-            )
-            .add_systems(OnEnter(AppState::Paused), setup_pause)
-            .add_systems(OnExit(AppState::Paused), exit_pause)
-            .add_systems(
-                OnEnter(AppState::Game),
-                setup_game.run_if(not(any_with_component::<bevy::ui::Node>)),
-            )
-            .add_systems(
-                OnExit(AppState::Game),
-                cleanup_ui.run_if(not(in_state(AppState::Paused))),
-            )
-            .add_systems(
-                Update,
-                (
-                    state_transition,
-                    text_input_focus,
-                    settings_submit::<u64>.run_if(in_state(AppState::Menu(MenuState::Settings))),
-                    (refresh_game_list, handle_player_games_task, join_game)
-                        .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
-                    handle_create_game_task,
-                    (
-                        make_turn,
-                        handle_cell_updated,
-                        handle_game_over,
-                        handle_successful_turn,
-                    )
-                        .run_if(in_state(AppState::Game).and_then(resource_exists::<CurrentGame>)),
-                ),
-            );
-    }
-}
-
-fn state_transition(
-    menu_items: Query<
-        (
-            &Interaction,
-            &AppStateTransition,
-            Option<&AssociatedTextInput>,
-        ),
-        (With<Button>, Changed<Interaction>),
-    >,
-    text_inputs: Query<(Entity, &TextInputValue)>,
+pub fn state_transition(
+    menu_items: Query<(&Interaction, &AppStateTransition), (With<Button>, Changed<Interaction>)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     mut exit: EventWriter<AppExit>,
@@ -130,7 +52,6 @@ fn state_transition(
     settings: Res<Settings>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     asset_server: Res<AssetServer>,
-    grpc_client: Res<GrpcClient>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
         if *app_state.get() == AppState::Game {
@@ -141,27 +62,10 @@ fn state_transition(
             return;
         }
     }
-    for (interaction, state_transition, associated_input) in menu_items.iter() {
+    for (interaction, state_transition) in menu_items.iter() {
         if *interaction == Interaction::Pressed {
             if let Some(new_state) = state_transition.0 {
-                // if transition is AppState::Game and button have associated text input
-                // this means it's a network game and input contains opponent id
-                // TODO: find a way to express this with types
-                if let (AppState::Game, Some(associated_input)) = (new_state, associated_input) {
-                    if let Some((_, val)) =
-                        text_inputs.iter().find(|(e, _)| *e == associated_input.0)
-                    {
-                        if let Ok(opponent_id) = val.0.parse::<u64>() {
-                            if let Some(user_id) = settings.user_id() {
-                                if let Some(task) = grpc_client.create_game(user_id, opponent_id) {
-                                    commands.spawn(CallCreateGame(task));
-                                }
-                            }
-                        } else {
-                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                        }
-                    }
-                } else if *app_state.get() == AppState::Menu(MenuState::PlayWithBot)
+                if *app_state.get() == AppState::Menu(MenuState::PlayWithBot)
                     && new_state == AppState::Game
                 {
                     if let Some(user_id) = settings.user_id() {
@@ -193,7 +97,7 @@ fn state_transition(
     }
 }
 
-fn join_game(
+pub fn join_game(
     join_button: Query<(&Interaction, &JoinGame), (With<Button>, Changed<Interaction>)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
@@ -225,7 +129,7 @@ fn join_game(
     }
 }
 
-fn text_input_focus(
+pub fn text_input_focus(
     mut inputs: Query<(&mut TextInputInactive, &Interaction)>,
     button_input: Res<ButtonInput<MouseButton>>,
 ) {
@@ -236,7 +140,55 @@ fn text_input_focus(
     }
 }
 
-fn settings_submit<T: FromStr + 'static>(
+pub fn submit_press(
+    submit_button: Query<(&Interaction, &SubmitButton), (With<Button>, Changed<Interaction>)>,
+    mut submit_pressed: EventWriter<SubmitPressed>,
+) {
+    for (interaction, submit) in submit_button.iter() {
+        if *interaction == Interaction::Pressed {
+            submit_pressed.send(SubmitPressed {
+                source: submit.source,
+            });
+        }
+    }
+}
+
+pub fn create_game(
+    text_input: Query<(Entity, &TextInputValue), With<CreateGame>>,
+    mut commands: Commands,
+    mut submit_pressed: EventReader<SubmitPressed>,
+    mut text_input_submit: EventReader<TextInputSubmitEvent>,
+    settings: Res<Settings>,
+    grpc_client: Res<GrpcClient>,
+    asset_server: Res<AssetServer>,
+) {
+    let mut create = |input: &str| {
+        if let Ok(opponent_id) = input.parse::<u64>() {
+            if let Some(user_id) = settings.user_id() {
+                if let Some(task) = grpc_client.create_game(user_id, opponent_id) {
+                    commands.spawn(CallCreateGame(task));
+                    return;
+                }
+            }
+        } else {
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+        }
+    };
+    for event in submit_pressed.read() {
+        let Some((_, input)) = text_input.iter().find(|(e, _)| *e == event.source) else {
+            continue;
+        };
+        create(&input.0);
+    }
+    for event in text_input_submit.read() {
+        if !text_input.contains(event.entity) {
+            continue;
+        };
+        create(&event.value);
+    }
+}
+
+pub fn settings_submit<T: FromStr + 'static>(
     submit_buttons: Query<
         (&Interaction, &SubmitTextInputSetting<T>),
         (With<Button>, Changed<Interaction>),
@@ -263,13 +215,13 @@ fn settings_submit<T: FromStr + 'static>(
     }
 }
 
-fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui::Node>>) {
+pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui::Node>>) {
     for entity in ui_nodes.iter() {
         commands.entity(entity).despawn();
     }
 }
 
-fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
@@ -301,7 +253,7 @@ fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
@@ -337,7 +289,7 @@ fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
@@ -360,32 +312,28 @@ fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServe
         });
 }
 
-fn setup_play_over_network_menu(
+pub fn setup_play_over_network_menu(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     settings: Res<Settings>,
     grpc_client: Res<GrpcClient>,
 ) {
     let text_style = menu_text_style(&asset_server);
-    let menu_style = menu_item_style();
+    let style = menu_item_style();
 
     commands
         .spawn(global_column_node_bundle())
         .with_children(|parent| {
             parent.spawn(row_node_bundle()).with_children(|parent| {
                 parent.spawn(menu_text_bundle("Opponent id:", text_style.clone()));
-                let input_id = parent
-                    .spawn(menu_text_input_bundle(
+                let input = parent
+                    .spawn(NetworkGameTextInputBundle::new(
                         text_style.clone(),
-                        menu_style.clone(),
+                        style.clone(),
                     ))
                     .id();
                 parent
-                    .spawn(menu_navigation_with_associated_text_input(
-                        menu_style.clone(),
-                        AppState::Game,
-                        input_id,
-                    ))
+                    .spawn(SubmitButtonBundle::new(style.clone(), input))
                     .with_children(|parent| {
                         parent.spawn(menu_text_bundle("Create game", text_style.clone()));
                     });
@@ -419,7 +367,7 @@ fn setup_play_over_network_menu(
             }
             parent
                 .spawn(menu_navigation(
-                    menu_style.clone(),
+                    style.clone(),
                     AppState::Menu(MenuState::Main),
                 ))
                 .with_children(|parent| {
@@ -428,7 +376,7 @@ fn setup_play_over_network_menu(
         });
 }
 
-fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let menu_style = menu_item_style();
 
@@ -459,7 +407,7 @@ fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
     });
 }
 
-fn exit_pause(
+pub fn exit_pause(
     mut commands: Commands,
     ui_nodes: Query<(Entity, Option<&Overlay>), With<bevy::ui::Node>>,
     state: Res<State<AppState>>,
@@ -475,7 +423,7 @@ fn exit_pause(
     }
 }
 
-fn setup_game(
+pub fn setup_game(
     mut commands: Commands,
     mut game: ResMut<CurrentGame>,
     mut state_updated: EventWriter<StateUpdated>,
@@ -502,7 +450,7 @@ fn setup_game(
         });
 }
 
-fn make_turn(
+pub fn make_turn(
     mut commands: Commands,
     mut board_button_pressed: EventReader<board::ButtonPressed>,
     game: Res<CurrentGame>,
@@ -521,7 +469,7 @@ fn make_turn(
     }
 }
 
-fn refresh_game_list(
+pub fn refresh_game_list(
     game_lists: Query<Entity, (With<GameList>, Without<CallGetPlayerGames>)>,
     mut commands: Commands,
     mut timer: ResMut<RefreshGamesTimer>,
@@ -556,7 +504,7 @@ fn refresh_game_list(
     }
 }
 
-fn handle_player_games_task(
+pub fn handle_player_games_task(
     mut game_lists: Query<(Entity, &mut GameList, &mut CallGetPlayerGames)>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -644,7 +592,7 @@ fn handle_player_games_task(
     }
 }
 
-fn handle_create_game_task(
+pub fn handle_create_game_task(
     mut create_game: Query<(Entity, &mut CallCreateGame)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
@@ -690,7 +638,7 @@ fn handle_create_game_task(
     }
 }
 
-fn handle_cell_updated(
+pub fn handle_cell_updated(
     mut cell_updated: EventReader<CellUpdated>,
     mut board_content: EventWriter<board::ButtonContentArrived>,
     game: Res<CurrentGame>,
@@ -712,7 +660,7 @@ fn handle_cell_updated(
     }
 }
 
-fn handle_successful_turn(
+pub fn handle_successful_turn(
     mut commands: Commands,
     mut successful_turn: EventReader<SuccessfulTurn>,
     asset_server: Res<AssetServer>,
@@ -722,7 +670,7 @@ fn handle_successful_turn(
     }
 }
 
-fn handle_game_over(
+pub fn handle_game_over(
     mut commands: Commands,
     mut game_over: EventReader<GameOver>,
     game: Res<CurrentGame>,

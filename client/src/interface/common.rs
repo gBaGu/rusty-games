@@ -102,7 +102,6 @@ pub fn menu_text_input_bundle(text_style: TextStyle, style: Style) -> impl Bundl
 
 pub mod button_bundle {
     use super::*;
-    use crate::interface::components::AssociatedTextInput;
     use crate::settings::{Settings, SubmitTextInputSetting};
     use bevy::prelude::Entity;
 
@@ -114,22 +113,6 @@ pub mod button_bundle {
                 ..default()
             },
             AppStateTransition(Some(new_state)),
-        )
-    }
-
-    pub fn menu_navigation_with_associated_text_input(
-        style: Style,
-        new_state: AppState,
-        input_id: Entity,
-    ) -> impl Bundle {
-        (
-            ButtonBundle {
-                style,
-                image: UiImage::default(),
-                ..default()
-            },
-            AppStateTransition(Some(new_state)),
-            AssociatedTextInput(input_id),
         )
     }
 
