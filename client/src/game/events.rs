@@ -1,5 +1,5 @@
 use bevy::prelude::{Deref, Event};
-use game_server::game::game::{FinishedState, GameState};
+use game_server::game::{FinishedState, GameState};
 
 use super::Position;
 

@@ -1,7 +1,7 @@
 extern crate server;
 
-use server::game::game::Game;
 use server::game::tic_tac_toe::{FieldCol, FieldRow, TicTacToe};
+use server::game::Game;
 
 fn main() {
     let player1 = 1;

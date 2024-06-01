@@ -9,6 +9,8 @@ use crate::proto::{
     FILE_DESCRIPTOR_SET,
 };
 
+pub use game_storage::GameId;
+
 pub fn spec_service() -> Result<ServerReflectionServer<impl ServerReflection>, Error> {
     let spec = Builder::configure()
         .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)

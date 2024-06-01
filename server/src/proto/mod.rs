@@ -1,7 +1,7 @@
 tonic::include_proto!("game");
 
+use crate::game;
 use crate::game::chess;
-use crate::game::game;
 
 pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
 

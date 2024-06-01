@@ -1,7 +1,7 @@
 use prost::Message;
 use std::num::TryFromIntError;
 
-use crate::game::game::BoardCell;
+use crate::game::BoardCell;
 use crate::proto::Maybe;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
@@ -39,7 +39,7 @@ impl<T: FromProtobuf> FromProtobuf for BoardCell<T> {
         let maybe = Maybe::decode(buf)?;
         match maybe.item {
             Some(bytes) => Ok(T::from_protobuf(&bytes)?.into()),
-            None => Ok(Self::default())
+            None => Ok(Self::default()),
         }
     }
 }

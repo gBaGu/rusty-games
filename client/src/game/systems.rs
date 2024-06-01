@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game_server::game::game::{BoardCell, GameState};
+use game_server::game::{BoardCell, GameState};
 
 use super::resources::RefreshGameTimer;
 use super::{

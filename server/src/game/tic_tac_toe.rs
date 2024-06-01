@@ -2,13 +2,13 @@ use generic_array::typenum::Unsigned;
 use prost::Message;
 
 use crate::game::encoding::{FromProtobuf, FromProtobufError};
-use crate::game::game::{BoardCell, Game, GameResult, GameState};
 use crate::game::{
     error::GameError,
     grid::{Grid, GridIndex, WithLength},
     player_pool::{PlayerId, PlayerPool, WithPlayerId},
     tic_tac_toe,
 };
+use crate::game::{BoardCell, Game, GameResult, GameState};
 use crate::proto::Position;
 
 #[derive(Clone, Copy, Debug)]
