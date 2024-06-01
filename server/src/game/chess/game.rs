@@ -6,9 +6,9 @@ use crate::game::chess::index::{Col, Index, Row};
 use crate::game::chess::turn_data::TurnData;
 use crate::game::chess::types::{MoveType, Piece, PieceKind, Team};
 use crate::game::error::GameError;
-use crate::game::game::{BoardCell, Game, GameResult, GameState};
 use crate::game::grid::{Grid, WithGridIndex, WithLength};
 use crate::game::player_pool::{PlayerId, PlayerPool, PlayerQueue, WithPlayerId};
+use crate::game::{BoardCell, Game, GameResult, GameState};
 
 type Cell = BoardCell<Piece>;
 
@@ -660,7 +660,7 @@ mod test {
     use generic_array::typenum::Unsigned;
     use itertools::Itertools;
 
-    use crate::game::game::FinishedState;
+    use crate::game::FinishedState;
 
     const PLAYER1: u64 = 1;
     const PLAYER2: u64 = 2;

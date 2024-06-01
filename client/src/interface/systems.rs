@@ -15,7 +15,7 @@ use bevy::ui::node_bundles::TextBundle;
 use bevy::ui::widget::Button;
 use bevy::ui::Interaction;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
-use game_server::game::game::{FinishedState, GameState};
+use game_server::game::{FinishedState, GameState};
 
 use super::components::{
     CreateGame, JoinGame, MenuNavigationButtonBundle,

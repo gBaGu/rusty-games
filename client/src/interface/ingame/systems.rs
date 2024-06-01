@@ -1,12 +1,12 @@
-use crate::interface::ingame::events::PlayerInfoReady;
-use crate::game::StateUpdated;
 use bevy::prelude::*;
-use game_server::game::game::GameState;
+use game_server::game::GameState;
 
 use super::components::{
     EmptyNextPlayerImageBundle, GameStateContainer, GameStateContainerBundle, InGameUI, NextPlayer,
     PlayerImage, PlayerImageBundle, PlayerInfo, PlayerInfoContainerBundle,
 };
+use crate::game::StateUpdated;
+use crate::interface::ingame::events::PlayerInfoReady;
 
 use super::{ENEMY_TURN_COLOR, FONT_PATH, FONT_SIZE, PLAYER_TURN_COLOR, TEXT_COLOR};
 

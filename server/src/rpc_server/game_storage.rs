@@ -4,9 +4,9 @@ use std::sync::{Mutex, PoisonError};
 
 use crate::game::chess::game::Chess;
 use crate::game::encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
-use crate::game::game::{Game, GameBoard};
 use crate::game::player_pool::PlayerQueue;
 use crate::game::{error::GameError, player_pool::PlayerId, tic_tac_toe::TicTacToe};
+use crate::game::{Game, GameBoard};
 use crate::proto;
 
 #[derive(thiserror::Error, Debug)]
@@ -38,7 +38,7 @@ impl<T> From<PoisonError<T>> for GameStorageError {
     }
 }
 
-type GameId = u64;
+pub type GameId = u64;
 type GameMap<T> = HashMap<GameId, T>;
 type GameStorageResult<T> = Result<T, GameStorageError>;
 

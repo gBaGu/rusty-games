@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use game_server::game::game::{BoardCell, GameState};
-use game_server::game::player_pool::PlayerId;
+use game_server::game::{BoardCell, GameState, PlayerId};
 
 use super::{GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
 use crate::game::GameInfo;

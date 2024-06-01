@@ -1,7 +1,6 @@
 use bevy::prelude::Component;
 use game_server::game::encoding::{FromProtobuf, FromProtobufError};
-use game_server::game::game::{BoardCell, GameState};
-use game_server::game::player_pool::PlayerId;
+use game_server::game::{BoardCell, GameState, PlayerId};
 use game_server::proto;
 
 #[derive(Clone, Component, Debug)]
