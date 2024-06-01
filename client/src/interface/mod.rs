@@ -2,17 +2,18 @@ pub mod common;
 pub mod systems;
 
 mod components;
+mod events;
 mod game_list;
 mod ingame;
 mod resources;
-mod events;
 
 use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
 use crate::app_state::{AppState, MenuState};
 use crate::game::CurrentGame;
-use events::SubmitPressed;
+use crate::grpc::CallGetPlayerGames;
+use events::{PlayerGamesReady, SubmitPressed};
 use ingame::InGameUIPlugin;
 use resources::{RefreshGamesTimer, Settings};
 use systems::*;
@@ -25,6 +26,7 @@ impl Plugin for InterfacePlugin {
             .init_resource::<RefreshGamesTimer>()
             .init_resource::<Settings>()
             .add_event::<SubmitPressed>()
+            .add_event::<PlayerGamesReady>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
             .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
             .add_systems(
@@ -58,11 +60,18 @@ impl Plugin for InterfacePlugin {
             .add_systems(
                 Update,
                 (
+                    game_list::update,
                     state_transition,
                     submit_press,
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
-                    (refresh_game_list, handle_player_games_task, create_game, join_game)
+                    (
+                        refresh_player_games.run_if(not(any_with_component::<CallGetPlayerGames>)),
+                        handle_player_games_task,
+                        handle_player_games,
+                        create_game,
+                        join_game,
+                    )
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task,
                     (

@@ -5,38 +5,38 @@ use bevy::asset::AssetServer;
 use bevy::ecs::change_detection::{Res, ResMut};
 use bevy::ecs::entity::Entity;
 use bevy::ecs::event::{EventReader, EventWriter};
-use bevy::ecs::query::{Changed, With, Without};
+use bevy::ecs::query::{Changed, With};
 use bevy::ecs::schedule::{NextState, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::prelude::TextBundle;
-use bevy::tasks::{block_on, futures_lite::future};
 use bevy::time::Time;
+use bevy::ui::node_bundles::TextBundle;
 use bevy::ui::widget::Button;
 use bevy::ui::Interaction;
-use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
 use game_server::game::game::{FinishedState, GameState};
 
 use super::components::{
-    CreateGame, JoinGame, JoinGameButtonBundle, MenuNavigationButtonBundle,
+    CreateGame, JoinGame, MenuNavigationButtonBundle,
     NetworkGameTextInputBundle, Overlay, OverlayNodeBundle, Setting, SettingTextInputBundle,
     SubmitButton, SubmitButtonBundle,
 };
-use super::game_list::{GameList, GameListBundle, LoadingGameListBundle};
+use super::game_list::{GameList, GameListBundle};
 use super::ingame::{InGameUIBundle, PlayerInfoReady};
 use super::resources::{RefreshGamesTimer, Settings};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{CellUpdated, CurrentGame, GameInfo, GameOver, StateUpdated, SuccessfulTurn};
-use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient};
+use crate::grpc::{
+    CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient, TaskEntity,
+};
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_style,
     row_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
 };
-use crate::interface::events::SubmitPressed;
+use crate::interface::events::{PlayerGamesReady, SubmitPressed};
 
 pub fn state_transition(
     menu_items: Query<(&Interaction, &AppStateTransition), (With<Button>, Changed<Interaction>)>,
@@ -306,6 +306,16 @@ pub fn setup_play_over_network_menu(
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
+    let mut game_list = GameListBundle::default();
+    if let Some(id) = settings.user_id() {
+        if let Some(task) = grpc_client.load_player_games(id) {
+            commands.spawn(CallGetPlayerGames(task));
+        } else {
+            game_list.list = GameList::Message("Server is down".into());
+        }
+    } else {
+        game_list.list = GameList::Message("No user id provided".into());
+    }
     commands
         .spawn(global_column_node_bundle())
         .with_children(|builder| {
@@ -321,35 +331,7 @@ pub fn setup_play_over_network_menu(
                     .spawn(SubmitButtonBundle::new(style.clone(), input))
                     .with_child(TextBundle::from_section("Create game", text_style.clone()));
             });
-            if let Some(id) = settings.user_id() {
-                if let Some(task) = grpc_client.load_player_games(id) {
-                    builder.spawn(LoadingGameListBundle {
-                        container: column_node_bundle(),
-                        games: default(),
-                        task: CallGetPlayerGames(task),
-                    });
-                } else {
-                    builder
-                        .spawn(GameListBundle {
-                            container: column_node_bundle(),
-                            games: default(),
-                        })
-                        .with_child(TextBundle::from_section(
-                            "Server is down",
-                            text_style.clone(),
-                        ));
-                }
-            } else {
-                builder
-                    .spawn(GameListBundle {
-                        container: column_node_bundle(),
-                        games: default(),
-                    })
-                    .with_child(TextBundle::from_section(
-                        "No user id provided",
-                        text_style.clone(),
-                    ));
-            }
+            builder.spawn(game_list);
             builder
                 .spawn(MenuNavigationButtonBundle::new(
                     style.clone(),
@@ -365,18 +347,20 @@ pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     commands
         .spawn(OverlayNodeBundle::default())
-        .with_children(|parent| {
-            parent.spawn(column_node_bundle()).with_children(|parent| {
-                for (state, text) in [
-                    (AppState::Game, "Resume"),
-                    (AppState::Menu(MenuState::Settings), "Settings"),
-                    (AppState::Menu(MenuState::Main), "Main menu"),
-                ] {
-                    parent
-                        .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
-                        .with_child(TextBundle::from_section(text, text_style.clone()));
-                }
-            });
+        .with_children(|builder| {
+            builder
+                .spawn(column_node_bundle())
+                .with_children(|builder| {
+                    for (state, text) in [
+                        (AppState::Game, "Resume"),
+                        (AppState::Menu(MenuState::Settings), "Settings"),
+                        (AppState::Menu(MenuState::Main), "Main menu"),
+                    ] {
+                        builder
+                            .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
+                            .with_child(TextBundle::from_section(text, text_style.clone()));
+                    }
+                });
         });
 }
 
@@ -442,50 +426,39 @@ pub fn make_turn(
     }
 }
 
-pub fn refresh_game_list(
-    game_lists: Query<Entity, (With<GameList>, Without<CallGetPlayerGames>)>,
+pub fn refresh_player_games(
+    mut game_list: Query<&mut GameList>,
     mut commands: Commands,
     mut timer: ResMut<RefreshGamesTimer>,
     client: ResMut<GrpcClient>,
-    asset_server: Res<AssetServer>,
     settings: Res<Settings>,
     time: Res<Time>,
 ) {
     if timer.tick(time.delta()).just_finished() {
-        let text_style = menu_text_style(&asset_server);
-        for entity in game_lists.iter() {
-            if let Some(id) = settings.user_id() {
-                if let Some(task) = client.load_player_games(id) {
-                    commands.entity(entity).insert(CallGetPlayerGames(task));
-                } else {
-                    commands.entity(entity).despawn_descendants().with_child(
-                        TextBundle::from_section("Server is down", text_style.clone()),
-                    );
-                }
-            } else {
-                commands
-                    .entity(entity)
-                    .despawn_descendants()
-                    .with_child(TextBundle::from_section(
-                        "No user id provided",
-                        text_style.clone(),
-                    ));
-            }
+        let Ok(mut list) = game_list.get_single_mut() else {
+            println!("no game list found to refresh");
+            return;
+        };
+        let Some(id) = settings.user_id() else {
+            *list = GameList::Message("No user id provided".into());
+            return;
+        };
+        if let Some(task) = client.load_player_games(id) {
+            commands.spawn(CallGetPlayerGames(task));
+        } else {
+            *list = GameList::Message("Server is down".into());
         }
     }
 }
 
 pub fn handle_player_games_task(
-    mut game_lists: Query<(Entity, &mut GameList, &mut CallGetPlayerGames)>,
+    mut get_games: Query<(Entity, &mut CallGetPlayerGames)>,
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
+    mut games_ready: EventWriter<PlayerGamesReady>,
 ) {
-    let text_style = menu_text_style(&asset_server);
-    let style = menu_item_style();
-
-    for (entity, mut list, mut task) in game_lists.iter_mut() {
-        if let Some(res) = block_on(future::poll_once(&mut task.0)) {
-            commands.entity(entity).remove::<CallGetPlayerGames>();
+    for (entity, mut task) in get_games.iter_mut() {
+        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
+        if let Some(res) = task.poll_once() {
             match res {
                 Ok(response) => {
                     let games: Result<Vec<GameInfo>, _> = response
@@ -496,63 +469,19 @@ pub fn handle_player_games_task(
                         .collect();
                     match games {
                         Ok(games) => {
-                            list.games = games.clone();
-                            commands
-                                .entity(entity)
-                                .despawn_descendants()
-                                .with_children(|parent| {
-                                    if games.is_empty() {
-                                        parent.spawn(TextBundle::from_section(
-                                            "No games available",
-                                            text_style.clone(),
-                                        ));
-                                        return;
-                                    }
-                                    for game in games.iter() {
-                                        parent.spawn(row_node_bundle()).with_children(|parent| {
-                                            parent.spawn(TextBundle::from_section(
-                                                &format!("ID: {}", game.id),
-                                                text_style.clone(),
-                                            ));
-                                            parent.spawn(TextBundle::from_section(
-                                                &format!("{:?}", game.state),
-                                                text_style.clone(),
-                                            ));
-                                            parent.spawn(TextBundle::from_section(
-                                                &format!("{:?}", game.players),
-                                                text_style.clone(),
-                                            ));
-                                            parent
-                                                .spawn(JoinGameButtonBundle::new(
-                                                    style.clone(),
-                                                    game.clone(),
-                                                ))
-                                                .with_child(TextBundle::from_section(
-                                                    "Join",
-                                                    text_style.clone(),
-                                                ));
-                                        });
-                                    }
-                                });
+                            games_ready.send(PlayerGamesReady { games: Ok(games) });
                         }
                         Err(err) => {
-                            println!("GetPlayerGames invalid response: {}", err);
-                            commands.entity(entity).despawn_descendants().with_child(
-                                TextBundle::from_section(
-                                    &format!("Server error: {}", err),
-                                    text_style.clone(),
-                                ),
-                            );
+                            games_ready.send(PlayerGamesReady {
+                                games: Err(format!("GetPlayerGames invalid response: {}", err)),
+                            });
                         }
                     }
                 }
                 Err(err) => {
-                    commands.entity(entity).despawn_descendants().with_child(
-                        TextBundle::from_section(
-                            &format!("Server error: {}", err.code().description()),
-                            text_style.clone(),
-                        ),
-                    );
+                    games_ready.send(PlayerGamesReady {
+                        games: Err(format!("GetPlayerGames server error: {}", err)),
+                    });
                 }
             }
         }
@@ -566,8 +495,8 @@ pub fn handle_create_game_task(
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task) in create_game.iter_mut() {
-        if let Some(res) = block_on(future::poll_once(&mut task.0)) {
-            commands.entity(entity).despawn();
+        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
+        if let Some(res) = task.poll_once() {
             match res {
                 Ok(response) => {
                     let Some(game_info) = response.into_inner().game_info else {
@@ -603,6 +532,22 @@ pub fn handle_create_game_task(
             };
         }
     }
+}
+
+pub fn handle_player_games(
+    mut game_list: Query<&mut GameList>,
+    mut games_ready: EventReader<PlayerGamesReady>,
+) {
+    let Some(event) = games_ready.read().last() else {
+        return;
+    };
+    let Ok(mut game_list) = game_list.get_single_mut() else {
+        return;
+    };
+    *game_list = match event.games.clone() {
+        Ok(games) => GameList::Games(games),
+        Err(msg) => GameList::Message(msg),
+    };
 }
 
 pub fn handle_cell_updated(

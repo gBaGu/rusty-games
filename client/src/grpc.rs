@@ -117,9 +117,9 @@ impl Default for ReconnectTimer {
 /// This struct is intended for use with entities that only needed to wait on a task.
 /// It makes sure that task entity is despawned after successful poll
 pub struct TaskEntity<'a, 'w, 's, F> {
-    pub commands: Commands<'w, 's>,
-    pub entity: Entity,
-    pub task: &'a mut F,
+    commands: Commands<'w, 's>,
+    entity: Entity,
+    task: &'a mut F,
 }
 
 impl<'a, 'w, 's, F> TaskEntity<'a, 'w, 's, F> {
