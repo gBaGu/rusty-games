@@ -1,13 +1,9 @@
-use crate::game::player_pool::PlayerId;
+use super::PlayerId;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum GameError {
-    #[error("duplicate player id encountered")]
-    DuplicatePlayerId,
     #[error("player not found")]
     PlayerNotFound,
-    #[error("invalid player number (expected: {expected}, found: {found})")]
-    InvalidPlayersNumber { expected: usize, found: usize },
     #[error("cell ({row}, {col}) is empty")]
     CellIsEmpty { row: usize, col: usize },
     #[error("cell ({row}, {col}) is occupied")]
@@ -35,10 +31,6 @@ impl GameError {
 
     pub fn invalid_move(reason: String) -> Self {
         Self::InvalidMove { reason }
-    }
-
-    pub fn invalid_players_number(expected: usize, found: usize) -> Self {
-        Self::InvalidPlayersNumber { expected, found }
     }
 
     pub fn not_your_turn(expected: PlayerId, found: PlayerId) -> Self {

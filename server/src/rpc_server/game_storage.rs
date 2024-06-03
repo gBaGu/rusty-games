@@ -1,11 +1,11 @@
+use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use crate::game::chess::game::Chess;
 use crate::game::encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
-use crate::game::player_pool::PlayerQueue;
-use crate::game::{error::GameError, player_pool::PlayerId, tic_tac_toe::TicTacToe};
+use crate::game::{error::GameError, tic_tac_toe::TicTacToe};
 use crate::game::{Game, GameBoard};
 use crate::proto;
 
@@ -18,7 +18,11 @@ pub enum GameStorageError {
     #[error("unrecognized game type")]
     InvalidGameType,
     #[error("game with this id doesn't exist: {id}")]
-    NoSuchGame { id: PlayerId },
+    NoSuchGame { id: GameId },
+    #[error("player {player} does not belong to game {game}")]
+    ForeignGame { game: GameId, player: UserId },
+    #[error("internal error: {reason}")]
+    Internal { reason: String },
     #[error("failed to lock inner mutex: {description}")]
     MutexPoison { description: String },
     #[error("invalid turn data: {source}")]
@@ -39,7 +43,9 @@ impl<T> From<PoisonError<T>> for GameStorageError {
 }
 
 pub type GameId = u64;
-type GameMap<T> = HashMap<GameId, T>;
+
+type UserId = u64;
+type GameMap<T> = HashMap<GameId, (T, SmallVec<[UserId; 8]>)>;
 type GameStorageResult<T> = Result<T, GameStorageError>;
 
 #[derive(Debug, Default)]
@@ -52,8 +58,8 @@ impl GameStorage {
     pub fn create_game(
         &self,
         game_type: proto::GameType,
-        creator: PlayerId,
-        players: &[PlayerId],
+        creator: UserId,
+        players: &[UserId],
     ) -> GameStorageResult<proto::GameInfo> {
         match game_type {
             proto::GameType::TicTacToe => create(&self.tic_tac_toe, creator, players),
@@ -65,25 +71,21 @@ impl GameStorage {
     pub fn update_game(
         &self,
         game_type: proto::GameType,
-        game_id: GameId,
-        player_id: PlayerId,
+        game: GameId,
+        player: UserId,
         turn_data: &[u8],
     ) -> GameStorageResult<proto::GameState> {
         match game_type {
-            proto::GameType::TicTacToe => update(&self.tic_tac_toe, game_id, player_id, turn_data),
-            proto::GameType::Chess => update(&self.chess, game_id, player_id, turn_data),
+            proto::GameType::TicTacToe => update(&self.tic_tac_toe, game, player, turn_data),
+            proto::GameType::Chess => update(&self.chess, game, player, turn_data),
             proto::GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
         }
     }
 
-    pub fn delete_game(
-        &self,
-        game_type: proto::GameType,
-        game_id: GameId,
-    ) -> GameStorageResult<()> {
+    pub fn delete_game(&self, game_type: proto::GameType, game: GameId) -> GameStorageResult<()> {
         match game_type {
-            proto::GameType::TicTacToe => delete(&self.tic_tac_toe, game_id),
-            proto::GameType::Chess => delete(&self.chess, game_id),
+            proto::GameType::TicTacToe => delete(&self.tic_tac_toe, game),
+            proto::GameType::Chess => delete(&self.chess, game),
             proto::GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
         }
     }
@@ -91,11 +93,11 @@ impl GameStorage {
     pub fn get_game(
         &self,
         game_type: proto::GameType,
-        player_id: GameId,
+        player: GameId,
     ) -> GameStorageResult<proto::GameInfo> {
         match game_type {
-            proto::GameType::TicTacToe => get_game(&self.tic_tac_toe, player_id),
-            proto::GameType::Chess => get_game(&self.chess, player_id),
+            proto::GameType::TicTacToe => get_game(&self.tic_tac_toe, player),
+            proto::GameType::Chess => get_game(&self.chess, player),
             proto::GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
         }
     }
@@ -103,11 +105,11 @@ impl GameStorage {
     pub fn get_player_games(
         &self,
         game_type: proto::GameType,
-        player_id: PlayerId,
+        player: UserId,
     ) -> GameStorageResult<Vec<proto::GameInfo>> {
         match game_type {
-            proto::GameType::TicTacToe => get_player_games(&self.tic_tac_toe, player_id),
-            proto::GameType::Chess => get_player_games(&self.chess, player_id),
+            proto::GameType::TicTacToe => get_player_games(&self.tic_tac_toe, player),
+            proto::GameType::Chess => get_player_games(&self.chess, player),
             proto::GameType::Unspecified => return Err(GameStorageError::InvalidGameType),
         }
     }
@@ -116,19 +118,19 @@ impl GameStorage {
 fn create<T: Game>(
     mutex: &Mutex<GameMap<T>>,
     id: GameId,
-    players: &[PlayerId],
+    players: &[UserId],
 ) -> GameStorageResult<proto::GameInfo> {
     let mut guard = mutex.lock()?;
     return match guard.entry(id) {
         Entry::Vacant(e) => {
-            let game = T::new(players)?;
+            let game = T::new();
             let info = proto::GameInfo {
                 game_id: id,
-                players: game.get_player_ids(),
+                players: players.to_vec(),
                 game_state: Some(game.state().into()),
                 board: vec![],
             };
-            e.insert(game);
+            e.insert((game, SmallVec::from_slice(players)));
             Ok(info)
         }
         Entry::Occupied(_) => Err(GameStorageError::DuplicateGame),
@@ -138,14 +140,22 @@ fn create<T: Game>(
 fn update<T: Game>(
     mutex: &Mutex<GameMap<T>>,
     id: GameId,
-    player: PlayerId,
+    player: UserId,
     buf: &[u8],
 ) -> GameStorageResult<proto::GameState> {
     let turn_data = T::TurnData::from_protobuf(buf)?;
     let mut guard = mutex.lock()?;
-    let game = guard
+    let (game, players) = guard
         .get_mut(&id)
         .ok_or(GameStorageError::NoSuchGame { id })?;
+    let player = players
+        .iter()
+        .position(|&id| id == player)
+        .ok_or(GameStorageError::ForeignGame { game: id, player })?
+        .try_into()
+        .map_err(|_| GameStorageError::Internal {
+            reason: "internal player index is out of bounds".into(),
+        })?;
     let game_state = game.update(player, turn_data)?;
     Ok(game_state.into())
 }
@@ -153,7 +163,7 @@ fn update<T: Game>(
 fn delete<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult<()> {
     let mut guard = mutex.lock()?;
     if let Entry::Occupied(e) = guard.entry(id) {
-        if !e.get().is_finished() {
+        if !e.get().0.is_finished() {
             return Err(GameStorageError::DeleteActiveGameFailed);
         }
         e.remove();
@@ -163,7 +173,7 @@ fn delete<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult<(
 
 fn get_game<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult<proto::GameInfo> {
     let guard = mutex.lock()?;
-    let game = guard.get(&id).ok_or(GameStorageError::NoSuchGame { id })?;
+    let (game, players) = guard.get(&id).ok_or(GameStorageError::NoSuchGame { id })?;
     let board = game
         .board()
         .get_content()
@@ -173,7 +183,7 @@ fn get_game<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult
         .collect();
     Ok(proto::GameInfo {
         game_id: id,
-        players: game.get_player_ids(),
+        players: players.to_vec(),
         game_state: Some(game.state().into()),
         board,
     })
@@ -181,16 +191,16 @@ fn get_game<T: Game>(mutex: &Mutex<GameMap<T>>, id: GameId) -> GameStorageResult
 
 fn get_player_games<T: Game>(
     mutex: &Mutex<GameMap<T>>,
-    player_id: PlayerId,
+    player: UserId,
 ) -> GameStorageResult<Vec<proto::GameInfo>> {
     let guard = mutex.lock()?;
     Ok(guard
         .iter()
-        .filter_map(|(id, game)| {
-            if game.players().find_by_id(player_id).is_some() {
+        .filter_map(|(id, (game, players))| {
+            if players.contains(&player) {
                 return Some(proto::GameInfo {
                     game_id: *id,
-                    players: game.get_player_ids(),
+                    players: players.to_vec(),
                     game_state: Some(game.state().into()),
                     board: vec![],
                 });

@@ -13,5 +13,5 @@ enum ChessPieceKind {
 
 message ChessPiece {
   ChessPieceKind kind = 1;
-  uint64 owner = 2;
+  uint32 owner = 2;
 }

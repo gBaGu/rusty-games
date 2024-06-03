@@ -3,7 +3,7 @@ use prost::Message;
 use crate::game::chess::index::{Col, Index, Row};
 use crate::game::encoding::ToProtobuf;
 use crate::game::grid::WithLength;
-use crate::game::player_pool::PlayerId;
+use crate::game::PlayerId;
 use crate::proto;
 
 #[derive(Debug, PartialEq)]

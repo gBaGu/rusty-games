@@ -8,14 +8,21 @@ pub(crate) mod player_pool;
 
 use std::ops::{Deref, DerefMut};
 
-use crate::game::encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
-use crate::game::error::GameError;
-use crate::game::grid::{Grid, WithLength};
-use crate::game::player_pool::{PlayerQueue, WithPlayerId};
-
-pub use player_pool::PlayerId;
+use encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
+use error::GameError;
+use grid::{Grid, WithLength};
+use player_pool::{Player, PlayerQueue};
 
 pub type GameResult<T> = Result<T, GameError>;
+pub type PlayerId = u32; // TODO: change to u8
+
+impl Player for PlayerId {
+    type Id = PlayerId;
+
+    fn id(&self) -> Self::Id {
+        *self
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BoardCell<T>(pub Option<T>);
@@ -95,11 +102,12 @@ where
 }
 
 pub trait Game: Sized {
+    const NUM_PLAYERS: u8;
     type TurnData: FromProtobuf;
-    type Players: PlayerQueue;
+    type Players: PlayerQueue<Id = PlayerId>;
     type Board: GameBoard;
 
-    fn new(players: &[PlayerId]) -> GameResult<Self>;
+    fn new() -> Self;
     fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState>;
 
     fn board(&self) -> &Self::Board;
@@ -133,19 +141,16 @@ pub trait Game: Sized {
             .get_current()
             .ok_or(GameError::PlayerPoolCorrupted)
     }
+
     fn get_enemy_player(&mut self) -> GameResult<&<Self::Players as PlayerQueue>::Item> {
-        let current_id = self.get_current_player()?.get_id();
+        let current_id = self.get_current_player()?.id();
         self.players()
-            .find(|p| p.get_id() != current_id)
+            .find_if(|p| p.id() != current_id)
             .ok_or(GameError::PlayerPoolCorrupted)
     }
 
     fn get_player_ids(&self) -> Vec<PlayerId> {
-        self.players()
-            .get_all()
-            .iter()
-            .map(|p| p.get_id())
-            .collect()
+        self.players().as_slice().iter().map(|p| p.id()).collect()
     }
 
     fn switch_player(&mut self) -> GameResult<GameState> {
@@ -153,7 +158,7 @@ pub trait Game: Sized {
             .players_mut()
             .next()
             .ok_or(GameError::PlayerPoolCorrupted)?
-            .get_id();
+            .id();
         self.set_state(GameState::Turn(next_player));
         Ok(self.state())
     }
