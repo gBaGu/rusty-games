@@ -1,13 +1,21 @@
 use bevy::prelude::Component;
 use game_server::game::encoding::{FromProtobuf, FromProtobufError};
-use game_server::game::{BoardCell, GameState, PlayerId};
+use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 use game_server::proto;
+
+use crate::game::{BOARD_PROTO_SIZE, BOARD_SIZE, PLAYERS_SIZE};
 
 #[derive(Clone, Component, Debug)]
 pub struct GameInfo {
     pub id: u64,
-    pub players: Vec<u64>,
+    pub players: [u64; PLAYERS_SIZE],
     pub state: GameState,
+}
+
+impl GameInfo {
+    pub fn get_user_id(&self, game_player_id: GamePlayerId) -> Option<u64> {
+        self.players.get(game_player_id as usize).cloned()
+    }
 }
 
 impl TryFrom<proto::GameInfo> for GameInfo {
@@ -19,9 +27,18 @@ impl TryFrom<proto::GameInfo> for GameInfo {
             .ok_or(FromProtobufError::MessageDataMissing {
                 missing_field: "game_state".to_string(),
             })?;
+        let players_len = value.players.len();
+        let players =
+            value
+                .players
+                .try_into()
+                .map_err(|_| FromProtobufError::InvalidPlayersLength {
+                    expected: PLAYERS_SIZE,
+                    found: players_len,
+                })?;
         Ok(Self {
             id: value.game_id,
-            players: value.players,
+            players,
             state: state.try_into()?,
         })
     }
@@ -30,7 +47,7 @@ impl TryFrom<proto::GameInfo> for GameInfo {
 #[derive(Debug)]
 pub struct FullGameInfo {
     pub info: GameInfo,
-    pub board: [[BoardCell<PlayerId>; 3]; 3],
+    pub board: [[BoardCell<GamePlayerId>; BOARD_SIZE]; BOARD_SIZE],
 }
 
 impl TryFrom<proto::GameInfo> for FullGameInfo {
@@ -46,15 +63,13 @@ impl TryFrom<proto::GameInfo> for FullGameInfo {
                 missing_field: "board".to_string(),
             });
         }
-        if value.board.len() != 9 {
-            return Err(FromProtobufError::InvalidProtobufMessage {
-                reason: format!(
-                    "invalid board length: expected=9, found={}",
-                    value.board.len()
-                ),
+        if value.board.len() != BOARD_PROTO_SIZE {
+            return Err(FromProtobufError::InvalidBoardLength {
+                expected: BOARD_PROTO_SIZE,
+                found: value.board.len(),
             });
         }
-        for (i, row) in value.board.chunks(3).enumerate() {
+        for (i, row) in value.board.chunks(BOARD_SIZE).enumerate() {
             for (j, val) in row.iter().enumerate() {
                 let cell = BoardCell::from_protobuf(&val)?;
                 full_info.board[i][j] = cell;

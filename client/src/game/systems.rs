@@ -3,7 +3,7 @@ use game_server::game::{BoardCell, GameState};
 
 use super::resources::RefreshGameTimer;
 use super::{
-    CellUpdated, CurrentGame, FullGameInfo, GameOver, Position, StateUpdated, SuccessfulTurn,
+    CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, Position, StateUpdated, SuccessfulTurn,
 };
 use crate::commands::CommandsExt;
 use crate::grpc::{CallGetGame, CallMakeTurn, GrpcClient, TaskEntity};
@@ -22,13 +22,15 @@ pub fn refresh_game(
     time: Res<Time>,
 ) {
     if timer.tick(time.delta()).just_finished() {
-        if let Some(task) = client.load_game(game.id()) {
-            commands.spawn(CallGetGame(task));
+        if let GameType::Network(id) = game.game_type() {
+            if let Some(task) = client.load_game(id) {
+                commands.spawn(CallGetGame(task));
+            }
         }
     }
 }
 
-pub fn handle_turn(
+pub fn handle_make_turn(
     mut make_turn: Query<(Entity, &mut CallMakeTurn, &Position)>,
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
@@ -44,8 +46,9 @@ pub fn handle_turn(
                 println!("no current game, dropping MakeTurn response");
                 continue;
             };
-            let user_id = game.user_id();
-            if !matches!(game.get_next_player(), Some(id) if id == user_id) {
+            let user_id = game.user_data().game_player_id();
+            if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == user_id)
+            {
                 println!("not your turn");
                 commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                 continue;
@@ -99,7 +102,11 @@ pub fn update_game(
                         println!("dropping empty GetGame response");
                         continue;
                     };
-                    if info.game_id != game.id() {
+                    let GameType::Network(game_id) = game.game_type() else {
+                        println!("dropping GetGame response for local game");
+                        continue;
+                    };
+                    if info.game_id != game_id {
                         println!("received game info for other game, dropping");
                         continue;
                     }

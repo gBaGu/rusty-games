@@ -18,17 +18,18 @@ use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputV
 use game_server::game::{FinishedState, GameState};
 
 use super::components::{
-    CreateGame, JoinGame, MenuNavigationButtonBundle,
-    NetworkGameTextInputBundle, Overlay, OverlayNodeBundle, Setting, SettingTextInputBundle,
-    SubmitButton, SubmitButtonBundle,
+    CreateGame, JoinGame, MenuNavigationButtonBundle, NetworkGameTextInputBundle, Overlay,
+    OverlayNodeBundle, Setting, SettingTextInputBundle, SubmitButton, SubmitButtonBundle,
 };
 use super::game_list::{GameList, GameListBundle};
-use super::ingame::{InGameUIBundle, PlayerInfoReady};
+use super::ingame::InGameUIBundle;
 use super::resources::{RefreshGamesTimer, Settings};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
 use crate::commands::{CommandsExt, EntityCommandsExt};
-use crate::game::{CellUpdated, CurrentGame, GameInfo, GameOver, StateUpdated, SuccessfulTurn};
+use crate::game::{
+    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, GameType, StateUpdated, SuccessfulTurn,
+};
 use crate::grpc::{
     CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient, TaskEntity,
 };
@@ -64,13 +65,12 @@ pub fn state_transition(
                     && new_state == AppState::Game
                 {
                     if let Some(user_id) = settings.user_id() {
-                        let game = CurrentGame::new_from_asset_server(
+                        let game = CurrentGame::new_with_bot(
                             user_id,
-                            GameInfo {
-                                id: 0,
-                                state: GameState::Finished(FinishedState::Draw),
-                                players: vec![user_id, u64::MAX], // TODO: replace this with bot id
-                            },
+                            0,
+                            true,
+                            GameState::Finished(FinishedState::Draw),
+                            Default::default(),
                             &asset_server,
                         );
                         commands.insert_resource(game);
@@ -100,19 +100,22 @@ pub fn join_game(
     grpc_client: Res<GrpcClient>,
     asset_server: Res<AssetServer>,
 ) {
-    let user_id = match settings.user_id() {
-        Some(id) => id,
-        None => {
-            println!("user_id is not set");
-            return;
-        }
+    let Some(user_id) = settings.user_id() else {
+        println!("unable to join game without user id");
+        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+        return;
     };
     if let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) {
-        commands.insert_resource(CurrentGame::new_from_asset_server(
-            user_id,
-            join.deref().clone(),
-            &asset_server,
-        ));
+        let game = match CurrentGame::new_over_network(user_id, join.deref().clone(), &asset_server)
+        {
+            Ok(game) => game,
+            Err(err) => {
+                println!("unable to join game: {}", err);
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                return;
+            }
+        };
+        commands.insert_resource(game);
         if let Some(task) = grpc_client.load_game(join.id) {
             commands.spawn(CallGetGame(task));
         } else {
@@ -384,23 +387,20 @@ pub fn setup_game(
     mut commands: Commands,
     mut game: ResMut<CurrentGame>,
     mut state_updated: EventWriter<StateUpdated>,
-    mut player_info_ready: EventWriter<PlayerInfoReady>,
 ) {
     commands
         .spawn(global_column_node_bundle())
         .with_children(|builder| {
-            let player_id = game.user_id();
-            let Some(enemy_id) = game.get_enemy() else {
-                println!("unable to get enemy id, CurrentGame is corrupted");
-                return;
-            };
-            builder.spawn(InGameUIBundle::new(player_id, enemy_id));
-            if let Some(image) = game.get_player_image(&player_id) {
-                player_info_ready.send(PlayerInfoReady::new(player_id, image.clone()));
-            }
-            if let Some(image) = game.get_player_image(&enemy_id) {
-                player_info_ready.send(PlayerInfoReady::new(enemy_id, image.clone()));
-            }
+            let player = game.user_data();
+            let enemy = game.enemy_data();
+            builder.spawn(InGameUIBundle::new(
+                player.auth(),
+                player.game_player_id(),
+                player.image().clone(),
+                enemy.auth(),
+                enemy.game_player_id(),
+                enemy.image().clone(),
+            ));
             let board = builder.spawn(board::BoardBundle::default()).id();
             game.set_board(board);
             state_updated.send(StateUpdated(game.state()));
@@ -415,13 +415,25 @@ pub fn make_turn(
     client: ResMut<GrpcClient>,
 ) {
     for event in board_button_pressed.read() {
-        if let Some(task) =
-            client.make_turn(game.id(), game.user_id(), event.pos.row(), event.pos.col())
-        {
-            commands.spawn((CallMakeTurn(task), event.pos));
-        } else {
-            println!("grpc server is down");
-            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+        match game.game_type() {
+            GameType::Network(game_id) => {
+                if let Authority::Player(user_id) = game.user_data().auth() {
+                    if let Some(task) =
+                        client.make_turn(game_id, user_id, event.pos.row(), event.pos.col())
+                    {
+                        commands.spawn((CallMakeTurn(task), event.pos));
+                    } else {
+                        println!("grpc server is down");
+                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                    }
+                } else {
+                    println!("no control over the game");
+                }
+            }
+            GameType::Local => {
+                println!("local game is not implemented yet");
+                // TODO: implement
+            }
         }
     }
 }
@@ -492,11 +504,17 @@ pub fn handle_create_game_task(
     mut create_game: Query<(Entity, &mut CallCreateGame)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
+    settings: Res<Settings>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task) in create_game.iter_mut() {
         let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
         if let Some(res) = task.poll_once() {
+            let Some(user_id) = settings.user_id() else {
+                println!("unable to join game without user id");
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                return;
+            };
             match res {
                 Ok(response) => {
                     let Some(game_info) = response.into_inner().game_info else {
@@ -508,22 +526,23 @@ pub fn handle_create_game_task(
                         Ok(info) => info,
                         Err(err) => {
                             println!("failed to decode game info: {}", err);
+                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                             continue;
                         }
                     };
-                    if let Some(&user_id) = info.players.first() {
-                        println!("starting created game: {}", info.id);
-                        commands.insert_resource(CurrentGame::new_from_asset_server(
-                            user_id,
-                            info,
-                            &asset_server,
-                        ));
-                        next_app_state.set(AppState::Game);
-                        commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
-                    } else {
-                        println!("GameInfo is corrupted: players is empty");
-                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                    }
+                    println!("starting created game: {}", info.id);
+                    let game = match CurrentGame::new_over_network(user_id, info, &asset_server)
+                    {
+                        Ok(game) => game,
+                        Err(err) => {
+                            println!("unable to join game: {}", err);
+                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                            return;
+                        }
+                    };
+                    commands.insert_resource(game);
+                    next_app_state.set(AppState::Game);
+                    commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
                 }
                 Err(err) => {
                     println!("CreateGame request failed: {}", err);
@@ -552,11 +571,11 @@ pub fn handle_player_games(
 
 pub fn handle_cell_updated(
     mut cell_updated: EventReader<CellUpdated>,
-    mut board_content: EventWriter<board::ButtonContentArrived>,
+    mut board_content: EventWriter<board::ButtonContentReady>,
     game: Res<CurrentGame>,
 ) {
     for event in cell_updated.read() {
-        let Some(img) = game.get_player_image(&event.player_id()) else {
+        let Some(img) = game.get_player_image(event.player_id()) else {
             println!("failed to get player image, dropping event");
             continue;
         };
@@ -564,7 +583,7 @@ pub fn handle_cell_updated(
             println!("ui board is not set for this game, dropping event");
             continue;
         };
-        board_content.send(board::ButtonContentArrived {
+        board_content.send(board::ButtonContentReady {
             board: *board,
             pos: event.pos(),
             image: img.clone(),
@@ -592,7 +611,7 @@ pub fn handle_game_over(
         let text_style = menu_text_style(&asset_server);
         let style = menu_item_style();
         let text = match event.deref() {
-            FinishedState::Win(id) if *id == game.user_id() => "You win!",
+            FinishedState::Win(id) if *id == game.user_data().game_player_id() => "You win!",
             FinishedState::Win(_) => "You lose!",
             FinishedState::Draw => "It's a draw!",
         };

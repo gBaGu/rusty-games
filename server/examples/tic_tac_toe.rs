@@ -6,7 +6,7 @@ use server::game::Game;
 fn main() {
     let player1 = 1;
     let player2 = 2;
-    let mut ttt = TicTacToe::new(&[player1, player2]).unwrap();
+    let mut ttt = TicTacToe::new();
 
     let mut turn_data;
     turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R2, FieldCol::C2);

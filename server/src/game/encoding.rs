@@ -10,8 +10,12 @@ pub enum FromProtobufError {
     InvalidGridRow { max_expected: usize, found: usize },
     #[error("invalid column (expected: 1-{max_expected}, found: {found})")]
     InvalidGridCol { max_expected: usize, found: usize },
-    #[error("protobuf message is invalid: {reason}")]
-    InvalidProtobufMessage { reason: String },
+    #[error("invalid players list length: expected={expected}, found={found}")]
+    InvalidPlayersLength { expected: usize, found: usize },
+    #[error("invalid board length: expected={expected}, found={found}")]
+    InvalidBoardLength { expected: usize, found: usize },
+    #[error("game state is invalid")]
+    InvalidGameState,
     #[error("message data has missing field: {missing_field}")]
     MessageDataMissing { missing_field: String },
     #[error(transparent)]

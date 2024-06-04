@@ -3494,6 +3494,7 @@ dependencies = [
  "generic-array",
  "itertools 0.13.0",
  "prost",
+ "smallvec",
  "thiserror",
  "tokio",
  "tokio-stream",

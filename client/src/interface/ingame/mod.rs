@@ -1,12 +1,10 @@
 mod components;
-mod events;
 mod systems;
 
 use bevy::prelude::*;
 
 pub use components::{InGameUIBundle};
-pub use events::PlayerInfoReady;
-use systems::{create, handle_state_update, update_player_info};
+use systems::{create, handle_state_update};
 
 pub const FONT_PATH: &str = "fonts/FiraSans-Bold.ttf";
 pub const FONT_SIZE: f32 = 40.0;
@@ -19,12 +17,11 @@ pub struct InGameUIPlugin;
 
 impl Plugin for InGameUIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<PlayerInfoReady>().add_systems(
+        app.add_systems(
             Update,
             (
                 create,
                 handle_state_update.after(create),
-                update_player_info.after(create),
             ),
         );
     }

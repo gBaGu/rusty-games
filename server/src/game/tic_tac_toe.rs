@@ -1,32 +1,12 @@
 use generic_array::typenum::Unsigned;
 use prost::Message;
 
-use crate::game::encoding::{FromProtobuf, FromProtobufError};
-use crate::game::{
-    error::GameError,
-    grid::{Grid, GridIndex, WithLength},
-    player_pool::{PlayerId, PlayerPool, WithPlayerId},
-    tic_tac_toe,
-};
-use crate::game::{BoardCell, Game, GameResult, GameState};
+use super::encoding::{FromProtobuf, FromProtobufError};
+use super::grid::{Grid, GridIndex, WithLength};
+use crate::game::error::GameError;
+use crate::game::player_pool::PlayerIdQueue;
+use crate::game::{BoardCell, Game, GameResult, GameState, PlayerId};
 use crate::proto::Position;
-
-#[derive(Clone, Copy, Debug)]
-pub struct Player {
-    id: PlayerId,
-}
-
-impl Player {
-    pub fn new(id: PlayerId) -> Player {
-        Self { id }
-    }
-}
-
-impl WithPlayerId for Player {
-    fn get_id(&self) -> PlayerId {
-        self.id
-    }
-}
 
 #[derive(Clone, Copy, Debug)]
 pub enum FieldRow {
@@ -153,7 +133,7 @@ type Cell = BoardCell<PlayerId>;
 
 #[derive(Debug)]
 pub struct TicTacToe {
-    players: PlayerPool<Player>,
+    players: PlayerIdQueue<PlayerId>,
     state: GameState,
     field: Grid<Cell, FieldRow, FieldCol>,
 }
@@ -165,42 +145,36 @@ impl FromProtobuf for Index {
         let pos = Position::decode(buf)?;
         let row: usize = usize::try_from(pos.row)?;
         let col: usize = usize::try_from(pos.col)?;
-        let row = tic_tac_toe::FieldRow::try_from(row)?;
-        let col = tic_tac_toe::FieldCol::try_from(col)?;
+        let row = FieldRow::try_from(row)?;
+        let col = FieldCol::try_from(col)?;
         Ok(Self::new(row, col))
     }
 }
 
 impl Game for TicTacToe {
+    const NUM_PLAYERS: u8 = 2;
     type TurnData = Index;
-    type Players = PlayerPool<Player>;
+    type Players = PlayerIdQueue<PlayerId>;
     type Board = Grid<Cell, FieldRow, FieldCol>;
 
-    fn new(players: &[PlayerId]) -> GameResult<Self> {
-        let [id1, id2]: [_; 2] = players
-            .try_into()
-            .map_err(|_| GameError::invalid_players_number(2, players.len()))?;
-        if id1 == id2 {
-            return Err(GameError::DuplicatePlayerId);
-        }
-        let p1 = Player::new(id1);
-        let p2 = Player::new(id2);
-        Ok(Self {
-            players: Self::Players::new([p1, p2].to_vec()),
-            state: GameState::Turn(p1.id),
+    fn new() -> Self {
+        let players = (0..Self::NUM_PLAYERS).map(|id| id.into()).collect();
+        Self {
+            players: Self::Players::new(players),
+            state: GameState::Turn(0),
             field: Grid::default(),
-        })
+        }
     }
 
     fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(GameError::GameIsFinished);
         }
-        if id != self.get_current_player()?.id {
-            return Err(GameError::not_your_turn(self.get_current_player()?.id, id));
+        if id != *self.get_current_player()? {
+            return Err(GameError::not_your_turn(*self.get_current_player()?, id));
         }
 
-        let player_id = self.get_current_player()?.id;
+        let player_id = *self.get_current_player()?;
         let cell = self.get_cell_mut(data);
         if cell.is_some() {
             return Err(GameError::cell_is_occupied(

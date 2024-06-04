@@ -6,7 +6,7 @@ use bevy::prelude::{
 use bevy::ui::{node_bundles, UiImage};
 
 use super::components::{Board, ButtonBundle, ButtonContentBundle};
-use super::events::{ButtonContentArrived, ButtonPressed};
+use super::events::{ButtonContentReady, ButtonPressed};
 use crate::game::Position;
 
 /// Default style for button image
@@ -101,11 +101,11 @@ pub fn button_press(
     }
 }
 
-/// Receive [`ButtonContentArrived`] event and make content entity a child of a button entity.
+/// Receive [`ButtonContentReady`] event and make content entity a child of a button entity.
 pub fn add_content(
     mut commands: Commands,
     button: Query<(Entity, &Parent, &Position), With<Button>>,
-    mut content_arrived: EventReader<ButtonContentArrived>,
+    mut content_arrived: EventReader<ButtonContentReady>,
 ) {
     for event in content_arrived.read().cloned() {
         if let Some((entity, _, _)) = button
