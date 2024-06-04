@@ -27,7 +27,9 @@ use super::resources::{RefreshGamesTimer, Settings};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
 use crate::commands::{CommandsExt, EntityCommandsExt};
-use crate::game::{Authority, CellUpdated, CurrentGame, GameInfo, GameOver, GameType, StateUpdated, SuccessfulTurn};
+use crate::game::{
+    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, GameType, StateUpdated, SuccessfulTurn,
+};
 use crate::grpc::{
     CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient, TaskEntity,
 };
@@ -98,19 +100,22 @@ pub fn join_game(
     grpc_client: Res<GrpcClient>,
     asset_server: Res<AssetServer>,
 ) {
-    let user_id = match settings.user_id() {
-        Some(id) => id,
-        None => {
-            println!("user_id is not set");
-            return;
-        }
+    let Some(user_id) = settings.user_id() else {
+        println!("unable to join game without user id");
+        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+        return;
     };
     if let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) {
-        commands.insert_resource(CurrentGame::new_over_network(
-            user_id,
-            join.deref().clone(),
-            &asset_server,
-        ));
+        let game = match CurrentGame::new_over_network(user_id, join.deref().clone(), &asset_server)
+        {
+            Ok(game) => game,
+            Err(err) => {
+                println!("unable to join game: {}", err);
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                return;
+            }
+        };
+        commands.insert_resource(game);
         if let Some(task) = grpc_client.load_game(join.id) {
             commands.spawn(CallGetGame(task));
         } else {
@@ -499,11 +504,17 @@ pub fn handle_create_game_task(
     mut create_game: Query<(Entity, &mut CallCreateGame)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
+    settings: Res<Settings>,
     asset_server: Res<AssetServer>,
 ) {
     for (entity, mut task) in create_game.iter_mut() {
         let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
         if let Some(res) = task.poll_once() {
+            let Some(user_id) = settings.user_id() else {
+                println!("unable to join game without user id");
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                return;
+            };
             match res {
                 Ok(response) => {
                     let Some(game_info) = response.into_inner().game_info else {
@@ -515,22 +526,23 @@ pub fn handle_create_game_task(
                         Ok(info) => info,
                         Err(err) => {
                             println!("failed to decode game info: {}", err);
+                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                             continue;
                         }
                     };
-                    if let Some(&user_id) = info.players.first() {
-                        println!("starting created game: {}", info.id);
-                        commands.insert_resource(CurrentGame::new_over_network(
-                            user_id,
-                            info,
-                            &asset_server,
-                        ));
-                        next_app_state.set(AppState::Game);
-                        commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
-                    } else {
-                        println!("GameInfo is corrupted: players is empty");
-                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                    }
+                    println!("starting created game: {}", info.id);
+                    let game = match CurrentGame::new_over_network(user_id, info, &asset_server)
+                    {
+                        Ok(game) => game,
+                        Err(err) => {
+                            println!("unable to join game: {}", err);
+                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                            return;
+                        }
+                    };
+                    commands.insert_resource(game);
+                    next_app_state.set(AppState::Game);
+                    commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
                 }
                 Err(err) => {
                     println!("CreateGame request failed: {}", err);

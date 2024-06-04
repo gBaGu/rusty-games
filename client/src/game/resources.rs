@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 
+use super::error::GameError;
 use super::{GameInfo, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
 
 #[derive(Deref, DerefMut, Resource)]
@@ -91,7 +92,11 @@ impl CurrentGame {
         }
     }
 
-    pub fn new_over_network(user_id: u64, game: GameInfo, asset_server: &AssetServer) -> Self {
+    pub fn new_over_network(
+        user_id: u64,
+        game: GameInfo,
+        asset_server: &AssetServer,
+    ) -> Result<Self, GameError> {
         let x_img = asset_server.load(X_SPRITE_PATH);
         let o_img = asset_server.load(O_SPRITE_PATH);
         let (user, enemy) = match game.players {
@@ -103,9 +108,19 @@ impl CurrentGame {
                 PlayerData::new_player(player2, 1, o_img),
                 PlayerData::new_player(player1, 0, x_img),
             ),
-            _ => todo!(), // return error: foreign game
+            _ => {
+                return Err(GameError::ForeignGame {
+                    user: user_id,
+                    game: game.id,
+                })
+            }
         };
-        Self::new(GameType::Network(game.id), user, enemy, game.state)
+        Ok(Self::new(
+            GameType::Network(game.id),
+            user,
+            enemy,
+            game.state,
+        ))
     }
 
     pub fn new_with_bot(

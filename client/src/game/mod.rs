@@ -3,6 +3,7 @@ mod events;
 mod game_info;
 mod resources;
 mod systems;
+mod error;
 
 use bevy::prelude::*;
 
