@@ -27,7 +27,6 @@ impl CellUpdated {
 }
 
 #[derive(Debug, Event)]
-#[allow(dead_code)]
 pub struct SuccessfulTurn {
     pos: Position,
     player_id: GamePlayerId,

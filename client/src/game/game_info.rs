@@ -3,10 +3,12 @@ use game_server::game::encoding::{FromProtobuf, FromProtobufError};
 use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 use game_server::proto;
 
+use crate::game::{BOARD_PROTO_SIZE, BOARD_SIZE, PLAYERS_SIZE};
+
 #[derive(Clone, Component, Debug)]
 pub struct GameInfo {
     pub id: u64,
-    pub players: [u64; 2],
+    pub players: [u64; PLAYERS_SIZE],
     pub state: GameState,
 }
 
@@ -31,7 +33,7 @@ impl TryFrom<proto::GameInfo> for GameInfo {
                 .players
                 .try_into()
                 .map_err(|_| FromProtobufError::InvalidPlayersLength {
-                    expected: 2,
+                    expected: PLAYERS_SIZE,
                     found: players_len,
                 })?;
         Ok(Self {
@@ -45,7 +47,7 @@ impl TryFrom<proto::GameInfo> for GameInfo {
 #[derive(Debug)]
 pub struct FullGameInfo {
     pub info: GameInfo,
-    pub board: [[BoardCell<GamePlayerId>; 3]; 3],
+    pub board: [[BoardCell<GamePlayerId>; BOARD_SIZE]; BOARD_SIZE],
 }
 
 impl TryFrom<proto::GameInfo> for FullGameInfo {
@@ -61,13 +63,13 @@ impl TryFrom<proto::GameInfo> for FullGameInfo {
                 missing_field: "board".to_string(),
             });
         }
-        if value.board.len() != 9 {
+        if value.board.len() != BOARD_PROTO_SIZE {
             return Err(FromProtobufError::InvalidBoardLength {
-                expected: 9,
+                expected: BOARD_PROTO_SIZE,
                 found: value.board.len(),
             });
         }
-        for (i, row) in value.board.chunks(3).enumerate() {
+        for (i, row) in value.board.chunks(BOARD_SIZE).enumerate() {
             for (j, val) in row.iter().enumerate() {
                 let cell = BoardCell::from_protobuf(&val)?;
                 full_info.board[i][j] = cell;

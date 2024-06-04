@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 
 use super::error::GameError;
-use super::{GameInfo, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
+use super::{GameInfo, BOARD_SIZE, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
 
 #[derive(Deref, DerefMut, Resource)]
 pub struct RefreshGameTimer(pub Timer);
@@ -71,7 +71,7 @@ pub struct CurrentGame {
     user_data: PlayerData,
     enemy_data: PlayerData,
     state: GameState,
-    board: [[BoardCell<GamePlayerId>; 3]; 3],
+    board: [[BoardCell<GamePlayerId>; BOARD_SIZE]; BOARD_SIZE],
     board_entity: Option<Entity>,
 }
 
@@ -99,21 +99,17 @@ impl CurrentGame {
     ) -> Result<Self, GameError> {
         let x_img = asset_server.load(X_SPRITE_PATH);
         let o_img = asset_server.load(O_SPRITE_PATH);
-        let (user, enemy) = match game.players {
-            [player1, player2] if player1 == user_id => (
-                PlayerData::new_player(player1, 0, x_img),
-                PlayerData::new_player(player2, 1, o_img),
-            ),
-            [player1, player2] if player2 == user_id => (
-                PlayerData::new_player(player2, 1, o_img),
-                PlayerData::new_player(player1, 0, x_img),
-            ),
-            _ => {
-                return Err(GameError::ForeignGame {
-                    user: user_id,
-                    game: game.id,
-                })
-            }
+        let player1 = PlayerData::new_player(game.players[0], 0, x_img);
+        let player2 = PlayerData::new_player(game.players[1], 1, o_img);
+        let (user, enemy) = if game.players[0] == user_id {
+            (player1, player2)
+        } else if game.players[1] == user_id {
+            (player2, player1)
+        } else {
+            return Err(GameError::ForeignGame {
+                user: user_id,
+                game: game.id,
+            });
         };
         Ok(Self::new(
             GameType::Network(game.id),
@@ -128,7 +124,7 @@ impl CurrentGame {
         bot_id: u64,
         user_first: bool,
         state: GameState,
-        board: [[BoardCell<GamePlayerId>; 3]; 3],
+        board: [[BoardCell<GamePlayerId>; BOARD_SIZE]; BOARD_SIZE],
         asset_server: &AssetServer,
     ) -> Self {
         let x_img = asset_server.load(X_SPRITE_PATH);
@@ -165,7 +161,7 @@ impl CurrentGame {
         self.state
     }
 
-    pub fn board(&self) -> &[[BoardCell<GamePlayerId>; 3]] {
+    pub fn board(&self) -> &[[BoardCell<GamePlayerId>; BOARD_SIZE]] {
         &self.board
     }
 

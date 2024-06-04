@@ -58,7 +58,7 @@ pub fn update(
                                 for s in [
                                     &format!("ID: {}", game.id),
                                     &state_text,
-                                    &format!("{:?}", game.players),
+                                    &format!("Players: {:?}", game.players),
                                 ] {
                                     let mut text = TextBundle::from_section(s, text_style.clone());
                                     text.style.margin.left = Val::Px(HORIZONTAL_MARGIN);
