@@ -3,10 +3,9 @@ use game_server::game::GameState;
 
 use super::components::{
     EmptyNextPlayerImageBundle, GameStateContainer, GameStateContainerBundle, InGameUI, NextPlayer,
-    PlayerImage, PlayerImageBundle, PlayerInfo, PlayerInfoContainerBundle,
+    PlayerImageBundle, PlayerInfo, PlayerInfoContainerBundle,
 };
 use crate::game::StateUpdated;
-use crate::interface::ingame::events::PlayerInfoReady;
 
 use super::{ENEMY_TURN_COLOR, FONT_PATH, FONT_SIZE, PLAYER_TURN_COLOR, TEXT_COLOR};
 
@@ -27,11 +26,12 @@ pub fn create(
                     .spawn(PlayerInfoContainerBundle::new(
                         data.player_id,
                         PLAYER_TURN_COLOR,
+                        data.player_image.clone(),
                     ))
                     .with_children(|builder| {
-                        builder.spawn(PlayerImageBundle::default());
+                        builder.spawn(PlayerImageBundle::new(data.player_image.clone()));
                         builder.spawn(TextBundle::from_section(
-                            data.player_id.to_string(),
+                            format!("{:?}", data.player),
                             text_style.clone(),
                         ));
                     });
@@ -45,13 +45,14 @@ pub fn create(
                     .spawn(PlayerInfoContainerBundle::new(
                         data.enemy_id,
                         ENEMY_TURN_COLOR,
+                        data.enemy_image.clone(),
                     ))
                     .with_children(|builder| {
                         builder.spawn(TextBundle::from_section(
-                            data.enemy_id.to_string(),
+                            format!("{:?}", data.enemy),
                             text_style.clone(),
                         ));
-                        builder.spawn(PlayerImageBundle::default());
+                        builder.spawn(PlayerImageBundle::new(data.enemy_image.clone()));
                     });
             });
         }
@@ -70,10 +71,8 @@ pub fn handle_state_update(
             for (mut border, info) in player_info.iter_mut() {
                 if info.id == id {
                     *border = info.color.into();
-                    if let (Ok(mut next_player_image), Some(image)) =
-                        (next_player.get_single_mut(), info.image.as_ref())
-                    {
-                        *next_player_image = UiImage::new(image.clone());
+                    if let Ok(mut next_player_image) = next_player.get_single_mut() {
+                        *next_player_image = UiImage::new(info.image.clone());
                     }
                 } else {
                     *border = Color::NONE.into();
@@ -84,21 +83,6 @@ pub fn handle_state_update(
                 continue;
             };
             commands.entity(state_container).despawn_descendants();
-        }
-    }
-}
-
-pub fn update_player_info(
-    mut player_info: Query<(Entity, &mut PlayerInfo)>,
-    mut player_image: Query<(&mut UiImage, &Parent), With<PlayerImage>>,
-    mut info_ready: EventReader<PlayerInfoReady>,
-) {
-    for event in info_ready.read() {
-        if let Some((entity, mut info)) = player_info.iter_mut().find(|(_, i)| i.id == event.id) {
-            info.image = Some(event.image.clone());
-            if let Some((mut img, _)) = player_image.iter_mut().find(|(_, p)| p.get() == entity) {
-                *img = UiImage::new(event.image.clone());
-            }
         }
     }
 }

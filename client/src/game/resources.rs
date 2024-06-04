@@ -1,10 +1,7 @@
-use std::collections::HashMap;
-
 use bevy::prelude::*;
-use game_server::game::{BoardCell, GameState, PlayerId};
+use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 
-use super::{GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
-use crate::game::GameInfo;
+use super::{GameInfo, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
 
 #[derive(Deref, DerefMut, Resource)]
 pub struct RefreshGameTimer(pub Timer);
@@ -18,47 +15,142 @@ impl Default for RefreshGameTimer {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum GameType {
+    Network(u64),
+    Local,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Authority {
+    Player(u64),
+    Bot(u64),
+}
+
+#[derive(Clone, Debug)]
+pub struct PlayerData {
+    auth: Authority,
+    game_player_id: GamePlayerId,
+    image: Handle<Image>,
+}
+
+impl PlayerData {
+    pub fn new_player(id: u64, game_player_id: GamePlayerId, image: Handle<Image>) -> Self {
+        Self {
+            auth: Authority::Player(id),
+            game_player_id,
+            image,
+        }
+    }
+
+    pub fn new_bot(id: u64, game_player_id: GamePlayerId, image: Handle<Image>) -> Self {
+        Self {
+            auth: Authority::Bot(id),
+            game_player_id,
+            image,
+        }
+    }
+
+    pub fn auth(&self) -> Authority {
+        self.auth
+    }
+
+    pub fn game_player_id(&self) -> GamePlayerId {
+        self.game_player_id
+    }
+
+    pub fn image(&self) -> &Handle<Image> {
+        &self.image
+    }
+}
+
 #[derive(Resource)]
 pub struct CurrentGame {
-    id: u64,
-    user_id: u64,
+    game_type: GameType,
+    user_data: PlayerData,
+    enemy_data: PlayerData,
     state: GameState,
-    images: HashMap<u64, Handle<Image>>,
-    board: [[BoardCell<PlayerId>; 3]; 3],
+    board: [[BoardCell<GamePlayerId>; 3]; 3],
     board_entity: Option<Entity>,
 }
 
 impl CurrentGame {
-    pub fn new(user_id: u64, game: GameInfo, x_img: Handle<Image>, o_img: Handle<Image>) -> Self {
+    fn new(
+        game_type: GameType,
+        user_data: PlayerData,
+        enemy_data: PlayerData,
+        state: GameState,
+    ) -> Self {
         Self {
-            id: game.id,
-            user_id,
-            state: game.state,
-            images: game.players.into_iter().zip([x_img, o_img]).collect(),
+            game_type,
+            user_data,
+            enemy_data,
+            state,
             board: Default::default(),
             board_entity: None,
         }
     }
 
-    pub fn new_from_asset_server(user_id: u64, game: GameInfo, asset_server: &AssetServer) -> Self {
+    pub fn new_over_network(user_id: u64, game: GameInfo, asset_server: &AssetServer) -> Self {
         let x_img = asset_server.load(X_SPRITE_PATH);
         let o_img = asset_server.load(O_SPRITE_PATH);
-        Self::new(user_id, game, x_img, o_img)
+        let (user, enemy) = match game.players {
+            [player1, player2] if player1 == user_id => (
+                PlayerData::new_player(player1, 0, x_img),
+                PlayerData::new_player(player2, 1, o_img),
+            ),
+            [player1, player2] if player2 == user_id => (
+                PlayerData::new_player(player2, 1, o_img),
+                PlayerData::new_player(player1, 0, x_img),
+            ),
+            _ => todo!(), // return error: foreign game
+        };
+        Self::new(GameType::Network(game.id), user, enemy, game.state)
     }
 
-    pub fn id(&self) -> u64 {
-        self.id
+    pub fn new_with_bot(
+        user_id: u64,
+        bot_id: u64,
+        user_first: bool,
+        state: GameState,
+        board: [[BoardCell<GamePlayerId>; 3]; 3],
+        asset_server: &AssetServer,
+    ) -> Self {
+        let x_img = asset_server.load(X_SPRITE_PATH);
+        let o_img = asset_server.load(O_SPRITE_PATH);
+        let (user, bot) = if user_first {
+            (
+                PlayerData::new_player(user_id, 0, x_img),
+                PlayerData::new_bot(bot_id, 1, o_img),
+            )
+        } else {
+            (
+                PlayerData::new_player(user_id, 1, o_img),
+                PlayerData::new_bot(bot_id, 0, x_img),
+            )
+        };
+        let mut game = Self::new(GameType::Local, user, bot, state);
+        game.board = board;
+        game
     }
 
-    pub fn user_id(&self) -> u64 {
-        self.user_id
+    pub fn game_type(&self) -> GameType {
+        self.game_type
+    }
+
+    pub fn user_data(&self) -> &PlayerData {
+        &self.user_data
+    }
+
+    pub fn enemy_data(&self) -> &PlayerData {
+        &self.enemy_data
     }
 
     pub fn state(&self) -> GameState {
         self.state
     }
 
-    pub fn board(&self) -> &[[BoardCell<PlayerId>; 3]] {
+    pub fn board(&self) -> &[[BoardCell<GamePlayerId>; 3]] {
         &self.board
     }
 
@@ -66,34 +158,32 @@ impl CurrentGame {
         &self.board_entity
     }
 
-    pub fn get_enemy(&self) -> Option<u64> {
-        self.images.keys().find(|&&k| k != self.user_id).cloned()
-    }
-
-    pub fn get_next_player(&self) -> Option<u64> {
+    pub fn get_next_player(&self) -> Option<&PlayerData> {
         if let GameState::Turn(id) = self.state {
-            return Some(id);
+            if self.user_data.game_player_id == id {
+                return Some(&self.user_data);
+            } else if self.enemy_data.game_player_id == id {
+                return Some(&self.enemy_data);
+            }
         }
         None
     }
 
-    #[allow(dead_code)]
-    pub fn get_next_player_image(&self) -> Option<&Handle<Image>> {
-        if let GameState::Turn(id) = self.state {
-            return self.get_player_image(&id);
+    pub fn get_player_image(&self, id: GamePlayerId) -> Option<&Handle<Image>> {
+        if self.user_data.game_player_id == id {
+            return Some(&self.user_data.image);
+        } else if self.enemy_data.game_player_id == id {
+            return Some(&self.enemy_data.image);
+        } else {
+            None
         }
-        None
-    }
-
-    pub fn get_player_image(&self, id: &u64) -> Option<&Handle<Image>> {
-        self.images.get(id)
     }
 
     pub fn set_board(&mut self, board: Entity) {
         self.board_entity = Some(board);
     }
 
-    pub fn set_cell(&mut self, pos: (usize, usize), player_id: PlayerId) {
+    pub fn set_cell(&mut self, pos: (usize, usize), player_id: GamePlayerId) {
         self.board[pos.0][pos.1] = player_id.into()
     }
 

@@ -15,7 +15,7 @@ pub struct ButtonPressed {
 /// Contains entity of a board whose button needs to be updated,
 /// button [`Position`] and an image.
 #[derive(Clone, Debug, Event)]
-pub struct ButtonContentArrived {
+pub struct ButtonContentReady {
     pub board: Entity,
     pub pos: Position,
     pub image: Handle<Image>,

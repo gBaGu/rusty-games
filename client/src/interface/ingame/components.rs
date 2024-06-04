@@ -1,11 +1,17 @@
 use bevy::prelude::*;
+use game_server::game::PlayerId as GamePlayerId;
 
 use super::ITEM_HEIGHT;
+use crate::game::Authority;
 
 #[derive(Component)]
 pub struct InGameUI {
-    pub player_id: u64,
-    pub enemy_id: u64,
+    pub player: Authority,
+    pub player_id: GamePlayerId,
+    pub player_image: Handle<Image>,
+    pub enemy: Authority,
+    pub enemy_id: GamePlayerId,
+    pub enemy_image: Handle<Image>,
 }
 
 #[derive(Component)]
@@ -14,9 +20,9 @@ pub struct NextPlayer;
 /// Contains player id
 #[derive(Debug, Component)]
 pub struct PlayerInfo {
-    pub id: u64,
+    pub id: GamePlayerId,
     pub color: Color,
-    pub image: Option<Handle<Image>>,
+    pub image: Handle<Image>,
 }
 
 #[derive(Component)]
@@ -47,7 +53,14 @@ pub struct InGameUIBundle {
 }
 
 impl InGameUIBundle {
-    pub fn new(player_id: u64, enemy_id: u64) -> Self {
+    pub fn new(
+        player_auth: Authority,
+        player_id: GamePlayerId,
+        player_image: Handle<Image>,
+        enemy_auth: Authority,
+        enemy_id: GamePlayerId,
+        enemy_image: Handle<Image>,
+    ) -> Self {
         Self {
             node: NodeBundle {
                 style: Style {
@@ -60,8 +73,12 @@ impl InGameUIBundle {
                 ..default()
             },
             in_game_ui: InGameUI {
+                player: player_auth,
                 player_id,
+                player_image,
+                enemy: enemy_auth,
                 enemy_id,
+                enemy_image,
             },
         }
     }
@@ -74,7 +91,7 @@ pub struct PlayerInfoContainerBundle {
 }
 
 impl PlayerInfoContainerBundle {
-    pub fn new(id: u64, color: Color) -> Self {
+    pub fn new(id: GamePlayerId, color: Color, image: Handle<Image>) -> Self {
         Self {
             node: NodeBundle {
                 style: Style {
@@ -88,11 +105,7 @@ impl PlayerInfoContainerBundle {
                 },
                 ..default()
             },
-            info: PlayerInfo {
-                id,
-                color,
-                image: None,
-            },
+            info: PlayerInfo { id, color, image },
         }
     }
 }
@@ -109,6 +122,16 @@ impl Default for PlayerImageBundle {
         Self {
             node: image_node_bundle(),
             image: UiImage::default(),
+            tag: PlayerImage,
+        }
+    }
+}
+
+impl PlayerImageBundle {
+    pub fn new(image: Handle<Image>) -> Self {
+        Self {
+            node: image_node_bundle(),
+            image: UiImage::new(image),
             tag: PlayerImage,
         }
     }

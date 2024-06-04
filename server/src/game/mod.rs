@@ -73,11 +73,7 @@ impl TryFrom<crate::proto::GameState> for GameState {
             (Some(next), None) => GameState::Turn(next),
             (None, Some(winner)) => GameState::Finished(FinishedState::Win(winner)),
             (None, None) => GameState::Finished(FinishedState::Draw),
-            _ => {
-                return Err(FromProtobufError::InvalidProtobufMessage {
-                    reason: "invalid game_state".to_string(),
-                })
-            }
+            _ => return Err(FromProtobufError::InvalidGameState),
         };
         Ok(state)
     }

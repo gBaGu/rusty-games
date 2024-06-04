@@ -1,13 +1,19 @@
 use bevy::prelude::Component;
 use game_server::game::encoding::{FromProtobuf, FromProtobufError};
-use game_server::game::{BoardCell, GameState, PlayerId};
+use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 use game_server::proto;
 
 #[derive(Clone, Component, Debug)]
 pub struct GameInfo {
     pub id: u64,
-    pub players: Vec<u64>,
+    pub players: [u64; 2],
     pub state: GameState,
+}
+
+impl GameInfo {
+    pub fn get_user_id(&self, game_player_id: GamePlayerId) -> Option<u64> {
+        self.players.get(game_player_id as usize).cloned()
+    }
 }
 
 impl TryFrom<proto::GameInfo> for GameInfo {
@@ -19,9 +25,18 @@ impl TryFrom<proto::GameInfo> for GameInfo {
             .ok_or(FromProtobufError::MessageDataMissing {
                 missing_field: "game_state".to_string(),
             })?;
+        let players_len = value.players.len();
+        let players =
+            value
+                .players
+                .try_into()
+                .map_err(|_| FromProtobufError::InvalidPlayersLength {
+                    expected: 2,
+                    found: players_len,
+                })?;
         Ok(Self {
             id: value.game_id,
-            players: value.players,
+            players,
             state: state.try_into()?,
         })
     }
@@ -30,7 +45,7 @@ impl TryFrom<proto::GameInfo> for GameInfo {
 #[derive(Debug)]
 pub struct FullGameInfo {
     pub info: GameInfo,
-    pub board: [[BoardCell<PlayerId>; 3]; 3],
+    pub board: [[BoardCell<GamePlayerId>; 3]; 3],
 }
 
 impl TryFrom<proto::GameInfo> for FullGameInfo {
@@ -47,11 +62,9 @@ impl TryFrom<proto::GameInfo> for FullGameInfo {
             });
         }
         if value.board.len() != 9 {
-            return Err(FromProtobufError::InvalidProtobufMessage {
-                reason: format!(
-                    "invalid board length: expected=9, found={}",
-                    value.board.len()
-                ),
+            return Err(FromProtobufError::InvalidBoardLength {
+                expected: 9,
+                found: value.board.len(),
             });
         }
         for (i, row) in value.board.chunks(3).enumerate() {

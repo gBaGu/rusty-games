@@ -1,5 +1,5 @@
 use bevy::prelude::{Deref, Event};
-use game_server::game::{FinishedState, GameState};
+use game_server::game::{FinishedState, GameState, PlayerId as GamePlayerId};
 
 use super::Position;
 
@@ -9,15 +9,15 @@ pub struct StateUpdated(pub GameState);
 #[derive(Debug, Event)]
 pub struct CellUpdated {
     pos: Position,
-    player_id: u64,
+    player_id: GamePlayerId,
 }
 
 impl CellUpdated {
-    pub fn new(pos: Position, player_id: u64) -> Self {
+    pub fn new(pos: Position, player_id: GamePlayerId) -> Self {
         Self { pos, player_id }
     }
 
-    pub fn player_id(&self) -> u64 {
+    pub fn player_id(&self) -> GamePlayerId {
         self.player_id
     }
 
@@ -30,16 +30,16 @@ impl CellUpdated {
 #[allow(dead_code)]
 pub struct SuccessfulTurn {
     pos: Position,
-    player_id: u64,
+    player_id: GamePlayerId,
 }
 
 impl SuccessfulTurn {
-    pub fn new(pos: Position, player_id: u64) -> Self {
+    pub fn new(pos: Position, player_id: GamePlayerId) -> Self {
         Self { pos, player_id }
     }
 
     #[allow(dead_code)]
-    pub fn player_id(&self) -> u64 {
+    pub fn player_id(&self) -> GamePlayerId {
         self.player_id
     }
 

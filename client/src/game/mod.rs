@@ -9,11 +9,13 @@ use bevy::prelude::*;
 pub use components::Position;
 pub use events::{CellUpdated, GameOver, StateUpdated, SuccessfulTurn};
 pub use game_info::{FullGameInfo, GameInfo};
-pub use resources::CurrentGame;
+pub use resources::{Authority, CurrentGame, GameType};
 
 use crate::grpc::CallGetGame;
 use resources::RefreshGameTimer;
-use systems::{game_initialized, handle_state_updated, handle_turn, refresh_game, update_game};
+use systems::{
+    game_initialized, handle_make_turn, handle_state_updated, refresh_game, update_game,
+};
 
 pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 
@@ -37,7 +39,7 @@ impl Plugin for GamePlugin {
                         not(any_with_component::<CallGetGame>)
                             .and_then(resource_exists::<CurrentGame>),
                     ),
-                    handle_turn,
+                    handle_make_turn,
                     update_game,
                     handle_state_updated,
                 ),
