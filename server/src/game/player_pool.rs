@@ -1,6 +1,6 @@
 use std::iter::{Cycle, Peekable};
 use std::marker::PhantomData;
-use std::vec::IntoIter;
+use smallvec::{IntoIter, SmallVec};
 
 pub trait Player {
     type Id;
@@ -33,12 +33,13 @@ pub trait PlayerQueue {
 /// Queue that stores only player ids
 #[derive(Debug)]
 pub struct PlayerIdQueue<T: Clone> {
-    players: Vec<T>,
-    players_queue: Peekable<Cycle<IntoIter<T>>>,
+    players: SmallVec<[T; 8]>,
+    players_queue: Peekable<Cycle<IntoIter<[T; 8]>>>,
 }
 
 impl<T: Clone> PlayerIdQueue<T> {
     pub fn new(players: Vec<T>) -> Self {
+        let players = SmallVec::from_vec(players);
         Self {
             players: players.clone(),
             players_queue: players.into_iter().cycle().peekable(),
@@ -66,13 +67,14 @@ impl<T: Clone + Player<Id = T> + PartialEq> PlayerQueue for PlayerIdQueue<T> {
 
 #[derive(Debug)]
 pub struct PlayerDataQueue<T: Clone, ID> {
-    players: Vec<T>,
-    players_queue: Peekable<Cycle<IntoIter<T>>>,
+    players: SmallVec<[T; 8]>,
+    players_queue: Peekable<Cycle<IntoIter<[T; 8]>>>,
     _phantom_data: PhantomData<ID>,
 }
 
 impl<T: Clone, ID> PlayerDataQueue<T, ID> {
     pub fn new(players: Vec<T>) -> Self {
+        let players = SmallVec::from_vec(players);
         Self {
             players: players.clone(),
             players_queue: players.into_iter().cycle().peekable(),
