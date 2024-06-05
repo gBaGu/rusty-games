@@ -1,11 +1,11 @@
 pub mod common;
-pub mod systems;
 
 mod components;
 mod events;
 mod game_list;
 mod ingame;
 mod resources;
+mod systems;
 
 use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;

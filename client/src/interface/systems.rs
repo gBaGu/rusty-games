@@ -26,6 +26,7 @@ use super::ingame::InGameUIBundle;
 use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
+use crate::bot::Bot;
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
     Authority, CellUpdated, CurrentGame, GameInfo, GameOver, GameType, LocalGame, LocalGameTurn,
@@ -68,15 +69,17 @@ pub fn state_transition(
                         let local_game = LocalGame::default();
                         let state = local_game.state();
                         commands.insert_resource(local_game);
+                        let bot_id = 0;
                         let game = CurrentGame::new_with_bot(
                             user_id,
-                            0,
+                            bot_id,
                             true,
                             state,
                             Default::default(),
                             &asset_server,
                         );
                         commands.insert_resource(game);
+                        commands.spawn(Bot::new(bot_id));
                         println!("state transition: {:?}", new_state);
                         next_app_state.set(new_state);
                     } else {
