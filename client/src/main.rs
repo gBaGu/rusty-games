@@ -4,9 +4,12 @@ mod grpc;
 mod interface;
 mod board;
 mod commands;
+mod resources;
 
 use bevy::app::{App, Startup, Update};
 use bevy::prelude::{Camera2dBundle, Commands, DefaultPlugins};
+
+pub use resources::Settings;
 
 use crate::app_state::AppState;
 use crate::board::BoardPlugin;
@@ -22,6 +25,7 @@ fn main() {
     App::new()
         .init_state::<AppState>()
         .init_resource::<ReconnectTimer>()
+        .init_resource::<Settings>()
         .init_resource::<GrpcClient>()
         .add_plugins((DefaultPlugins, BoardPlugin, GamePlugin, InterfacePlugin))
         .add_systems(Startup, init_camera)

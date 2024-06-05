@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
+use game_server::game::tic_tac_toe::TicTacToe;
 
 use super::error::GameError;
 use super::{GameInfo, BOARD_SIZE, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
@@ -16,13 +17,13 @@ impl Default for RefreshGameTimer {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameType {
     Network(u64),
     Local,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Authority {
     Player(u64),
     Bot(u64),
@@ -65,7 +66,7 @@ impl PlayerData {
     }
 }
 
-#[derive(Resource)]
+#[derive(Debug, Resource)]
 pub struct CurrentGame {
     game_type: GameType,
     user_data: PlayerData,
@@ -190,6 +191,10 @@ impl CurrentGame {
         }
     }
 
+    pub fn get_cell(&self, pos: (usize, usize)) -> BoardCell<GamePlayerId> {
+        self.board[pos.0][pos.1]
+    }
+
     pub fn set_board(&mut self, board: Entity) {
         self.board_entity = Some(board);
     }
@@ -202,3 +207,6 @@ impl CurrentGame {
         self.state = state;
     }
 }
+
+#[derive(Debug, Default, Deref, DerefMut, Resource)]
+pub struct LocalGame(TicTacToe);

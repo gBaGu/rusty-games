@@ -1,7 +1,7 @@
 use bevy::prelude::{Deref, Event};
 use game_server::game::{FinishedState, GameState, PlayerId as GamePlayerId};
 
-use super::Position;
+use super::{Authority, Position};
 
 #[derive(Debug, Deref, Event)]
 pub struct StateUpdated(pub GameState);
@@ -24,6 +24,21 @@ impl CellUpdated {
     pub fn pos(&self) -> Position {
         self.pos
     }
+}
+
+/// Triggers network game update
+#[derive(Debug, Event)]
+pub struct NetworkGameTurn {
+    pub game_id: u64,
+    pub auth: Authority,
+    pub pos: Position,
+}
+
+/// Triggers local game update
+#[derive(Debug, Event)]
+pub struct LocalGameTurn {
+    pub auth: Authority,
+    pub pos: Position,
 }
 
 #[derive(Debug, Event)]

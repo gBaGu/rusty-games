@@ -15,7 +15,7 @@ use bevy::ui::node_bundles::TextBundle;
 use bevy::ui::widget::Button;
 use bevy::ui::Interaction;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
-use game_server::game::{FinishedState, GameState};
+use game_server::game::{FinishedState, Game, GameState};
 
 use super::components::{
     CreateGame, JoinGame, MenuNavigationButtonBundle, NetworkGameTextInputBundle, Overlay,
@@ -23,21 +23,21 @@ use super::components::{
 };
 use super::game_list::{GameList, GameListBundle};
 use super::ingame::InGameUIBundle;
-use super::resources::{RefreshGamesTimer, Settings};
+use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board;
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
-    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, GameType, StateUpdated, SuccessfulTurn,
+    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, GameType, LocalGame, LocalGameTurn,
+    NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
-use crate::grpc::{
-    CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn, GrpcClient, TaskEntity,
-};
+use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, GrpcClient, TaskEntity};
 use crate::interface::common::{
     column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_style,
     row_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
 };
 use crate::interface::events::{PlayerGamesReady, SubmitPressed};
+use crate::Settings;
 
 pub fn state_transition(
     menu_items: Query<(&Interaction, &AppStateTransition), (With<Button>, Changed<Interaction>)>,
@@ -65,11 +65,14 @@ pub fn state_transition(
                     && new_state == AppState::Game
                 {
                     if let Some(user_id) = settings.user_id() {
+                        let local_game = LocalGame::default();
+                        let state = local_game.state();
+                        commands.insert_resource(local_game);
                         let game = CurrentGame::new_with_bot(
                             user_id,
                             0,
                             true,
-                            GameState::Finished(FinishedState::Draw),
+                            state,
                             Default::default(),
                             &asset_server,
                         );
@@ -407,32 +410,48 @@ pub fn setup_game(
         });
 }
 
+/// Tracks ButtonPressed event from board and transforms it into NetworkGameTurn/LocalGameTurn event
 pub fn make_turn(
     mut commands: Commands,
     mut board_button_pressed: EventReader<board::ButtonPressed>,
+    mut network_turn_data: EventWriter<NetworkGameTurn>,
+    mut local_turn_data: EventWriter<LocalGameTurn>,
     game: Res<CurrentGame>,
+    settings: Res<Settings>,
     asset_server: Res<AssetServer>,
-    client: ResMut<GrpcClient>,
 ) {
+    let Some(user_id) = settings.user_id() else {
+        println!("user id is not set");
+        return;
+    };
     for event in board_button_pressed.read() {
+        if game
+            .get_cell((event.pos.row() as usize, event.pos.col() as usize))
+            .is_some()
+        {
+            println!("cell is occupied");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        }
+        if matches!(game.state(), GameState::Finished(_)) {
+            println!("cannot make turn in finished game");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        }
+        let auth = Authority::Player(user_id);
         match game.game_type() {
-            GameType::Network(game_id) => {
-                if let Authority::Player(user_id) = game.user_data().auth() {
-                    if let Some(task) =
-                        client.make_turn(game_id, user_id, event.pos.row(), event.pos.col())
-                    {
-                        commands.spawn((CallMakeTurn(task), event.pos));
-                    } else {
-                        println!("grpc server is down");
-                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                    }
-                } else {
-                    println!("no control over the game");
-                }
+            GameType::Network(id) => {
+                network_turn_data.send(NetworkGameTurn {
+                    game_id: id,
+                    auth,
+                    pos: event.pos,
+                });
             }
             GameType::Local => {
-                println!("local game is not implemented yet");
-                // TODO: implement
+                local_turn_data.send(LocalGameTurn {
+                    auth,
+                    pos: event.pos,
+                });
             }
         }
     }
@@ -442,7 +461,7 @@ pub fn refresh_player_games(
     mut game_list: Query<&mut GameList>,
     mut commands: Commands,
     mut timer: ResMut<RefreshGamesTimer>,
-    client: ResMut<GrpcClient>,
+    client: Res<GrpcClient>,
     settings: Res<Settings>,
     time: Res<Time>,
 ) {
@@ -531,8 +550,7 @@ pub fn handle_create_game_task(
                         }
                     };
                     println!("starting created game: {}", info.id);
-                    let game = match CurrentGame::new_over_network(user_id, info, &asset_server)
-                    {
+                    let game = match CurrentGame::new_over_network(user_id, info, &asset_server) {
                         Ok(game) => game,
                         Err(err) => {
                             println!("unable to join game: {}", err);
