@@ -29,7 +29,7 @@ use crate::board;
 use crate::bot::{Bot, MoveStrategy};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
-    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, GameType, LocalGame, LocalGameTurn,
+    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, LocalGame, LocalGameTurn,
     NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, GrpcClient, TaskEntity};
@@ -441,22 +441,12 @@ pub fn make_turn(
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             continue;
         }
-        let auth = Authority::Player(user_id);
-        match game.game_type() {
-            GameType::Network(id) => {
-                network_turn_data.send(NetworkGameTurn {
-                    game_id: id,
-                    auth,
-                    pos: event.pos,
-                });
-            }
-            GameType::Local => {
-                local_turn_data.send(LocalGameTurn {
-                    auth,
-                    pos: event.pos,
-                });
-            }
-        }
+        game.trigger_turn(
+            &mut network_turn_data,
+            &mut local_turn_data,
+            Authority::Player(user_id),
+            event.pos,
+        );
     }
 }
 

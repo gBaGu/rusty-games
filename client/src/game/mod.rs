@@ -27,6 +27,7 @@ pub const X_SPRITE_PATH: &str = "sprites/X.png";
 pub const O_SPRITE_PATH: &str = "sprites/O.png";
 
 pub const BOARD_SIZE: usize = 3;
+
 const BOARD_PROTO_SIZE: usize = BOARD_SIZE * BOARD_SIZE;
 const PLAYERS_SIZE: usize = 2;
 

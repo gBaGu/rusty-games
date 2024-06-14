@@ -1,9 +1,12 @@
 use bevy::prelude::*;
-use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 use game_server::game::tic_tac_toe::TicTacToe;
+use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 
 use super::error::GameError;
-use super::{GameInfo, BOARD_SIZE, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
+use super::{
+    GameInfo, LocalGameTurn, NetworkGameTurn, Position, BOARD_SIZE, GAME_REFRESH_INTERVAL_SEC,
+    O_SPRITE_PATH, X_SPRITE_PATH,
+};
 
 #[derive(Deref, DerefMut, Resource)]
 pub struct RefreshGameTimer(pub Timer);
@@ -205,6 +208,27 @@ impl CurrentGame {
 
     pub fn set_state(&mut self, state: GameState) {
         self.state = state;
+    }
+
+    pub fn trigger_turn(
+        &self,
+        network_turn_data: &mut EventWriter<NetworkGameTurn>,
+        local_turn_data: &mut EventWriter<LocalGameTurn>,
+        auth: Authority,
+        pos: Position,
+    ) {
+        match self.game_type {
+            GameType::Network(id) => {
+                network_turn_data.send(NetworkGameTurn {
+                    game_id: id,
+                    auth,
+                    pos,
+                });
+            }
+            GameType::Local => {
+                local_turn_data.send(LocalGameTurn { auth, pos });
+            }
+        };
     }
 }
 
