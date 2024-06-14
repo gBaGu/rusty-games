@@ -1,8 +1,12 @@
 use bevy::prelude::*;
+use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 
 use super::error::GameError;
-use super::{GameInfo, BOARD_SIZE, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH, X_SPRITE_PATH};
+use super::{
+    GameInfo, LocalGameTurn, NetworkGameTurn, Position, BOARD_SIZE, GAME_REFRESH_INTERVAL_SEC,
+    O_SPRITE_PATH, X_SPRITE_PATH,
+};
 
 #[derive(Deref, DerefMut, Resource)]
 pub struct RefreshGameTimer(pub Timer);
@@ -16,13 +20,13 @@ impl Default for RefreshGameTimer {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameType {
     Network(u64),
     Local,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Authority {
     Player(u64),
     Bot(u64),
@@ -65,7 +69,7 @@ impl PlayerData {
     }
 }
 
-#[derive(Resource)]
+#[derive(Debug, Resource)]
 pub struct CurrentGame {
     game_type: GameType,
     user_data: PlayerData,
@@ -190,6 +194,10 @@ impl CurrentGame {
         }
     }
 
+    pub fn get_cell(&self, pos: (usize, usize)) -> BoardCell<GamePlayerId> {
+        self.board[pos.0][pos.1]
+    }
+
     pub fn set_board(&mut self, board: Entity) {
         self.board_entity = Some(board);
     }
@@ -201,4 +209,28 @@ impl CurrentGame {
     pub fn set_state(&mut self, state: GameState) {
         self.state = state;
     }
+
+    pub fn trigger_turn(
+        &self,
+        network_turn_data: &mut EventWriter<NetworkGameTurn>,
+        local_turn_data: &mut EventWriter<LocalGameTurn>,
+        auth: Authority,
+        pos: Position,
+    ) {
+        match self.game_type {
+            GameType::Network(id) => {
+                network_turn_data.send(NetworkGameTurn {
+                    game_id: id,
+                    auth,
+                    pos,
+                });
+            }
+            GameType::Local => {
+                local_turn_data.send(LocalGameTurn { auth, pos });
+            }
+        };
+    }
 }
+
+#[derive(Debug, Default, Deref, DerefMut, Resource)]
+pub struct LocalGame(TicTacToe);

@@ -131,13 +131,6 @@ fn winning_combinations() -> [(Index, Index, Index); 8] {
 
 type Cell = BoardCell<PlayerId>;
 
-#[derive(Debug)]
-pub struct TicTacToe {
-    players: PlayerIdQueue<PlayerId>,
-    state: GameState,
-    field: Grid<Cell, FieldRow, FieldCol>,
-}
-
 type Index = GridIndex<FieldRow, FieldCol>;
 
 impl FromProtobuf for Index {
@@ -151,6 +144,24 @@ impl FromProtobuf for Index {
     }
 }
 
+#[derive(Debug)]
+pub struct TicTacToe {
+    players: PlayerIdQueue<PlayerId>,
+    state: GameState,
+    field: Grid<Cell, FieldRow, FieldCol>,
+}
+
+impl Default for TicTacToe {
+    fn default() -> Self {
+        let players = (0..Self::NUM_PLAYERS).map(|id| id.into()).collect();
+        Self {
+            players: PlayerIdQueue::new(players),
+            state: GameState::Turn(0),
+            field: Grid::default(),
+        }
+    }
+}
+
 impl Game for TicTacToe {
     const NUM_PLAYERS: u8 = 2;
     type TurnData = Index;
@@ -158,12 +169,7 @@ impl Game for TicTacToe {
     type Board = Grid<Cell, FieldRow, FieldCol>;
 
     fn new() -> Self {
-        let players = (0..Self::NUM_PLAYERS).map(|id| id.into()).collect();
-        Self {
-            players: Self::Players::new(players),
-            state: GameState::Turn(0),
-            field: Grid::default(),
-        }
+        Self::default()
     }
 
     fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {

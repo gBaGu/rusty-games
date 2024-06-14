@@ -1,13 +1,32 @@
 use bevy::prelude::*;
-use game_server::game::{BoardCell, GameState};
+use game_server::game::tic_tac_toe::TicTacToe;
+use game_server::game::{BoardCell, Game, GameState, PlayerId as GamePlayerId};
 
-use super::resources::RefreshGameTimer;
+use super::resources::{LocalGame, RefreshGameTimer};
 use super::{
-    CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, Position, StateUpdated, SuccessfulTurn,
+    CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, LocalGameTurn, NetworkGameTurn,
+    Position, StateUpdated, SuccessfulTurn,
 };
 use crate::commands::CommandsExt;
 use crate::grpc::{CallGetGame, CallMakeTurn, GrpcClient, TaskEntity};
 use crate::interface::common::ERROR_SOUND_PATH;
+use crate::Settings;
+
+fn update_state_on_turn(
+    cell_updated: &mut EventWriter<CellUpdated>,
+    state_updated: &mut EventWriter<StateUpdated>,
+    successful_turn: &mut EventWriter<SuccessfulTurn>,
+    game: &mut CurrentGame,
+    player_id: GamePlayerId,
+    state: GameState,
+    pos: Position,
+) {
+    game.set_cell((pos.row() as usize, pos.col() as usize), player_id);
+    game.set_state(state);
+    cell_updated.send(CellUpdated::new(pos, player_id));
+    state_updated.send(StateUpdated(state));
+    successful_turn.send(SuccessfulTurn::new(pos, player_id));
+}
 
 /// Emit StateUpdated once the game is initialized
 pub fn game_initialized(mut state_updated: EventWriter<StateUpdated>, game: Res<CurrentGame>) {
@@ -18,13 +37,105 @@ pub fn refresh_game(
     mut commands: Commands,
     mut timer: ResMut<RefreshGameTimer>,
     game: Res<CurrentGame>,
-    client: ResMut<GrpcClient>,
+    client: Res<GrpcClient>,
     time: Res<Time>,
 ) {
     if timer.tick(time.delta()).just_finished() {
         if let GameType::Network(id) = game.game_type() {
             if let Some(task) = client.load_game(id) {
                 commands.spawn(CallGetGame(task));
+            }
+        }
+    }
+}
+
+pub fn make_turn_network(
+    mut commands: Commands,
+    mut turn_data: EventReader<NetworkGameTurn>,
+    game: Res<CurrentGame>,
+    settings: Res<Settings>,
+    client: Res<GrpcClient>,
+    asset_server: Res<AssetServer>,
+) {
+    for event in turn_data.read() {
+        if !matches!(game.game_type(), GameType::Network(_)) {
+            continue;
+        }
+        if event.auth != game.user_data().auth() {
+            println!("{:?} is not authorized to make turn", event.auth);
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        }
+        let Some(user_id) = settings.user_id() else {
+            println!("user id is not set");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        };
+        if let Some(task) =
+            client.make_turn(event.game_id, user_id, event.pos.row(), event.pos.col())
+        {
+            commands.spawn((CallMakeTurn(task), event.pos));
+        } else {
+            println!("grpc server is down");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+        }
+    }
+}
+
+pub fn make_turn_local(
+    mut commands: Commands,
+    mut turn_data: EventReader<LocalGameTurn>,
+    mut cell_updated: EventWriter<CellUpdated>,
+    mut state_updated: EventWriter<StateUpdated>,
+    mut successful_turn: EventWriter<SuccessfulTurn>,
+    mut game: ResMut<CurrentGame>,
+    mut local_game: Option<ResMut<LocalGame>>,
+    asset_server: Res<AssetServer>,
+) {
+    for event in turn_data.read() {
+        if game.game_type() != GameType::Local {
+            continue;
+        }
+        let Some(next_player) = game.get_next_player() else {
+            println!("cannot make turn in this game");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            return;
+        };
+        if event.auth != next_player.auth() {
+            println!("{:?} is not authorized to make turn", event.auth);
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        }
+        let Some(ref mut local_game) = local_game else {
+            println!("local game is not found");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            return;
+        };
+        let player_id = next_player.game_player_id();
+        let Ok(row) = (event.pos.row() as usize).try_into() else {
+            println!("invalid row index: {}", event.pos.row());
+            return;
+        };
+        let Ok(col) = (event.pos.col() as usize).try_into() else {
+            println!("invalid row index: {}", event.pos.col());
+            return;
+        };
+        let turn_data = <TicTacToe as Game>::TurnData::new(row, col);
+        match local_game.update(player_id, turn_data) {
+            Ok(state) => {
+                update_state_on_turn(
+                    &mut cell_updated,
+                    &mut state_updated,
+                    &mut successful_turn,
+                    &mut game,
+                    player_id,
+                    state,
+                    event.pos,
+                );
+            }
+            Err(err) => {
+                println!("failed to update local game: {}", err);
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             }
         }
     }
@@ -46,8 +157,8 @@ pub fn handle_make_turn(
                 println!("no current game, dropping MakeTurn response");
                 continue;
             };
-            let user_id = game.user_data().game_player_id();
-            if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == user_id)
+            let player_id = game.user_data().game_player_id();
+            if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == player_id)
             {
                 println!("not your turn");
                 commands.play_sound(&asset_server, ERROR_SOUND_PATH);
@@ -58,11 +169,15 @@ pub fn handle_make_turn(
                     if let Some(new_state) = response.into_inner().game_state {
                         match new_state.try_into() {
                             Ok(state) => {
-                                game.set_cell((pos.row() as usize, pos.col() as usize), user_id);
-                                game.set_state(state);
-                                cell_updated.send(CellUpdated::new(*pos, user_id));
-                                state_updated.send(StateUpdated(state));
-                                successful_turn.send(SuccessfulTurn::new(*pos, user_id));
+                                update_state_on_turn(
+                                    &mut cell_updated,
+                                    &mut state_updated,
+                                    &mut successful_turn,
+                                    game,
+                                    player_id,
+                                    state,
+                                    *pos,
+                                );
                             }
                             Err(err) => {
                                 println!("failed to convert game state: {}", err);

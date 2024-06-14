@@ -1404,6 +1404,7 @@ dependencies = [
  "bevy",
  "bevy_simple_text_input",
  "prost",
+ "rand",
  "server",
  "tonic",
  "tonic-build",

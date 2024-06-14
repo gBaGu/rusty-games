@@ -1,11 +1,11 @@
 pub mod common;
-pub mod systems;
 
 mod components;
 mod events;
 mod game_list;
 mod ingame;
 mod resources;
+mod systems;
 
 use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
@@ -15,7 +15,7 @@ use crate::game::CurrentGame;
 use crate::grpc::CallGetPlayerGames;
 use events::{PlayerGamesReady, SubmitPressed};
 use ingame::InGameUIPlugin;
-use resources::{RefreshGamesTimer, Settings};
+use resources::RefreshGamesTimer;
 use systems::*;
 
 pub struct InterfacePlugin;
@@ -24,7 +24,6 @@ impl Plugin for InterfacePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((InGameUIPlugin, TextInputPlugin))
             .init_resource::<RefreshGamesTimer>()
-            .init_resource::<Settings>()
             .add_event::<SubmitPressed>()
             .add_event::<PlayerGamesReady>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
