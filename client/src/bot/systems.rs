@@ -1,9 +1,7 @@
-use std::time::Duration;
 use bevy::prelude::*;
-use rand::prelude::*;
 
 use super::Bot;
-use crate::game::{Authority, CurrentGame, GameType, LocalGameTurn, NetworkGameTurn, Position};
+use crate::game::{Authority, CurrentGame, GameType, LocalGameTurn, NetworkGameTurn};
 
 pub fn make_turn(
     mut bot: Query<&mut Bot>,
@@ -18,26 +16,14 @@ pub fn make_turn(
         };
         let auth = Authority::Bot(bot.id());
         if next_player.auth() == auth {
-            let mut rng = thread_rng();
             if !bot.waiting_delay() {
-                let milliseconds = rng.gen_range(500..1500);
-                bot.start_delay(Duration::from_millis(milliseconds));
+                bot.start_delay();
                 continue;
             }
 
             if bot.tick_delay(time.delta()).just_finished() {
                 bot.reset_delay();
-                let empty_cells: Vec<_> = game
-                    .board()
-                    .iter()
-                    .enumerate()
-                    .map(|(i, row)| row.iter().enumerate().map(move |(j, cell)| (i, j, cell)))
-                    .flatten()
-                    .filter(|(_, _, cell)| cell.is_none())
-                    .collect();
-                let index = rng.gen_range(0..empty_cells.len());
-                let rand_cell = empty_cells[index];
-                let pos = Position::new(rand_cell.0 as u32, rand_cell.1 as u32);
+                let pos = bot.get_move(game.board());
                 match game.game_type() {
                     GameType::Network(id) => {
                         network_turn_data.send(NetworkGameTurn {

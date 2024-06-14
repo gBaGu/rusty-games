@@ -1,19 +1,29 @@
-use std::time::Duration;
 use bevy::prelude::{Component, Timer, TimerMode};
+use game_server::game::{BoardCell, PlayerId as GamePlayerId};
+use rand::{thread_rng, Rng};
+use std::time::Duration;
+
+use crate::bot::strategy::MoveStrategy;
+use crate::game::{Position, BOARD_SIZE};
+
+const MIN_MOVE_DELAY: u64 = 500;
+const MAX_MOVE_DELAY: u64 = 1500;
 
 #[derive(Debug, Component)]
 pub struct Bot {
     id: u64,
     delay_timer: Timer,
+    move_strategy: MoveStrategy,
 }
 
 impl Bot {
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: u64, move_strategy: MoveStrategy) -> Self {
         let mut timer = Timer::new(Duration::default(), TimerMode::Once);
         timer.pause();
         Self {
             id,
             delay_timer: timer,
+            move_strategy,
         }
     }
 
@@ -25,8 +35,11 @@ impl Bot {
         !self.delay_timer.paused()
     }
 
-    pub fn start_delay(&mut self, duration: Duration) {
-        self.delay_timer.set_duration(duration);
+    pub fn start_delay(&mut self) {
+        let mut rng = thread_rng();
+        let milliseconds = rng.gen_range(MIN_MOVE_DELAY..MAX_MOVE_DELAY);
+        self.delay_timer
+            .set_duration(Duration::from_millis(milliseconds));
         self.delay_timer.unpause();
     }
 
@@ -37,5 +50,9 @@ impl Bot {
     pub fn reset_delay(&mut self) {
         self.delay_timer.reset();
         self.delay_timer.pause();
+    }
+
+    pub fn get_move(&self, board: &[[BoardCell<GamePlayerId>; BOARD_SIZE]]) -> Position {
+        self.move_strategy.get_move(board)
     }
 }

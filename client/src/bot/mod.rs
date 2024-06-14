@@ -1,9 +1,11 @@
 mod components;
 mod systems;
+mod strategy;
 
 use bevy::prelude::*;
 
 pub use components::Bot;
+pub use strategy::MoveStrategy;
 use crate::app_state::AppState;
 use crate::bot::systems::make_turn;
 
