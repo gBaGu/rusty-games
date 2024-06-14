@@ -3,6 +3,7 @@ use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
 use crate::game::GameInfo;
+use crate::interface::common::{PRIMARY_COLOR, OVERLAY_BACKGROUND_COLOR};
 
 #[derive(Clone, Debug, Deref, Component)]
 pub struct JoinGame(pub GameInfo);
@@ -36,14 +37,22 @@ pub struct MenuNavigationButtonBundle {
 impl MenuNavigationButtonBundle {
     pub fn new(style: Style, state: AppState) -> Self {
         Self {
-            button: ButtonBundle { style, ..default() },
+            button: ButtonBundle {
+                style,
+                background_color: PRIMARY_COLOR.into(),
+                ..default()
+            },
             state_transition: AppStateTransition(Some(state)),
         }
     }
 
     pub fn exit(style: Style) -> Self {
         Self {
-            button: ButtonBundle { style, ..default() },
+            button: ButtonBundle {
+                style,
+                background_color: PRIMARY_COLOR.into(),
+                ..default()
+            },
             state_transition: AppStateTransition(None),
         }
     }
@@ -67,7 +76,7 @@ impl Default for OverlayNodeBundle {
                     width: Val::Percent(100.0),
                     ..default()
                 },
-                background_color: BackgroundColor(Color::DARK_GRAY.with_a(0.95)),
+                background_color: OVERLAY_BACKGROUND_COLOR.into(),
                 ..default()
             },
             tag: Overlay,
@@ -84,7 +93,11 @@ pub struct JoinGameButtonBundle {
 impl JoinGameButtonBundle {
     pub fn new(style: Style, game: GameInfo) -> Self {
         Self {
-            button: ButtonBundle { style, ..default() },
+            button: ButtonBundle {
+                style,
+                background_color: PRIMARY_COLOR.into(),
+                ..default()
+            },
             join: JoinGame(game),
         }
     }
@@ -99,7 +112,11 @@ pub struct SubmitButtonBundle {
 impl SubmitButtonBundle {
     pub fn new(style: Style, source: Entity) -> Self {
         Self {
-            button: ButtonBundle { style, ..default() },
+            button: ButtonBundle {
+                style,
+                background_color: PRIMARY_COLOR.into(),
+                ..default()
+            },
             submit: SubmitButton { source },
         }
     }

@@ -49,7 +49,7 @@ pub fn create(mut commands: Commands, new_board: Query<Entity, Added<Board>>) {
                         builder.spawn(ButtonBundle {
                             button: node_bundles::ButtonBundle {
                                 style: board_button_style(i, j),
-                                background_color: BackgroundColor(Color::YELLOW_GREEN),
+                                background_color: Color::NONE.into(),
                                 ..default()
                             },
                             position,

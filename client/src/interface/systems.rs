@@ -34,8 +34,8 @@ use crate::game::{
 };
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, GrpcClient, TaskEntity};
 use crate::interface::common::{
-    column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_style,
-    row_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
+    column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
+    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
 };
 use crate::interface::events::{PlayerGamesReady, SubmitPressed};
 use crate::Settings;
@@ -107,8 +107,6 @@ pub fn join_game(
     asset_server: Res<AssetServer>,
 ) {
     let Some(user_id) = settings.user_id() else {
-        println!("unable to join game without user id");
-        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
         return;
     };
     if let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) {
@@ -234,76 +232,70 @@ pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            for (state, text) in [
-                (AppState::Menu(MenuState::PlayWithBot), "Play"),
-                (AppState::Menu(MenuState::PlayOverNetwork), "Network"),
-                (AppState::Menu(MenuState::Settings), "Settings"),
-            ] {
-                builder
-                    .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
-                    .with_child(TextBundle::from_section(text, text_style.clone()));
-            }
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        for (state, text) in [
+            (AppState::Menu(MenuState::PlayWithBot), "Play"),
+            (AppState::Menu(MenuState::PlayOverNetwork), "Network"),
+            (AppState::Menu(MenuState::Settings), "Settings"),
+        ] {
             builder
-                .spawn(MenuNavigationButtonBundle::exit(style))
-                .with_child(TextBundle::from_section("Exit", text_style));
-        });
+                .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
+                .with_child(TextBundle::from_section(text, text_style.clone()));
+        }
+        builder
+            .spawn(MenuNavigationButtonBundle::exit(style))
+            .with_child(TextBundle::from_section("Exit", text_style));
+    });
 }
 
 pub fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            builder.spawn(row_node_bundle()).with_children(|builder| {
-                builder.spawn(TextBundle::from_section("Set user id:", text_style.clone()));
-                let input = builder
-                    .spawn(SettingTextInputBundle::new(
-                        style.clone(),
-                        text_style.clone(),
-                        Setting::UserId,
-                    ))
-                    .id();
-                builder
-                    .spawn(SubmitButtonBundle::new(style.clone(), input))
-                    .with_child(TextBundle::from_section("Save", text_style.clone()));
-            });
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
-                    style,
-                    AppState::Menu(MenuState::Main),
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder.spawn(row_node_bundle()).with_children(|builder| {
+            builder.spawn(TextBundle::from_section("Set user id:", text_style.clone()));
+            let input = builder
+                .spawn(SettingTextInputBundle::new(
+                    style.clone(),
+                    text_style.clone(),
+                    Setting::UserId,
                 ))
-                .with_child(TextBundle::from_section("Back", text_style));
+                .id();
+            builder
+                .spawn(SubmitButtonBundle::new(style.clone(), input))
+                .with_child(TextBundle::from_section("Save", text_style.clone()));
         });
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style,
+                AppState::Menu(MenuState::Main),
+            ))
+            .with_child(TextBundle::from_section("Back", text_style));
+    });
 }
 
 pub fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
-                    AppState::Game,
-                ))
-                .with_child(TextBundle::from_section(
-                    "Play with bot",
-                    text_style.clone(),
-                ));
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
-                    AppState::Menu(MenuState::Main),
-                ))
-                .with_child(TextBundle::from_section("Back", text_style));
-        });
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style.clone(),
+                AppState::Game,
+            ))
+            .with_child(TextBundle::from_section(
+                "Play with bot",
+                text_style.clone(),
+            ));
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style.clone(),
+                AppState::Menu(MenuState::Main),
+            ))
+            .with_child(TextBundle::from_section("Back", text_style));
+    });
 }
 
 pub fn setup_play_over_network_menu(
@@ -325,29 +317,27 @@ pub fn setup_play_over_network_menu(
     } else {
         game_list.list = GameList::Message("No user id provided".into());
     }
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            builder.spawn(row_node_bundle()).with_children(|builder| {
-                builder.spawn(TextBundle::from_section("Opponent id:", text_style.clone()));
-                let input = builder
-                    .spawn(NetworkGameTextInputBundle::new(
-                        style.clone(),
-                        text_style.clone(),
-                    ))
-                    .id();
-                builder
-                    .spawn(SubmitButtonBundle::new(style.clone(), input))
-                    .with_child(TextBundle::from_section("Create game", text_style.clone()));
-            });
-            builder.spawn(game_list);
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder.spawn(row_node_bundle()).with_children(|builder| {
+            builder.spawn(TextBundle::from_section("Opponent id:", text_style.clone()));
+            let input = builder
+                .spawn(NetworkGameTextInputBundle::new(
                     style.clone(),
-                    AppState::Menu(MenuState::Main),
+                    text_style.clone(),
                 ))
-                .with_child(TextBundle::from_section("Back", text_style));
+                .id();
+            builder
+                .spawn(SubmitButtonBundle::new(style.clone(), input))
+                .with_child(TextBundle::from_section("Create game", text_style.clone()));
         });
+        builder.spawn(game_list);
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style.clone(),
+                AppState::Menu(MenuState::Main),
+            ))
+            .with_child(TextBundle::from_section("Back", text_style));
+    });
 }
 
 pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -394,23 +384,21 @@ pub fn setup_game(
     mut game: ResMut<CurrentGame>,
     mut state_updated: EventWriter<StateUpdated>,
 ) {
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            let player = game.user_data();
-            let enemy = game.enemy_data();
-            builder.spawn(InGameUIBundle::new(
-                player.auth(),
-                player.game_player_id(),
-                player.image().clone(),
-                enemy.auth(),
-                enemy.game_player_id(),
-                enemy.image().clone(),
-            ));
-            let board = builder.spawn(board::BoardBundle::default()).id();
-            game.set_board(board);
-            state_updated.send(StateUpdated(game.state()));
-        });
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        let player = game.user_data();
+        let enemy = game.enemy_data();
+        builder.spawn(InGameUIBundle::new(
+            player.auth(),
+            player.game_player_id(),
+            player.image().clone(),
+            enemy.auth(),
+            enemy.game_player_id(),
+            enemy.image().clone(),
+        ));
+        let board = builder.spawn(board::BoardBundle::default()).id();
+        game.set_board(board);
+        state_updated.send(StateUpdated(game.state()));
+    });
 }
 
 /// Tracks ButtonPressed event from board and transforms it into NetworkGameTurn/LocalGameTurn event
