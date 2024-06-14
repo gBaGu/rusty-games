@@ -19,14 +19,14 @@ pub fn make_turn(
         let auth = Authority::Bot(bot.id());
         if next_player.auth() == auth {
             let mut rng = thread_rng();
-            if bot.timer().paused() {
+            if !bot.waiting_delay() {
                 let milliseconds = rng.gen_range(500..1500);
-                bot.start_timer(Duration::from_millis(milliseconds));
+                bot.start_delay(Duration::from_millis(milliseconds));
                 continue;
             }
 
-            if bot.timer_mut().tick(time.delta()).just_finished() {
-                bot.reset_timer();
+            if bot.tick_delay(time.delta()).just_finished() {
+                bot.reset_delay();
                 let empty_cells: Vec<_> = game
                     .board()
                     .iter()

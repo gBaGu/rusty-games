@@ -4,7 +4,7 @@ use bevy::prelude::{Component, Timer, TimerMode};
 #[derive(Debug, Component)]
 pub struct Bot {
     id: u64,
-    timer: Timer,
+    delay_timer: Timer,
 }
 
 impl Bot {
@@ -13,7 +13,7 @@ impl Bot {
         timer.pause();
         Self {
             id,
-            timer,
+            delay_timer: timer,
         }
     }
 
@@ -21,21 +21,21 @@ impl Bot {
         self.id
     }
 
-    pub fn timer(&self) -> &Timer {
-        &self.timer
+    pub fn waiting_delay(&self) -> bool {
+        !self.delay_timer.paused()
     }
 
-    pub fn timer_mut(&mut self) -> &mut Timer {
-        &mut self.timer
+    pub fn start_delay(&mut self, duration: Duration) {
+        self.delay_timer.set_duration(duration);
+        self.delay_timer.unpause();
     }
 
-    pub fn reset_timer(&mut self) {
-        self.timer.reset();
-        self.timer.pause();
+    pub fn tick_delay(&mut self, delta: Duration) -> &Timer {
+        self.delay_timer.tick(delta)
     }
 
-    pub fn start_timer(&mut self, duration: Duration) {
-        self.timer.set_duration(duration);
-        self.timer.unpause();
+    pub fn reset_delay(&mut self) {
+        self.delay_timer.reset();
+        self.delay_timer.pause();
     }
 }
