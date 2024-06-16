@@ -19,7 +19,6 @@ pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
 pub const FONT_SIZE: f32 = 30.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
-pub const BACKGROUND_COLOR: Color = Color::rgb(0.38, 0.5, 0.38);
 pub const OVERLAY_BACKGROUND_COLOR: Color = Color::rgba(0.25, 0.25, 0.25, 0.95);
 pub const PRIMARY_COLOR: Color = Color::rgb(0.29, 0.40, 0.29);
 pub const SECONDARY_COLOR: Color = Color::rgb(0.88, 1.0, 0.88);
@@ -57,7 +56,6 @@ pub fn root_node_bundle() -> NodeBundle {
             width: Val::Percent(100.0),
             ..default()
         },
-        background_color: BACKGROUND_COLOR.into(),
         ..default()
     }
 }

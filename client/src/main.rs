@@ -6,9 +6,9 @@ mod game;
 mod grpc;
 mod interface;
 mod resources;
+mod systems;
 
-use bevy::app::{App, Startup, Update};
-use bevy::prelude::{Camera2dBundle, Commands, DefaultPlugins};
+use bevy::prelude::*;
 
 pub use resources::Settings;
 
@@ -19,9 +19,8 @@ use crate::game::GamePlugin;
 use crate::grpc::{GrpcClient, ReconnectTimer};
 use crate::interface::InterfacePlugin;
 
-fn init_camera(mut commands: Commands) {
-    commands.spawn(Camera2dBundle::default());
-}
+#[derive(Component)]
+pub struct Background;
 
 fn main() {
     App::new()
@@ -36,7 +35,8 @@ fn main() {
             GamePlugin,
             InterfacePlugin,
         ))
-        .add_systems(Startup, init_camera)
+        .add_systems(Startup, systems::init_app)
+        .add_systems(Update, systems::on_resize)
         .add_systems(Update, (grpc::reconnect, grpc::handle_reconnect))
         .run();
 }
