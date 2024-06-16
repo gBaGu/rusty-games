@@ -3,7 +3,7 @@ use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
 use crate::game::GameInfo;
-use crate::interface::common::{PRIMARY_COLOR, OVERLAY_BACKGROUND_COLOR};
+use crate::interface::common::{OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
 
 #[derive(Clone, Debug, Deref, Component)]
 pub struct JoinGame(pub GameInfo);
@@ -158,6 +158,25 @@ impl NetworkGameTextInputBundle {
                 ..default()
             },
             tag: CreateGame,
+        }
+    }
+}
+
+#[derive(Bundle)]
+pub struct UiImageBundle {
+    pub node: NodeBundle,
+    pub image: UiImage,
+}
+
+impl UiImageBundle {
+    pub fn new(style: Style, image: Handle<Image>) -> Self {
+        Self {
+            node: NodeBundle {
+                style,
+                background_color: Color::WHITE.into(),
+                ..default()
+            },
+            image: UiImage::new(image),
         }
     }
 }

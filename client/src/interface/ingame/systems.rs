@@ -1,14 +1,13 @@
 use bevy::prelude::*;
 use game_server::game::GameState;
 
-use super::{ENEMY_TURN_COLOR, FONT_SIZE, PLAYER_TURN_COLOR};
 use super::components::{
     EmptyNextPlayerImageBundle, GameStateContainer, GameStateContainerBundle, InGameUI, NextPlayer,
     PlayerImageBundle, PlayerInfo, PlayerInfoContainerBundle,
 };
+use super::{ENEMY_TURN_COLOR, FONT_SIZE, PLAYER_TURN_COLOR};
 use crate::game::StateUpdated;
 use crate::interface::common::{FONT_PATH, SECONDARY_COLOR};
-
 
 pub fn create(
     mut commands: Commands,

@@ -11,6 +11,8 @@ pub const TURN_SOUND_PATH: &str = "audio/turn.ogg";
 
 pub const FONT_PATH: &str = "fonts/ADLaMDisplay-Regular.ttf";
 
+pub const LOGO_HEIGHT: f32 = 200.0;
+pub const LOGO_WIDTH: f32 = 200.0;
 pub const MENU_ITEM_HEIGHT: f32 = 50.0;
 pub const MENU_ITEM_WIDTH: f32 = 300.0;
 pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;

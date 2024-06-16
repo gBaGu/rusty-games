@@ -13,13 +13,15 @@ use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
 use bevy::time::Time;
 use bevy::ui::node_bundles::TextBundle;
 use bevy::ui::widget::Button;
-use bevy::ui::Interaction;
+use bevy::ui::{Interaction, Style, UiRect, Val};
+use bevy::utils::default;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
 use game_server::game::{FinishedState, Game, GameState};
 
 use super::components::{
     CreateGame, JoinGame, MenuNavigationButtonBundle, NetworkGameTextInputBundle, Overlay,
     OverlayNodeBundle, Setting, SettingTextInputBundle, SubmitButton, SubmitButtonBundle,
+    UiImageBundle,
 };
 use super::game_list::{GameList, GameListBundle};
 use super::ingame::InGameUIBundle;
@@ -35,7 +37,7 @@ use crate::game::{
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, GrpcClient, TaskEntity};
 use crate::interface::common::{
     column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
-    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
+    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, TURN_SOUND_PATH,
 };
 use crate::interface::events::{PlayerGamesReady, SubmitPressed};
 use crate::Settings;
@@ -229,10 +231,20 @@ pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui:
 }
 
 pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let logo = asset_server.load("sprites/logo.png");
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
     commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder.spawn(UiImageBundle::new(
+            Style {
+                height: Val::Px(LOGO_HEIGHT),
+                width: Val::Px(LOGO_WIDTH),
+                margin: UiRect::all(Val::Px(20.)),
+                ..default()
+            },
+            logo,
+        ));
         for (state, text) in [
             (AppState::Menu(MenuState::PlayWithBot), "Play"),
             (AppState::Menu(MenuState::PlayOverNetwork), "Network"),
