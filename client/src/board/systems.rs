@@ -1,132 +1,139 @@
-use bevy::prelude::{
-    default, Added, AlignItems, BackgroundColor, BuildChildren, Button, Changed, Color, Commands,
-    Display, Entity, EventReader, EventWriter, GridPlacement, Interaction, JustifyContent,
-    NodeBundle, Parent, Query, Style, UiRect, Val, With,
-};
-use bevy::ui::{node_bundles, UiImage};
+use bevy::input::mouse::MouseButtonInput;
+use bevy::input::ButtonState;
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
-use super::components::{Board, ButtonBundle, ButtonContentBundle};
-use super::events::{ButtonContentReady, ButtonPressed};
+use super::components::{Board, TileBundle};
+use super::events::{TileFilled, TilePressed};
+use super::BORDER_WIDTH;
 use crate::game::Position;
 
-/// Default style for button image
-fn button_image_style() -> Style {
-    Style {
-        width: Val::Percent(100.0),
-        height: Val::Percent(100.0),
-        margin: UiRect::all(Val::Px(10.0)),
+fn border_bundle(color: Color, size: Vec2, x: f32, y: f32) -> SpriteBundle {
+    SpriteBundle {
+        sprite: Sprite {
+            color,
+            custom_size: Some(size),
+            ..default()
+        },
+        transform: Transform::from_translation(Vec3::new(x, y, 1.0)),
         ..default()
     }
 }
 
-/// Default style for a board button.
-/// Accepts `col` and `row` parameters which are used as a [`GridPlacement`]
-/// for `grid_column` and `grid_row` respectively.
-fn board_button_style(col: i16, row: i16) -> Style {
-    Style {
-        width: Val::Percent(100.0),
-        height: Val::Percent(100.0),
-        grid_column: GridPlacement::start(col),
-        grid_row: GridPlacement::start(row),
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        ..default()
-    }
-}
-
-/// System that fills newly created board with buttons and borders.
-/// For every row and column 1, 3, 5 elements are buttons.
-/// Places in a grid between them are used for borders.
-pub fn create(mut commands: Commands, new_board: Query<Entity, Added<Board>>) {
-    for entity in new_board.iter() {
+/// System that fills newly created board with tiles and borders.
+pub fn create(mut commands: Commands, new_board: Query<(Entity, &Sprite), Added<Board>>) {
+    for (entity, sprite) in new_board.iter() {
+        let Some(board_size) = sprite.custom_size else {
+            continue;
+        };
+        let tile_width = (board_size.x - BORDER_WIDTH * 2.0) / 3.0;
+        let tile_height = (board_size.y - BORDER_WIDTH * 2.0) / 3.0;
+        let tile_size = Vec2::new(tile_width, tile_height);
         commands.entity(entity).with_children(|builder| {
-            for i in 1i16..=5 {
-                for j in 1i16..=5 {
-                    let i_is_odd = i % 2 != 0;
-                    let j_is_odd = j % 2 != 0;
-                    if i_is_odd && j_is_odd {
-                        let position = Position::new((i / 2) as u32, (j / 2) as u32);
-                        builder.spawn(ButtonBundle {
-                            button: node_bundles::ButtonBundle {
-                                style: board_button_style(i, j),
-                                background_color: Color::NONE.into(),
-                                ..default()
-                            },
-                            position,
-                        });
-                    }
-                    if i_is_odd && !j_is_odd {
-                        let background_color = BackgroundColor(Color::BLACK);
-                        // vertical borders
-                        builder.spawn(NodeBundle {
-                            style: Style {
-                                display: Display::Grid,
-                                grid_column: GridPlacement::start(j),
-                                grid_row: GridPlacement::start(i),
-                                width: Val::Px(1.0),
-                                ..default()
-                            },
-                            background_color,
-                            ..default()
-                        });
-                        // horizontal borders
-                        builder.spawn(NodeBundle {
-                            style: Style {
-                                display: Display::Grid,
-                                grid_column: GridPlacement::start(i),
-                                grid_row: GridPlacement::start(j),
-                                height: Val::Px(1.0),
-                                ..default()
-                            },
-                            background_color,
-                            ..default()
-                        });
-                    }
+            for row in 0..3 {
+                for col in 0..3 {
+                    let tile_x = (tile_width + BORDER_WIDTH) * col as f32 + tile_width / 2.0
+                        - board_size.x / 2.0;
+                    let tile_y = (tile_height + BORDER_WIDTH) * row as f32 + tile_height / 2.0
+                        - board_size.y / 2.0;
+                    // invert y because server expects top left tile to be (0, 0)
+                    let pos = Position::new(2 - row, col);
+                    builder.spawn(TileBundle::new(
+                        tile_size,
+                        Vec3::new(tile_x, tile_y, 1.0),
+                        pos,
+                    ));
+                }
+            }
+            // draw borders
+            let v_border_length = tile_height * 0.8;
+            let h_border_length = tile_width * 0.8;
+            for i in 0..3 {
+                for j in 0..2 {
+                    // vertical
+                    let v_border_x =
+                        tile_width * (j + 1) as f32 + BORDER_WIDTH * j as f32 + BORDER_WIDTH / 2.0
+                            - board_size.x / 2.0;
+                    let v_border_y =
+                        tile_height * i as f32 + BORDER_WIDTH * i as f32 + tile_height / 2.0
+                            - board_size.y / 2.0;
+                    builder.spawn(border_bundle(
+                        Color::BLACK,
+                        Vec2::new(BORDER_WIDTH, v_border_length),
+                        v_border_x,
+                        v_border_y,
+                    ));
+                    // horizontal
+                    let h_border_x =
+                        tile_width * i as f32 + BORDER_WIDTH * i as f32 + tile_width / 2.0
+                            - board_size.x / 2.0;
+                    let h_border_y =
+                        tile_height * (j + 1) as f32 + BORDER_WIDTH * j as f32 + BORDER_WIDTH / 2.0
+                            - board_size.y / 2.0;
+                    builder.spawn(border_bundle(
+                        Color::BLACK,
+                        Vec2::new(h_border_length, BORDER_WIDTH),
+                        h_border_x,
+                        h_border_y,
+                    ));
                 }
             }
         });
     }
 }
 
-/// Check if button is pressed and emit [`ButtonPressed`] event.
-pub fn button_press(
-    button: Query<(&Interaction, &Position, &Parent), (With<Button>, Changed<Interaction>)>,
-    mut pressed: EventWriter<ButtonPressed>,
+pub fn handle_input(
+    window: Query<&Window, With<PrimaryWindow>>,
+    camera: Query<(&Camera, &GlobalTransform)>,
+    tiles: Query<(&GlobalTransform, &Sprite, &Position, &Parent)>,
+    mut button_evr: EventReader<MouseButtonInput>,
+    mut pressed: EventWriter<TilePressed>,
 ) {
-    for (_, pos, parent) in button.iter().filter(|(&i, _, _)| i == Interaction::Pressed) {
-        pressed.send(ButtonPressed {
-            board: parent.get(),
-            pos: *pos,
-        });
+    let Ok(window) = window.get_single() else {
+        println!("failed to get single window");
+        return;
+    };
+    let Ok((camera, camera_transform)) = camera.get_single() else {
+        println!("multiple cameras detected");
+        return;
+    };
+    for event in button_evr.read() {
+        if let ButtonState::Pressed = event.state {
+            if let Some(world_position) = window
+                .cursor_position()
+                .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+                .map(|ray| ray.origin.truncate())
+            {
+                let tile = tiles.iter().find(|(gt, sprite, _, _)| {
+                    let Some(size) = sprite.custom_size else {
+                        return false;
+                    };
+                    let bounds = Rect::from_center_size(gt.translation().truncate(), size);
+                    bounds.contains(world_position)
+                });
+                if let Some((_, _, pos, parent)) = tile {
+                    println!("pressed: {:?}", pos);
+                    pressed.send(TilePressed::new(parent.get(), *pos));
+                }
+            }
+        }
     }
 }
 
-/// Receive [`ButtonContentReady`] event and make content entity a child of a button entity.
-pub fn add_content(
-    mut commands: Commands,
-    button: Query<(Entity, &Parent, &Position), With<Button>>,
-    mut content_arrived: EventReader<ButtonContentReady>,
+/// Receive [`TileFilled`] event and make content entity a child of a button entity.
+pub fn set_tile_image(
+    mut tiles: Query<(&mut Sprite, &mut Handle<Image>, &Parent, &Position)>,
+    mut content_arrived: EventReader<TileFilled>,
 ) {
-    for event in content_arrived.read().cloned() {
-        if let Some((entity, _, _)) = button
-            .iter()
-            .find(|(_, parent, &pos)| parent.get() == event.board && pos == event.pos)
+    for event in content_arrived.read() {
+        if let Some((mut sprite, mut texture, _, _)) = tiles
+            .iter_mut()
+            .find(|(_, _, parent, &pos)| parent.get() == event.board() && pos == event.pos())
         {
-            commands
-                .entity(entity)
-                .clear_children()
-                .with_children(|builder| {
-                    builder.spawn(ButtonContentBundle {
-                        node: NodeBundle {
-                            style: button_image_style(),
-                            background_color: BackgroundColor(Color::WHITE),
-                            ..default()
-                        },
-                        image: UiImage::new(event.image),
-                    });
-                });
+            sprite.color = Color::default();
+            *texture = event.image().clone();
         } else {
-            println!("unable to get button with position: {:?}", event.pos);
+            println!("unable to get button with position: {:?}", event.pos());
             continue;
         }
     }

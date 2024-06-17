@@ -10,11 +10,13 @@ use bevy::ecs::schedule::{NextState, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
+use bevy::math::{Vec2, Vec3};
 use bevy::time::Time;
 use bevy::ui::node_bundles::TextBundle;
 use bevy::ui::widget::Button;
 use bevy::ui::{Interaction, Style, UiRect, Val};
 use bevy::utils::default;
+use bevy::window::{PrimaryWindow, Window};
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
 use game_server::game::{FinishedState, Game, GameState};
 
@@ -27,7 +29,7 @@ use super::game_list::{GameList, GameListBundle};
 use super::ingame::InGameUIBundle;
 use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::board;
+use crate::board::{BoardBundle, TileFilled, TilePressed};
 use crate::bot::{Bot, MoveStrategy};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
@@ -230,6 +232,12 @@ pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui:
     }
 }
 
+pub fn despawn_board(mut commands: Commands, game: Res<CurrentGame>) {
+    if let Some(entity) = game.board_entity() {
+        commands.entity(*entity).despawn_recursive();
+    }
+}
+
 pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let logo = asset_server.load("sprites/logo.png");
     let text_style = menu_text_style(&asset_server);
@@ -393,9 +401,16 @@ pub fn exit_pause(
 
 pub fn setup_game(
     mut commands: Commands,
+    window: Query<&Window, With<PrimaryWindow>>,
     mut game: ResMut<CurrentGame>,
     mut state_updated: EventWriter<StateUpdated>,
 ) {
+    let Ok(window) = window.get_single() else {
+        println!("failed to get single window");
+        return;
+    };
+    let interface_height = window.height() * 0.2;
+    let board_area_height = window.height() - interface_height;
     commands.spawn(root_node_bundle()).with_children(|builder| {
         let player = game.user_data();
         let enemy = game.enemy_data();
@@ -407,16 +422,21 @@ pub fn setup_game(
             enemy.game_player_id(),
             enemy.image().clone(),
         ));
-        let board = builder.spawn(board::BoardBundle::default()).id();
-        game.set_board(board);
-        state_updated.send(StateUpdated(game.state()));
     });
+    let board_size = window.width().min(board_area_height) * 0.8;
+    let board_size = Vec2::new(board_size, board_size);
+    let board_translation = Vec3::new(0.0, -interface_height / 2.0, 0.0);
+    let board = commands
+        .spawn(BoardBundle::new(board_size, board_translation))
+        .id();
+    game.set_board(board);
+    state_updated.send(StateUpdated(game.state()));
 }
 
 /// Tracks ButtonPressed event from board and transforms it into NetworkGameTurn/LocalGameTurn event
 pub fn make_turn(
     mut commands: Commands,
-    mut board_button_pressed: EventReader<board::ButtonPressed>,
+    mut board_button_pressed: EventReader<TilePressed>,
     mut network_turn_data: EventWriter<NetworkGameTurn>,
     mut local_turn_data: EventWriter<LocalGameTurn>,
     game: Res<CurrentGame>,
@@ -429,7 +449,7 @@ pub fn make_turn(
     };
     for event in board_button_pressed.read() {
         if game
-            .get_cell((event.pos.row() as usize, event.pos.col() as usize))
+            .get_cell((event.pos().row() as usize, event.pos().col() as usize))
             .is_some()
         {
             println!("cell is occupied");
@@ -445,7 +465,7 @@ pub fn make_turn(
             &mut network_turn_data,
             &mut local_turn_data,
             Authority::Player(user_id),
-            event.pos,
+            event.pos(),
         );
     }
 }
@@ -582,7 +602,7 @@ pub fn handle_player_games(
 
 pub fn handle_cell_updated(
     mut cell_updated: EventReader<CellUpdated>,
-    mut board_content: EventWriter<board::ButtonContentReady>,
+    mut board_content: EventWriter<TileFilled>,
     game: Res<CurrentGame>,
 ) {
     for event in cell_updated.read() {
@@ -594,11 +614,7 @@ pub fn handle_cell_updated(
             println!("ui board is not set for this game, dropping event");
             continue;
         };
-        board_content.send(board::ButtonContentReady {
-            board: *board,
-            pos: event.pos(),
-            image: img.clone(),
-        });
+        board_content.send(TileFilled::new(*board, event.pos(), img.clone()));
     }
 }
 

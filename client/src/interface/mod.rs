@@ -47,14 +47,20 @@ impl Plugin for InterfacePlugin {
                 cleanup_ui,
             )
             .add_systems(OnEnter(AppState::Paused), setup_pause)
-            .add_systems(OnExit(AppState::Paused), exit_pause)
+            .add_systems(
+                OnExit(AppState::Paused),
+                (
+                    exit_pause,
+                    despawn_board.run_if(not(in_state(AppState::Game))),
+                ),
+            )
             .add_systems(
                 OnEnter(AppState::Game),
                 setup_game.run_if(not(any_with_component::<Node>)),
             )
             .add_systems(
                 OnExit(AppState::Game),
-                cleanup_ui.run_if(not(in_state(AppState::Paused))),
+                (cleanup_ui, despawn_board).run_if(not(in_state(AppState::Paused))),
             )
             .add_systems(
                 Update,
