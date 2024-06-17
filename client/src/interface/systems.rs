@@ -33,7 +33,7 @@ use crate::board::{BoardBundle, TileFilled, TilePressed};
 use crate::bot::{Bot, MoveStrategy};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
-    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, LocalGame, LocalGameTurn,
+    Authority, CellUpdated, CurrentGame, GameExit, GameInfo, LocalGame, LocalGameTurn,
     NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, GrpcClient, TaskEntity};
@@ -628,17 +628,20 @@ pub fn handle_successful_turn(
     }
 }
 
-pub fn handle_game_over(
+pub fn exit_game(
     mut commands: Commands,
-    mut game_over: EventReader<GameOver>,
+    mut game_exit: EventReader<GameExit>,
     game: Res<CurrentGame>,
     asset_server: Res<AssetServer>,
 ) {
-    if let Some(event) = game_over.read().last() {
+    if game_exit.read().next().is_some() {
+        let GameState::Finished(state) = game.state() else {
+            return;
+        };
         let text_style = menu_text_style(&asset_server);
         let style = menu_item_style();
-        let text = match event.deref() {
-            FinishedState::Win(id) if *id == game.user_data().game_player_id() => "You win!",
+        let text = match state {
+            FinishedState::Win(id) if id == game.user_data().game_player_id() => "You win!",
             FinishedState::Win(_) => "You lose!",
             FinishedState::Draw => "It's a draw!",
         };

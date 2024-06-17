@@ -65,3 +65,6 @@ impl SuccessfulTurn {
 
 #[derive(Debug, Deref, Event)]
 pub struct GameOver(pub FinishedState);
+
+#[derive(Event)]
+pub struct GameExit;

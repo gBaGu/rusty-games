@@ -2,11 +2,13 @@ use bevy::input::mouse::MouseButtonInput;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use game_server::game::tic_tac_toe::winning_combinations;
+use game_server::game::{FinishedState, GameState};
 
-use super::components::{Board, TileBundle};
+use super::components::{Board, OneTimeAnimation, TileBundle, WinAnimation};
 use super::events::{TileFilled, TilePressed};
-use super::BORDER_WIDTH;
-use crate::game::Position;
+use super::{calculate_tile_center, calculate_tile_size, create_win_animation, BORDER_WIDTH};
+use crate::game::{CurrentGame, GameExit, GameOver, Position};
 
 fn border_bundle(color: Color, size: Vec2, x: f32, y: f32) -> SpriteBundle {
     SpriteBundle {
@@ -26,36 +28,28 @@ pub fn create(mut commands: Commands, new_board: Query<(Entity, &Sprite), Added<
         let Some(board_size) = sprite.custom_size else {
             continue;
         };
-        let tile_width = (board_size.x - BORDER_WIDTH * 2.0) / 3.0;
-        let tile_height = (board_size.y - BORDER_WIDTH * 2.0) / 3.0;
-        let tile_size = Vec2::new(tile_width, tile_height);
+        let tile_size = calculate_tile_size(board_size);
         commands.entity(entity).with_children(|builder| {
             for row in 0..3 {
                 for col in 0..3 {
-                    let tile_x = (tile_width + BORDER_WIDTH) * col as f32 + tile_width / 2.0
-                        - board_size.x / 2.0;
-                    let tile_y = (tile_height + BORDER_WIDTH) * row as f32 + tile_height / 2.0
-                        - board_size.y / 2.0;
                     // invert y because server expects top left tile to be (0, 0)
-                    let pos = Position::new(2 - row, col);
-                    builder.spawn(TileBundle::new(
-                        tile_size,
-                        Vec3::new(tile_x, tile_y, 1.0),
-                        pos,
-                    ));
+                    let tile_pos = (2 - row, col);
+                    let tile_center = calculate_tile_center(board_size, tile_size, tile_pos);
+                    let pos = Position::new(tile_pos.0, tile_pos.1);
+                    builder.spawn(TileBundle::new(tile_size, tile_center.extend(1.0), pos));
                 }
             }
             // draw borders
-            let v_border_length = tile_height * 0.8;
-            let h_border_length = tile_width * 0.8;
+            let v_border_length = tile_size.y * 0.8;
+            let h_border_length = tile_size.x * 0.8;
             for i in 0..3 {
                 for j in 0..2 {
                     // vertical
                     let v_border_x =
-                        tile_width * (j + 1) as f32 + BORDER_WIDTH * j as f32 + BORDER_WIDTH / 2.0
+                        tile_size.x * (j + 1) as f32 + BORDER_WIDTH * j as f32 + BORDER_WIDTH / 2.0
                             - board_size.x / 2.0;
                     let v_border_y =
-                        tile_height * i as f32 + BORDER_WIDTH * i as f32 + tile_height / 2.0
+                        tile_size.y * i as f32 + BORDER_WIDTH * i as f32 + tile_size.y / 2.0
                             - board_size.y / 2.0;
                     builder.spawn(border_bundle(
                         Color::BLACK,
@@ -65,10 +59,10 @@ pub fn create(mut commands: Commands, new_board: Query<(Entity, &Sprite), Added<
                     ));
                     // horizontal
                     let h_border_x =
-                        tile_width * i as f32 + BORDER_WIDTH * i as f32 + tile_width / 2.0
+                        tile_size.x * i as f32 + BORDER_WIDTH * i as f32 + tile_size.x / 2.0
                             - board_size.x / 2.0;
                     let h_border_y =
-                        tile_height * (j + 1) as f32 + BORDER_WIDTH * j as f32 + BORDER_WIDTH / 2.0
+                        tile_size.y * (j + 1) as f32 + BORDER_WIDTH * j as f32 + BORDER_WIDTH / 2.0
                             - board_size.y / 2.0;
                     builder.spawn(border_bundle(
                         Color::BLACK,
@@ -86,9 +80,13 @@ pub fn handle_input(
     window: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform)>,
     tiles: Query<(&GlobalTransform, &Sprite, &Position, &Parent)>,
+    game: Res<CurrentGame>,
     mut button_evr: EventReader<MouseButtonInput>,
     mut pressed: EventWriter<TilePressed>,
 ) {
+    if matches!(game.state(), GameState::Finished(_)) {
+        return;
+    }
     let Ok(window) = window.get_single() else {
         println!("failed to get single window");
         return;
@@ -120,6 +118,58 @@ pub fn handle_input(
     }
 }
 
+pub fn handle_game_over(
+    mut commands: Commands,
+    board: Query<&Sprite, With<Board>>,
+    mut game_over: EventReader<GameOver>,
+    mut game_exit: EventWriter<GameExit>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    game: Res<CurrentGame>,
+    asset_server: Res<AssetServer>,
+) {
+    if let Some(event) = game_over.read().last() {
+        if matches!(event, GameOver(FinishedState::Win(_))) {
+            let Ok(Some(board_size)) = board.get_single().map(|sprite| sprite.custom_size) else {
+                return;
+            };
+            let Some(board) = game.board_entity() else {
+                return;
+            };
+            let Some((index1, _, index3)) =
+                winning_combinations().into_iter().find(|(id1, id2, id3)| {
+                    let cell1 = game.get_cell((id1.row().into(), id1.col().into()));
+                    let cell2 = game.get_cell((id2.row().into(), id2.col().into()));
+                    let cell3 = game.get_cell((id3.row().into(), id3.col().into()));
+                    if cell1 == cell2 && cell2 == cell3 {
+                        return cell1.is_some();
+                    }
+                    false
+                })
+            else {
+                return;
+            };
+            let animation = commands
+                .spawn(create_win_animation(
+                    &asset_server,
+                    &mut texture_atlas_layouts,
+                    board_size,
+                    (
+                        usize::from(index1.row()) as u32,
+                        usize::from(index1.col()) as u32,
+                    ),
+                    (
+                        usize::from(index3.row()) as u32,
+                        usize::from(index3.col()) as u32,
+                    ),
+                ))
+                .id();
+            commands.entity(*board).add_child(animation);
+        } else {
+            game_exit.send(GameExit);
+        }
+    }
+}
+
 /// Receive [`TileFilled`] event and make content entity a child of a button entity.
 pub fn set_tile_image(
     mut tiles: Query<(&mut Sprite, &mut Handle<Image>, &Parent, &Position)>,
@@ -135,6 +185,26 @@ pub fn set_tile_image(
         } else {
             println!("unable to get button with position: {:?}", event.pos());
             continue;
+        }
+    }
+}
+
+pub fn win_animation(
+    mut animation: Query<
+        (&mut OneTimeAnimation, &mut TextureAtlas, &mut Visibility),
+        With<WinAnimation>,
+    >,
+    mut game_exit: EventWriter<GameExit>,
+    time: Res<Time>,
+) {
+    for (mut animation, mut atlas, mut visibility) in animation.iter_mut() {
+        if animation.tick(time.delta()).just_finished() {
+            if atlas.index < animation.last_sprite_index() {
+                atlas.index += 1;
+            } else {
+                *visibility = Visibility::Hidden;
+                game_exit.send(GameExit);
+            }
         }
     }
 }

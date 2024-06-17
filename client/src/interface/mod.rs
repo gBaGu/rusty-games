@@ -82,7 +82,7 @@ impl Plugin for InterfacePlugin {
                     (
                         make_turn,
                         handle_cell_updated,
-                        handle_game_over,
+                        exit_game,
                         handle_successful_turn,
                     )
                         .run_if(in_state(AppState::Game).and_then(resource_exists::<CurrentGame>)),

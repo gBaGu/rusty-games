@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use std::time::Duration;
 
 use crate::game::Position;
 use crate::interface::common::SECONDARY_COLOR;
@@ -55,6 +56,63 @@ impl TileBundle {
                 ..default()
             },
             position,
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct WinAnimation;
+
+#[derive(Component)]
+pub struct OneTimeAnimation {
+    last_sprite_index: usize,
+    timer: Timer,
+}
+
+impl OneTimeAnimation {
+    pub fn new(last_sprite_index: usize, timer: Timer) -> Self {
+        Self {
+            last_sprite_index,
+            timer,
+        }
+    }
+
+    pub fn last_sprite_index(&self) -> usize {
+        self.last_sprite_index
+    }
+
+    pub fn tick(&mut self, delta: Duration) -> &Timer {
+        self.timer.tick(delta)
+    }
+}
+
+#[derive(Bundle)]
+pub struct WinAnimationBundle {
+    pub animation: OneTimeAnimation,
+    pub sprite_sheet: SpriteSheetBundle,
+    pub tag: WinAnimation,
+}
+
+impl WinAnimationBundle {
+    pub fn new(
+        last_sprite_index: usize,
+        transition_duration: Duration,
+        texture: Handle<Image>,
+        layout: Handle<TextureAtlasLayout>,
+        transform: Transform,
+    ) -> Self {
+        Self {
+            animation: OneTimeAnimation::new(
+                last_sprite_index,
+                Timer::new(transition_duration, TimerMode::Repeating),
+            ),
+            sprite_sheet: SpriteSheetBundle {
+                texture,
+                atlas: TextureAtlas { layout, index: 0 },
+                transform,
+                ..default()
+            },
+            tag: WinAnimation,
         }
     }
 }
