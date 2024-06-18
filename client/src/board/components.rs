@@ -1,5 +1,6 @@
-use bevy::prelude::*;
 use std::time::Duration;
+
+use bevy::prelude::*;
 
 use crate::game::Position;
 use crate::interface::common::SECONDARY_COLOR;
@@ -60,9 +61,11 @@ impl TileBundle {
     }
 }
 
+/// Empty component to indicate that an entity is win animation.
 #[derive(Component)]
 pub struct WinAnimation;
 
+/// Component for animation that will be player once
 #[derive(Component)]
 pub struct OneTimeAnimation {
     last_sprite_index: usize,
@@ -70,10 +73,10 @@ pub struct OneTimeAnimation {
 }
 
 impl OneTimeAnimation {
-    pub fn new(last_sprite_index: usize, timer: Timer) -> Self {
+    pub fn new(last_sprite_index: usize, transition_duration: Duration) -> Self {
         Self {
             last_sprite_index,
-            timer,
+            timer: Timer::new(transition_duration, TimerMode::Repeating),
         }
     }
 
@@ -86,6 +89,7 @@ impl OneTimeAnimation {
     }
 }
 
+/// A bundle for drawing win animation
 #[derive(Bundle)]
 pub struct WinAnimationBundle {
     pub animation: OneTimeAnimation,
@@ -102,10 +106,7 @@ impl WinAnimationBundle {
         transform: Transform,
     ) -> Self {
         Self {
-            animation: OneTimeAnimation::new(
-                last_sprite_index,
-                Timer::new(transition_duration, TimerMode::Repeating),
-            ),
+            animation: OneTimeAnimation::new(last_sprite_index, transition_duration),
             sprite_sheet: SpriteSheetBundle {
                 texture,
                 atlas: TextureAtlas { layout, index: 0 },
