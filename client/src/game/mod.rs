@@ -9,7 +9,7 @@ use bevy::prelude::*;
 
 pub use components::Position;
 pub use events::{
-    CellUpdated, GameOver, LocalGameTurn, NetworkGameTurn, StateUpdated, SuccessfulTurn,
+    CellUpdated, GameExit, GameOver, LocalGameTurn, NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
 pub use game_info::{FullGameInfo, GameInfo};
 pub use resources::{Authority, CurrentGame, GameType, LocalGame};
@@ -41,6 +41,7 @@ impl Plugin for GamePlugin {
             .add_event::<LocalGameTurn>()
             .add_event::<SuccessfulTurn>()
             .add_event::<GameOver>()
+            .add_event::<GameExit>()
             .init_resource::<RefreshGameTimer>()
             .add_systems(
                 Update,

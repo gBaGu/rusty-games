@@ -5,9 +5,9 @@ use super::components::{
     EmptyNextPlayerImageBundle, GameStateContainer, GameStateContainerBundle, InGameUI, NextPlayer,
     PlayerImageBundle, PlayerInfo, PlayerInfoContainerBundle,
 };
+use super::{ENEMY_TURN_COLOR, FONT_SIZE, PLAYER_TURN_COLOR};
 use crate::game::StateUpdated;
-
-use super::{ENEMY_TURN_COLOR, FONT_PATH, FONT_SIZE, PLAYER_TURN_COLOR, TEXT_COLOR};
+use crate::interface::common::{FONT_PATH, SECONDARY_COLOR};
 
 pub fn create(
     mut commands: Commands,
@@ -18,7 +18,7 @@ pub fn create(
         let text_style = TextStyle {
             font: asset_server.load(FONT_PATH),
             font_size: FONT_SIZE,
-            color: TEXT_COLOR,
+            color: SECONDARY_COLOR,
         };
         for (entity, data) in new_ingame_ui.iter() {
             commands.entity(entity).with_children(|builder| {

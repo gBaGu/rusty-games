@@ -84,7 +84,7 @@ impl From<FieldCol> for usize {
     }
 }
 
-fn winning_combinations() -> [(Index, Index, Index); 8] {
+pub fn winning_combinations() -> [(Index, Index, Index); 8] {
     [
         (
             Index::new(FieldRow::R1, FieldCol::C1),

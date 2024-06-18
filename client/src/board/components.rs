@@ -1,53 +1,34 @@
-use bevy::prelude::{BackgroundColor, Bundle, Color, Component, default, Display, GridTrack, JustifyContent, NodeBundle, Style, UiImage, UiRect, Val};
-use bevy::ui::node_bundles;
+use std::time::Duration;
+
+use bevy::prelude::*;
 
 use crate::game::Position;
+use crate::interface::common::SECONDARY_COLOR;
 
 /// Empty component to indicate that an entity is a board.
-#[derive(Debug, Component)]
+#[derive(Component)]
 pub struct Board;
 
 // Bundles
 
 /// Bundle for a board.
-/// Contains [`NodeBundle`] and a [`Board`].
-/// `self.node` must have a [`Style`] component with`display` set to [`Display::Grid`]
-#[derive(Debug, Bundle)]
+/// Contains [`SpriteBundle`] and a [`Board`].
+#[derive(Bundle)]
 pub struct BoardBundle {
-    pub node: NodeBundle,
+    pub background: SpriteBundle,
     pub board: Board,
 }
 
-impl Default for BoardBundle {
-    fn default() -> Self {
+impl BoardBundle {
+    pub fn new(size: Vec2, translation: Vec3) -> Self {
         Self {
-            node: NodeBundle {
-                style: Style {
-                    height: Val::Percent(100.0),
-                    aspect_ratio: Some(1.0),
-                    display: Display::Grid,
-                    margin: UiRect::all(Val::Px(10.0)),
-                    padding: UiRect::all(Val::Px(20.0)),
-                    grid_template_columns: vec![
-                        GridTrack::flex(1.0),
-                        GridTrack::min_content(),
-                        GridTrack::flex(1.0),
-                        GridTrack::min_content(),
-                        GridTrack::flex(1.0),
-                    ],
-                    grid_template_rows: vec![
-                        GridTrack::flex(1.0),
-                        GridTrack::min_content(),
-                        GridTrack::flex(1.0),
-                        GridTrack::min_content(),
-                        GridTrack::flex(1.0),
-                    ],
-                    row_gap: Val::Px(12.0),
-                    column_gap: Val::Px(12.0),
-                    justify_content: JustifyContent::Center,
+            background: SpriteBundle {
+                sprite: Sprite {
+                    color: SECONDARY_COLOR,
+                    custom_size: Some(size),
                     ..default()
                 },
-                background_color: BackgroundColor(Color::GRAY),
+                transform: Transform::from_translation(translation),
                 ..default()
             },
             board: Board,
@@ -55,18 +36,84 @@ impl Default for BoardBundle {
     }
 }
 
-/// Bundle for board button.
-/// Contains [`node_bundles::ButtonBundle`] and [`Position`].
-#[derive(Debug, Bundle)]
-pub struct ButtonBundle {
-    pub button: node_bundles::ButtonBundle,
+/// Bundle for a board tile.
+/// Contains [`SpriteBundle`] and a [`Position`].
+#[derive(Bundle)]
+pub struct TileBundle {
+    pub sprite: SpriteBundle,
     pub position: Position,
 }
 
-/// Bundle for image inside a button.
-/// Contains [`NodeBundle`] and [`UiImage`].
-#[derive(Debug, Bundle)]
-pub struct ButtonContentBundle {
-    pub node: NodeBundle,
-    pub image: UiImage,
+impl TileBundle {
+    pub fn new(size: Vec2, translation: Vec3, position: Position) -> Self {
+        Self {
+            sprite: SpriteBundle {
+                sprite: Sprite {
+                    color: Color::NONE,
+                    custom_size: Some(size),
+                    ..default()
+                },
+                transform: Transform::from_translation(translation),
+                ..default()
+            },
+            position,
+        }
+    }
+}
+
+/// Empty component to indicate that an entity is win animation.
+#[derive(Component)]
+pub struct WinAnimation;
+
+/// Component for animation that will be player once
+#[derive(Component)]
+pub struct OneTimeAnimation {
+    last_sprite_index: usize,
+    timer: Timer,
+}
+
+impl OneTimeAnimation {
+    pub fn new(last_sprite_index: usize, transition_duration: Duration) -> Self {
+        Self {
+            last_sprite_index,
+            timer: Timer::new(transition_duration, TimerMode::Repeating),
+        }
+    }
+
+    pub fn last_sprite_index(&self) -> usize {
+        self.last_sprite_index
+    }
+
+    pub fn tick(&mut self, delta: Duration) -> &Timer {
+        self.timer.tick(delta)
+    }
+}
+
+/// A bundle for drawing win animation
+#[derive(Bundle)]
+pub struct WinAnimationBundle {
+    pub animation: OneTimeAnimation,
+    pub sprite_sheet: SpriteSheetBundle,
+    pub tag: WinAnimation,
+}
+
+impl WinAnimationBundle {
+    pub fn new(
+        last_sprite_index: usize,
+        transition_duration: Duration,
+        texture: Handle<Image>,
+        layout: Handle<TextureAtlasLayout>,
+        transform: Transform,
+    ) -> Self {
+        Self {
+            animation: OneTimeAnimation::new(last_sprite_index, transition_duration),
+            sprite_sheet: SpriteSheetBundle {
+                texture,
+                atlas: TextureAtlas { layout, index: 0 },
+                transform,
+                ..default()
+            },
+            tag: WinAnimation,
+        }
+    }
 }

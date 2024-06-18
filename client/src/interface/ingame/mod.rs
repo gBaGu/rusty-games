@@ -4,14 +4,13 @@ mod systems;
 use bevy::prelude::*;
 
 pub use components::{InGameUIBundle};
+use super::common::PRIMARY_COLOR;
 use systems::{create, handle_state_update};
 
-pub const FONT_PATH: &str = "fonts/FiraSans-Bold.ttf";
 pub const FONT_SIZE: f32 = 40.0;
 pub const ITEM_HEIGHT: f32 = 80.0;
-pub const TEXT_COLOR: Color = Color::OLIVE;
-pub const PLAYER_TURN_COLOR: Color = Color::DARK_GREEN;
-pub const ENEMY_TURN_COLOR: Color = Color::RED;
+pub const PLAYER_TURN_COLOR: Color = PRIMARY_COLOR;
+pub const ENEMY_TURN_COLOR: Color = Color::rgb(0.94, 0.64, 0.64);
 
 pub struct InGameUIPlugin;
 

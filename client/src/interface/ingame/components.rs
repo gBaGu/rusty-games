@@ -68,6 +68,7 @@ impl InGameUIBundle {
                     width: Val::Percent(100.0),
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
+                    margin: UiRect::bottom(Val::Auto),
                     ..default()
                 },
                 ..default()
@@ -100,7 +101,7 @@ impl PlayerInfoContainerBundle {
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
-                    border: UiRect::all(Val::Px(1.0)),
+                    border: UiRect::all(Val::Px(2.0)),
                     ..default()
                 },
                 ..default()

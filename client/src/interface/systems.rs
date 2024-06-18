@@ -10,32 +10,36 @@ use bevy::ecs::schedule::{NextState, State};
 use bevy::ecs::system::{Commands, Query};
 use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
 use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
+use bevy::math::{Vec2, Vec3};
 use bevy::time::Time;
 use bevy::ui::node_bundles::TextBundle;
 use bevy::ui::widget::Button;
-use bevy::ui::Interaction;
+use bevy::ui::{Interaction, Style, UiRect, Val};
+use bevy::utils::default;
+use bevy::window::{PrimaryWindow, Window};
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
 use game_server::game::{FinishedState, Game, GameState};
 
 use super::components::{
     CreateGame, JoinGame, MenuNavigationButtonBundle, NetworkGameTextInputBundle, Overlay,
     OverlayNodeBundle, Setting, SettingTextInputBundle, SubmitButton, SubmitButtonBundle,
+    UiImageBundle,
 };
 use super::game_list::{GameList, GameListBundle};
 use super::ingame::InGameUIBundle;
 use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::board;
+use crate::board::{BoardBundle, TileFilled, TilePressed};
 use crate::bot::{Bot, MoveStrategy};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
-    Authority, CellUpdated, CurrentGame, GameInfo, GameOver, LocalGame, LocalGameTurn,
+    Authority, CellUpdated, CurrentGame, GameExit, GameInfo, LocalGame, LocalGameTurn,
     NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
 use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, GrpcClient, TaskEntity};
 use crate::interface::common::{
-    column_node_bundle, global_column_node_bundle, menu_item_style, menu_text_style,
-    row_node_bundle, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, TURN_SOUND_PATH,
+    column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
+    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, TURN_SOUND_PATH,
 };
 use crate::interface::events::{PlayerGamesReady, SubmitPressed};
 use crate::Settings;
@@ -107,8 +111,6 @@ pub fn join_game(
     asset_server: Res<AssetServer>,
 ) {
     let Some(user_id) = settings.user_id() else {
-        println!("unable to join game without user id");
-        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
         return;
     };
     if let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) {
@@ -230,80 +232,90 @@ pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui:
     }
 }
 
+pub fn despawn_board(mut commands: Commands, game: Res<CurrentGame>) {
+    if let Some(entity) = game.board_entity() {
+        commands.entity(*entity).despawn_recursive();
+    }
+}
+
 pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let logo = asset_server.load("sprites/logo.png");
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            for (state, text) in [
-                (AppState::Menu(MenuState::PlayWithBot), "Play"),
-                (AppState::Menu(MenuState::PlayOverNetwork), "Network"),
-                (AppState::Menu(MenuState::Settings), "Settings"),
-            ] {
-                builder
-                    .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
-                    .with_child(TextBundle::from_section(text, text_style.clone()));
-            }
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder.spawn(UiImageBundle::new(
+            Style {
+                height: Val::Px(LOGO_HEIGHT),
+                width: Val::Px(LOGO_WIDTH),
+                margin: UiRect::all(Val::Px(20.)),
+                ..default()
+            },
+            logo,
+        ));
+        for (state, text) in [
+            (AppState::Menu(MenuState::PlayWithBot), "Play"),
+            (AppState::Menu(MenuState::PlayOverNetwork), "Network"),
+            (AppState::Menu(MenuState::Settings), "Settings"),
+        ] {
             builder
-                .spawn(MenuNavigationButtonBundle::exit(style))
-                .with_child(TextBundle::from_section("Exit", text_style));
-        });
+                .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
+                .with_child(TextBundle::from_section(text, text_style.clone()));
+        }
+        builder
+            .spawn(MenuNavigationButtonBundle::exit(style))
+            .with_child(TextBundle::from_section("Exit", text_style));
+    });
 }
 
 pub fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            builder.spawn(row_node_bundle()).with_children(|builder| {
-                builder.spawn(TextBundle::from_section("Set user id:", text_style.clone()));
-                let input = builder
-                    .spawn(SettingTextInputBundle::new(
-                        style.clone(),
-                        text_style.clone(),
-                        Setting::UserId,
-                    ))
-                    .id();
-                builder
-                    .spawn(SubmitButtonBundle::new(style.clone(), input))
-                    .with_child(TextBundle::from_section("Save", text_style.clone()));
-            });
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
-                    style,
-                    AppState::Menu(MenuState::Main),
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder.spawn(row_node_bundle()).with_children(|builder| {
+            builder.spawn(TextBundle::from_section("Set user id:", text_style.clone()));
+            let input = builder
+                .spawn(SettingTextInputBundle::new(
+                    style.clone(),
+                    text_style.clone(),
+                    Setting::UserId,
                 ))
-                .with_child(TextBundle::from_section("Back", text_style));
+                .id();
+            builder
+                .spawn(SubmitButtonBundle::new(style.clone(), input))
+                .with_child(TextBundle::from_section("Save", text_style.clone()));
         });
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style,
+                AppState::Menu(MenuState::Main),
+            ))
+            .with_child(TextBundle::from_section("Back", text_style));
+    });
 }
 
 pub fn setup_play_with_bot_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
-                    AppState::Game,
-                ))
-                .with_child(TextBundle::from_section(
-                    "Play with bot",
-                    text_style.clone(),
-                ));
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
-                    AppState::Menu(MenuState::Main),
-                ))
-                .with_child(TextBundle::from_section("Back", text_style));
-        });
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style.clone(),
+                AppState::Game,
+            ))
+            .with_child(TextBundle::from_section(
+                "Play with bot",
+                text_style.clone(),
+            ));
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style.clone(),
+                AppState::Menu(MenuState::Main),
+            ))
+            .with_child(TextBundle::from_section("Back", text_style));
+    });
 }
 
 pub fn setup_play_over_network_menu(
@@ -325,29 +337,27 @@ pub fn setup_play_over_network_menu(
     } else {
         game_list.list = GameList::Message("No user id provided".into());
     }
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            builder.spawn(row_node_bundle()).with_children(|builder| {
-                builder.spawn(TextBundle::from_section("Opponent id:", text_style.clone()));
-                let input = builder
-                    .spawn(NetworkGameTextInputBundle::new(
-                        style.clone(),
-                        text_style.clone(),
-                    ))
-                    .id();
-                builder
-                    .spawn(SubmitButtonBundle::new(style.clone(), input))
-                    .with_child(TextBundle::from_section("Create game", text_style.clone()));
-            });
-            builder.spawn(game_list);
-            builder
-                .spawn(MenuNavigationButtonBundle::new(
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        builder.spawn(row_node_bundle()).with_children(|builder| {
+            builder.spawn(TextBundle::from_section("Opponent id:", text_style.clone()));
+            let input = builder
+                .spawn(NetworkGameTextInputBundle::new(
                     style.clone(),
-                    AppState::Menu(MenuState::Main),
+                    text_style.clone(),
                 ))
-                .with_child(TextBundle::from_section("Back", text_style));
+                .id();
+            builder
+                .spawn(SubmitButtonBundle::new(style.clone(), input))
+                .with_child(TextBundle::from_section("Create game", text_style.clone()));
         });
+        builder.spawn(game_list);
+        builder
+            .spawn(MenuNavigationButtonBundle::new(
+                style.clone(),
+                AppState::Menu(MenuState::Main),
+            ))
+            .with_child(TextBundle::from_section("Back", text_style));
+    });
 }
 
 pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -391,32 +401,42 @@ pub fn exit_pause(
 
 pub fn setup_game(
     mut commands: Commands,
+    window: Query<&Window, With<PrimaryWindow>>,
     mut game: ResMut<CurrentGame>,
     mut state_updated: EventWriter<StateUpdated>,
 ) {
-    commands
-        .spawn(global_column_node_bundle())
-        .with_children(|builder| {
-            let player = game.user_data();
-            let enemy = game.enemy_data();
-            builder.spawn(InGameUIBundle::new(
-                player.auth(),
-                player.game_player_id(),
-                player.image().clone(),
-                enemy.auth(),
-                enemy.game_player_id(),
-                enemy.image().clone(),
-            ));
-            let board = builder.spawn(board::BoardBundle::default()).id();
-            game.set_board(board);
-            state_updated.send(StateUpdated(game.state()));
-        });
+    let Ok(window) = window.get_single() else {
+        println!("failed to get single window");
+        return;
+    };
+    let interface_height = window.height() * 0.2;
+    let board_area_height = window.height() - interface_height;
+    commands.spawn(root_node_bundle()).with_children(|builder| {
+        let player = game.user_data();
+        let enemy = game.enemy_data();
+        builder.spawn(InGameUIBundle::new(
+            player.auth(),
+            player.game_player_id(),
+            player.image().clone(),
+            enemy.auth(),
+            enemy.game_player_id(),
+            enemy.image().clone(),
+        ));
+    });
+    let board_size = window.width().min(board_area_height) * 0.8;
+    let board_size = Vec2::new(board_size, board_size);
+    let board_translation = Vec3::new(0.0, -interface_height / 2.0, 0.0);
+    let board = commands
+        .spawn(BoardBundle::new(board_size, board_translation))
+        .id();
+    game.set_board(board);
+    state_updated.send(StateUpdated(game.state()));
 }
 
 /// Tracks ButtonPressed event from board and transforms it into NetworkGameTurn/LocalGameTurn event
 pub fn make_turn(
     mut commands: Commands,
-    mut board_button_pressed: EventReader<board::ButtonPressed>,
+    mut board_button_pressed: EventReader<TilePressed>,
     mut network_turn_data: EventWriter<NetworkGameTurn>,
     mut local_turn_data: EventWriter<LocalGameTurn>,
     game: Res<CurrentGame>,
@@ -429,7 +449,7 @@ pub fn make_turn(
     };
     for event in board_button_pressed.read() {
         if game
-            .get_cell((event.pos.row() as usize, event.pos.col() as usize))
+            .get_cell((event.pos().row() as usize, event.pos().col() as usize))
             .is_some()
         {
             println!("cell is occupied");
@@ -445,7 +465,7 @@ pub fn make_turn(
             &mut network_turn_data,
             &mut local_turn_data,
             Authority::Player(user_id),
-            event.pos,
+            event.pos(),
         );
     }
 }
@@ -582,7 +602,7 @@ pub fn handle_player_games(
 
 pub fn handle_cell_updated(
     mut cell_updated: EventReader<CellUpdated>,
-    mut board_content: EventWriter<board::ButtonContentReady>,
+    mut board_content: EventWriter<TileFilled>,
     game: Res<CurrentGame>,
 ) {
     for event in cell_updated.read() {
@@ -594,11 +614,7 @@ pub fn handle_cell_updated(
             println!("ui board is not set for this game, dropping event");
             continue;
         };
-        board_content.send(board::ButtonContentReady {
-            board: *board,
-            pos: event.pos(),
-            image: img.clone(),
-        });
+        board_content.send(TileFilled::new(*board, event.pos(), img.clone()));
     }
 }
 
@@ -612,17 +628,20 @@ pub fn handle_successful_turn(
     }
 }
 
-pub fn handle_game_over(
+pub fn exit_game(
     mut commands: Commands,
-    mut game_over: EventReader<GameOver>,
+    mut game_exit: EventReader<GameExit>,
     game: Res<CurrentGame>,
     asset_server: Res<AssetServer>,
 ) {
-    if let Some(event) = game_over.read().last() {
+    if game_exit.read().next().is_some() {
+        let GameState::Finished(state) = game.state() else {
+            return;
+        };
         let text_style = menu_text_style(&asset_server);
         let style = menu_item_style();
-        let text = match event.deref() {
-            FinishedState::Win(id) if *id == game.user_data().game_player_id() => "You win!",
+        let text = match state {
+            FinishedState::Win(id) if id == game.user_data().game_player_id() => "You win!",
             FinishedState::Win(_) => "You lose!",
             FinishedState::Draw => "It's a draw!",
         };
