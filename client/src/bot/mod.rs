@@ -1,18 +1,27 @@
 mod components;
-mod systems;
 mod strategy;
+mod systems;
 
 use bevy::prelude::*;
 
 pub use components::Bot;
 pub use strategy::MoveStrategy;
-use crate::app_state::AppState;
-use crate::bot::systems::make_turn;
+
+use crate::game::GameStateSystems;
+use systems::make_turn;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BotSystems;
 
 pub struct BotPlugin;
 
 impl Plugin for BotPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, make_turn.run_if(in_state(AppState::Game)));
+        app.add_systems(
+            Update,
+            make_turn
+                .in_set(BotSystems)
+                .in_set(GameStateSystems::InProgress),
+        );
     }
 }

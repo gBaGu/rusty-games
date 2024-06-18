@@ -3,8 +3,10 @@ mod systems;
 
 use bevy::prelude::*;
 
-pub use components::{InGameUIBundle};
+pub use components::InGameUIBundle;
+
 use super::common::PRIMARY_COLOR;
+use crate::game::GameSystems;
 use systems::{create, handle_state_update};
 
 pub const FONT_SIZE: f32 = 40.0;
@@ -20,7 +22,7 @@ impl Plugin for InGameUIPlugin {
             Update,
             (
                 create,
-                handle_state_update.after(create),
+                handle_state_update.in_set(GameSystems).after(create),
             ),
         );
     }

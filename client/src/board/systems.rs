@@ -3,7 +3,7 @@ use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use game_server::game::tic_tac_toe::winning_combinations;
-use game_server::game::{FinishedState, GameState};
+use game_server::game::FinishedState;
 
 use super::components::{Board, OneTimeAnimation, TileBundle, WinAnimation};
 use super::events::{TileFilled, TilePressed};
@@ -80,13 +80,9 @@ pub fn handle_input(
     window: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform)>,
     tiles: Query<(&GlobalTransform, &Sprite, &Position, &Parent)>,
-    game: Res<CurrentGame>,
     mut button_evr: EventReader<MouseButtonInput>,
     mut pressed: EventWriter<TilePressed>,
 ) {
-    if matches!(game.state(), GameState::Finished(_)) {
-        return;
-    }
     let Ok(window) = window.get_single() else {
         println!("failed to get single window");
         return;
@@ -170,12 +166,12 @@ pub fn handle_game_over(
     }
 }
 
-/// Receive [`TileFilled`] event and make content entity a child of a button entity.
+/// Receive [`TileFilled`] event and set tile sprite image.
 pub fn set_tile_image(
     mut tiles: Query<(&mut Sprite, &mut Handle<Image>, &Parent, &Position)>,
-    mut content_arrived: EventReader<TileFilled>,
+    mut tile_filled: EventReader<TileFilled>,
 ) {
-    for event in content_arrived.read() {
+    for event in tile_filled.read() {
         if let Some((mut sprite, mut texture, _, _)) = tiles
             .iter_mut()
             .find(|(_, _, parent, &pos)| parent.get() == event.board() && pos == event.pos())

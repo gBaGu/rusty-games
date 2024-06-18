@@ -6,6 +6,7 @@ mod resources;
 mod systems;
 
 use bevy::prelude::*;
+use game_server::game::GameState;
 
 pub use components::Position;
 pub use events::{
@@ -14,12 +15,9 @@ pub use events::{
 pub use game_info::{FullGameInfo, GameInfo};
 pub use resources::{Authority, CurrentGame, GameType, LocalGame};
 
-use crate::game::systems::{make_turn_local, make_turn_network};
 use crate::grpc::CallGetGame;
 use resources::RefreshGameTimer;
-use systems::{
-    game_initialized, handle_make_turn, handle_state_updated, refresh_game, update_game,
-};
+use systems::*;
 
 pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 
@@ -30,6 +28,31 @@ pub const BOARD_SIZE: usize = 3;
 
 const BOARD_PROTO_SIZE: usize = BOARD_SIZE * BOARD_SIZE;
 const PLAYERS_SIZE: usize = 2;
+
+fn game_is_finished(game: Option<Res<CurrentGame>>) -> bool {
+    matches!(
+        game.and_then(|game| Some(game.state())),
+        Some(GameState::Finished(_))
+    )
+}
+
+fn game_is_in_progress(game: Option<Res<CurrentGame>>) -> bool {
+    matches!(
+        game.and_then(|game| Some(game.state())),
+        Some(GameState::Turn(_))
+    )
+}
+
+/// System set that is being run if there is an active game.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GameSystems;
+
+/// System set that is being run depending on a current game [`GameState`]
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GameStateSystems {
+    InProgress,
+    Finished,
+}
 
 pub struct GamePlugin;
 
@@ -43,20 +66,34 @@ impl Plugin for GamePlugin {
             .add_event::<GameOver>()
             .add_event::<GameExit>()
             .init_resource::<RefreshGameTimer>()
+            .configure_sets(Update, GameSystems.run_if(resource_exists::<CurrentGame>))
+            .configure_sets(
+                Update,
+                (
+                    GameStateSystems::InProgress.run_if(game_is_in_progress),
+                    GameStateSystems::Finished.run_if(game_is_finished),
+                ),
+            )
             .add_systems(
                 Update,
                 (
                     game_initialized.run_if(resource_added::<CurrentGame>),
+                    handle_state_updated,
+                )
+                    .in_set(GameSystems),
+            )
+            .add_systems(
+                Update,
+                (
                     refresh_game.run_if(
                         not(any_with_component::<CallGetGame>)
-                            .and_then(resource_exists::<CurrentGame>)
                             .and_then(not(resource_exists::<LocalGame>)),
                     ),
-                    (make_turn_network, make_turn_local).run_if(resource_exists::<CurrentGame>),
-                    update_game,
-                    handle_make_turn,
-                    handle_state_updated,
-                ),
-            );
+                    make_turn_network,
+                    make_turn_local,
+                )
+                    .in_set(GameStateSystems::InProgress),
+            )
+            .add_systems(Update, (update_game, handle_make_turn)); // grpc call handlers
     }
 }

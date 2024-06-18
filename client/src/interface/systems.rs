@@ -602,7 +602,7 @@ pub fn handle_player_games(
 
 pub fn handle_cell_updated(
     mut cell_updated: EventReader<CellUpdated>,
-    mut board_content: EventWriter<TileFilled>,
+    mut tile_filled: EventWriter<TileFilled>,
     game: Res<CurrentGame>,
 ) {
     for event in cell_updated.read() {
@@ -614,7 +614,7 @@ pub fn handle_cell_updated(
             println!("ui board is not set for this game, dropping event");
             continue;
         };
-        board_content.send(TileFilled::new(*board, event.pos(), img.clone()));
+        tile_filled.send(TileFilled::new(*board, event.pos(), img.clone()));
     }
 }
 
@@ -628,7 +628,7 @@ pub fn handle_successful_turn(
     }
 }
 
-pub fn exit_game(
+pub fn create_game_over_overlay(
     mut commands: Commands,
     mut game_exit: EventReader<GameExit>,
     game: Res<CurrentGame>,
