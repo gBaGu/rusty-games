@@ -73,8 +73,8 @@ impl Plugin for BoardPlugin {
                 (
                     create,
                     set_tile_image,
-                    win_animation,
-                    (handle_input, handle_game_over).run_if(resource_exists::<CurrentGame>),
+                    (handle_input, handle_game_over, win_animation)
+                        .run_if(resource_exists::<CurrentGame>),
                 ),
             );
     }

@@ -190,19 +190,21 @@ pub fn set_tile_image(
 }
 
 pub fn win_animation(
-    mut animation: Query<
-        (&mut OneTimeAnimation, &mut TextureAtlas, &mut Visibility),
-        With<WinAnimation>,
-    >,
+    mut commands: Commands,
+    mut animation: Query<(Entity, &mut OneTimeAnimation, &mut TextureAtlas), With<WinAnimation>>,
     mut game_exit: EventWriter<GameExit>,
+    game: Res<CurrentGame>,
     time: Res<Time>,
 ) {
-    for (mut animation, mut atlas, mut visibility) in animation.iter_mut() {
+    for (entity, mut animation, mut atlas) in animation.iter_mut() {
         if animation.tick(time.delta()).just_finished() {
             if atlas.index < animation.last_sprite_index() {
                 atlas.index += 1;
             } else {
-                *visibility = Visibility::Hidden;
+                if let Some(board) = game.board_entity() {
+                    commands.entity(*board).remove_children(&[entity]);
+                    commands.entity(entity).despawn();
+                }
                 game_exit.send(GameExit);
             }
         }
