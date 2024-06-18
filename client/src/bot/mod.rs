@@ -7,7 +7,7 @@ use bevy::prelude::*;
 pub use components::Bot;
 pub use strategy::MoveStrategy;
 
-use crate::game::GameStateSystems;
+use crate::game::{GameStateSystems, GameTypeSystems};
 use systems::make_turn;
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -21,7 +21,8 @@ impl Plugin for BotPlugin {
             Update,
             make_turn
                 .in_set(BotSystems)
-                .in_set(GameStateSystems::InProgress),
+                .in_set(GameStateSystems::InProgress)
+                .in_set(GameTypeSystems::Local),
         );
     }
 }

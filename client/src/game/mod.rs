@@ -43,6 +43,20 @@ fn game_is_in_progress(game: Option<Res<CurrentGame>>) -> bool {
     )
 }
 
+fn is_local_game(game: Option<Res<CurrentGame>>) -> bool {
+    matches!(
+        game.and_then(|game| Some(game.game_type())),
+        Some(GameType::Local)
+    )
+}
+
+fn is_network_game(game: Option<Res<CurrentGame>>) -> bool {
+    matches!(
+        game.and_then(|game| Some(game.game_type())),
+        Some(GameType::Network(_))
+    )
+}
+
 /// System set that is being run if there is an active game.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GameSystems;
@@ -52,6 +66,13 @@ pub struct GameSystems;
 pub enum GameStateSystems {
     InProgress,
     Finished,
+}
+
+/// System set that is being run depending on a current game [`GameType`]
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GameTypeSystems {
+    Local,
+    Network,
 }
 
 pub struct GamePlugin;
@@ -74,6 +95,13 @@ impl Plugin for GamePlugin {
                     GameStateSystems::Finished.run_if(game_is_finished),
                 ),
             )
+            .configure_sets(
+                Update,
+                (
+                    GameTypeSystems::Local.run_if(is_local_game),
+                    GameTypeSystems::Network.run_if(is_network_game),
+                ),
+            )
             .add_systems(
                 Update,
                 (
@@ -85,12 +113,12 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
-                    refresh_game.run_if(
-                        not(any_with_component::<CallGetGame>)
-                            .and_then(not(resource_exists::<LocalGame>)),
-                    ),
-                    make_turn_network,
-                    make_turn_local,
+                    (
+                        refresh_game.run_if(not(any_with_component::<CallGetGame>)),
+                        make_turn_network,
+                    )
+                        .in_set(GameTypeSystems::Network),
+                    make_turn_local.in_set(GameTypeSystems::Local),
                 )
                     .in_set(GameStateSystems::InProgress),
             )

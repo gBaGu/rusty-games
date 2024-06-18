@@ -58,9 +58,6 @@ pub fn make_turn_network(
     asset_server: Res<AssetServer>,
 ) {
     for event in turn_data.read() {
-        if !matches!(game.game_type(), GameType::Network(_)) {
-            continue;
-        }
         if event.auth != game.user_data().auth() {
             println!("{:?} is not authorized to make turn", event.auth);
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
@@ -93,9 +90,6 @@ pub fn make_turn_local(
     asset_server: Res<AssetServer>,
 ) {
     for event in turn_data.read() {
-        if game.game_type() != GameType::Local {
-            continue;
-        }
         let Some(next_player) = game.get_next_player() else {
             println!("cannot make turn in this game");
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
