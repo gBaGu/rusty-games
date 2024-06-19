@@ -3,9 +3,7 @@ use std::ops::DerefMut;
 use std::time::Duration;
 
 use async_compat::CompatExt;
-use bevy::prelude::{
-    Commands, Component, Deref, DerefMut, Entity, Res, ResMut, Resource, TimerMode,
-};
+use bevy::prelude::{Commands, Component, Deref, DerefMut, Entity, Res, ResMut, Resource, SystemSet, TimerMode};
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
 use bevy::time::{Time, Timer};
 use game_server::proto;
@@ -16,6 +14,14 @@ use tonic::Request;
 
 pub const DEFAULT_GRPC_SERVER_ADDRESS: &str = "http://localhost:50051";
 pub const RECONNECT_INTERVAL_SEC: f32 = 5.0;
+
+pub fn is_client_connected(client: Res<GrpcClient>) -> bool {
+    client.is_some()
+}
+
+/// System set for network communication systems.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NetworkSystems;
 
 pub type GameClient = proto::game_client::GameClient<transport::Channel>;
 

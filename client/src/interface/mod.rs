@@ -13,7 +13,7 @@ use bevy_simple_text_input::TextInputPlugin;
 use crate::app_state::{AppState, MenuState};
 use crate::board::Board;
 use crate::game::{GameStateSystems, GameSystems};
-use crate::grpc::CallGetPlayerGames;
+use crate::grpc::{CallGetPlayerGames, NetworkSystems};
 use events::{PlayerGamesReady, SubmitPressed};
 use ingame::InGameUIPlugin;
 use resources::RefreshGamesTimer;
@@ -72,11 +72,15 @@ impl Plugin for InterfacePlugin {
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (
-                        refresh_player_games.run_if(not(any_with_component::<CallGetPlayerGames>)),
-                        handle_player_games_task,
+                        (
+                            refresh_player_games
+                                .run_if(not(any_with_component::<CallGetPlayerGames>)),
+                            create_game,
+                            join_game,
+                        )
+                            .in_set(NetworkSystems),
+                        handle_player_games_task, // grpc call handler
                         handle_player_games,
-                        create_game,
-                        join_game,
                     )
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task, // grpc call handler
