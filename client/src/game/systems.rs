@@ -86,7 +86,7 @@ pub fn make_turn_local(
     mut state_updated: EventWriter<StateUpdated>,
     mut successful_turn: EventWriter<SuccessfulTurn>,
     mut game: ResMut<CurrentGame>,
-    mut local_game: Option<ResMut<LocalGame>>,
+    mut local_game: ResMut<LocalGame>,
     asset_server: Res<AssetServer>,
 ) {
     for event in turn_data.read() {
@@ -100,11 +100,6 @@ pub fn make_turn_local(
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             continue;
         }
-        let Some(ref mut local_game) = local_game else {
-            println!("local game is not found");
-            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-            return;
-        };
         let player_id = next_player.game_player_id();
         let Ok(row) = (event.pos.row() as usize).try_into() else {
             println!("invalid row index: {}", event.pos.row());

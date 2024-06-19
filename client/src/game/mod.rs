@@ -43,11 +43,11 @@ fn game_is_in_progress(game: Option<Res<CurrentGame>>) -> bool {
     )
 }
 
-fn is_local_game(game: Option<Res<CurrentGame>>) -> bool {
+fn is_local_game(game: Option<Res<CurrentGame>>, local: Option<Res<LocalGame>>) -> bool {
     matches!(
         game.and_then(|game| Some(game.game_type())),
         Some(GameType::Local)
-    )
+    ) && local.is_some()
 }
 
 fn is_network_game(game: Option<Res<CurrentGame>>) -> bool {
