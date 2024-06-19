@@ -11,8 +11,9 @@ use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
 use crate::app_state::{AppState, MenuState};
-use crate::game::CurrentGame;
-use crate::grpc::CallGetPlayerGames;
+use crate::board::Board;
+use crate::game::{GameStateSystems, GameSystems};
+use crate::grpc::{CallGetPlayerGames, NetworkSystems};
 use events::{PlayerGamesReady, SubmitPressed};
 use ingame::InGameUIPlugin;
 use resources::RefreshGamesTimer;
@@ -56,7 +57,7 @@ impl Plugin for InterfacePlugin {
             )
             .add_systems(
                 OnEnter(AppState::Game),
-                setup_game.run_if(not(any_with_component::<Node>)),
+                setup_game.run_if(not(any_with_component::<Board>)),
             )
             .add_systems(
                 OnExit(AppState::Game),
@@ -71,21 +72,21 @@ impl Plugin for InterfacePlugin {
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (
-                        refresh_player_games.run_if(not(any_with_component::<CallGetPlayerGames>)),
-                        handle_player_games_task,
+                        (
+                            refresh_player_games
+                                .run_if(not(any_with_component::<CallGetPlayerGames>)),
+                            create_game,
+                            join_game,
+                        )
+                            .in_set(NetworkSystems),
+                        handle_player_games_task, // grpc call handler
                         handle_player_games,
-                        create_game,
-                        join_game,
                     )
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
-                    handle_create_game_task,
-                    (
-                        make_turn,
-                        handle_cell_updated,
-                        exit_game,
-                        handle_successful_turn,
-                    )
-                        .run_if(in_state(AppState::Game).and_then(resource_exists::<CurrentGame>)),
+                    handle_create_game_task, // grpc call handler
+                    make_turn.in_set(GameStateSystems::InProgress),
+                    create_game_over_overlay.in_set(GameStateSystems::Finished),
+                    (handle_cell_updated, handle_successful_turn).in_set(GameSystems),
                 ),
             );
     }

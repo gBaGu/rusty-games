@@ -6,11 +6,11 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-pub use components::BoardBundle;
+pub use components::{Board, BoardBundle};
 pub use events::{TileFilled, TilePressed};
 
 use crate::board::components::WinAnimationBundle;
-use crate::game::CurrentGame;
+use crate::game::{GameStateSystems, GameSystems};
 use systems::{create, handle_game_over, handle_input, set_tile_image, win_animation};
 
 pub const BORDER_WIDTH: f32 = 1.0;
@@ -84,9 +84,9 @@ impl Plugin for BoardPlugin {
                 Update,
                 (
                     create,
-                    set_tile_image,
-                    (handle_input, handle_game_over, win_animation)
-                        .run_if(resource_exists::<CurrentGame>),
+                    set_tile_image.in_set(GameSystems),
+                    handle_input.in_set(GameStateSystems::InProgress),
+                    (handle_game_over, win_animation).in_set(GameStateSystems::Finished),
                 ),
             );
     }

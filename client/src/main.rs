@@ -16,7 +16,7 @@ use crate::app_state::AppState;
 use crate::board::BoardPlugin;
 use crate::bot::BotPlugin;
 use crate::game::GamePlugin;
-use crate::grpc::{GrpcClient, ReconnectTimer};
+use crate::grpc::{GrpcClient, NetworkSystems, ReconnectTimer};
 use crate::interface::InterfacePlugin;
 
 #[derive(Component)]
@@ -28,6 +28,7 @@ fn main() {
         .init_resource::<ReconnectTimer>()
         .init_resource::<Settings>()
         .init_resource::<GrpcClient>()
+        .configure_sets(Update, NetworkSystems.run_if(grpc::is_client_connected))
         .add_plugins((
             DefaultPlugins,
             BoardPlugin,
