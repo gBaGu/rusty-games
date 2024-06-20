@@ -6,6 +6,7 @@ pub(crate) mod error;
 pub(crate) mod grid;
 pub(crate) mod player_pool;
 
+use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
 use encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
@@ -30,6 +31,15 @@ pub struct BoardCell<T>(pub Option<T>);
 impl<T> Default for BoardCell<T> {
     fn default() -> Self {
         Self(Option::default())
+    }
+}
+
+impl<T: Display> Display for BoardCell<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            Some(val) => write!(f, "[{}]", val),
+            None => f.write_str("[ ]"),
+        }
     }
 }
 

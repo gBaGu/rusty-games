@@ -1,6 +1,6 @@
 [workspace]
 
-members = [ "client", "server" ]
+members = ["client", "server", "tic_tac_toe_ai"]
 resolver = "2"
 
 [profile.dev.package."*"]

@@ -151,7 +151,7 @@ impl<Row: Copy, Col: Copy> GridIndex<Row, Col> {
 
 /// Two-dimensional fixed-length array that stores values and allows to mutate them.
 /// Length of array is defined by generic parameters `Row` and `Col`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Grid<T, Row: WithLength, Col: WithLength> {
     contents: GenericArray<GenericArray<T, Col::Length>, Row::Length>,
 }
@@ -169,6 +169,20 @@ impl<T, Row: WithLength, Col: WithLength> Deref for Grid<T, Row, Col> {
 
     fn deref(&self) -> &Self::Target {
         self.contents.as_slice()
+    }
+}
+
+impl<T: Display, Row: WithLength, Col: WithLength> Display for Grid<T, Row, Col> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[\n")?;
+        for row in self.deref() {
+            f.write_str("[")?;
+            for val in row {
+                write!(f, "{}", val)?;
+            }
+            f.write_str("]\n")?;
+        }
+        f.write_str("]")
     }
 }
 
