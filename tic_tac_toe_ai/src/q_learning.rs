@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::fs::File;
+use std::io::{Read, Write};
 
 use game_server::game::tic_tac_toe::{winning_combinations, FieldCol, FieldRow, TicTacToe};
 use game_server::game::{BoardCell, Game, GameState, PlayerId};
@@ -46,6 +47,22 @@ fn state_to_index(state: &<TicTacToe as Game>::Board) -> usize {
         }
     }
     index
+}
+
+// TODO: try SmallVec here
+fn get_valid_actions(board: &<TicTacToe as Game>::Board) -> Vec<Action> {
+    board
+        .iter()
+        .enumerate()
+        .map(|(i, row)| row.iter().enumerate().map(move |(j, cell)| (i, j, cell)))
+        .flatten()
+        .filter_map(|(row, col, cell)| {
+            if cell.is_none() {
+                return Some((row, col));
+            }
+            None
+        })
+        .collect()
 }
 
 fn calculate_reward(state: &<TicTacToe as Game>::Board, player: PlayerId) -> Reward {
@@ -109,6 +126,7 @@ fn calculate_reward(state: &<TicTacToe as Game>::Board, player: PlayerId) -> Rew
     reward
 }
 
+#[derive(Clone)]
 pub struct QTable(Vec<ActionValues>);
 
 impl Default for QTable {
@@ -119,7 +137,7 @@ impl Default for QTable {
 
 impl QTable {
     pub fn get_max_value(&self, state: &<TicTacToe as Game>::Board) -> QValue {
-        let mut max_q = 0.0;
+        let mut max_q = f32::NEG_INFINITY;
         for val in self.get_values(state) {
             if val > &max_q {
                 max_q = *val;
@@ -144,6 +162,52 @@ impl QTable {
     ) {
         // TODO: move state_to_index and action_to_index to Model level
         self.0[state_to_index(state)][action_to_index(action)] = new_val;
+    }
+}
+
+pub struct Agent {
+    q_table: QTable,
+}
+
+impl Agent {
+    pub fn load(path: &str) -> std::io::Result<Self> {
+        let mut file = File::open(path)?;
+        let mut q_table = QTable::default();
+        let mut buf = [0; 4];
+        for values in q_table.0.iter_mut() {
+            for value in values {
+                file.read(&mut buf)?; // TODO: handle return value
+                *value = f32::from_ne_bytes(buf);
+            }
+        }
+        Ok(Self { q_table })
+    }
+
+    pub fn get_action(&self, board: &<TicTacToe as Game>::Board) -> Option<Action> {
+        let valid_actions = get_valid_actions(board);
+        if valid_actions.is_empty() {
+            return None;
+        }
+
+        let q_values = self.q_table.get_values(board);
+        let mut best_actions = Vec::with_capacity(STATE_SIZE);
+        let mut max_q = q_values[action_to_index(valid_actions[0])];
+        for action in valid_actions.iter() {
+            let q_value = q_values[action_to_index(*action)];
+            match q_value.partial_cmp(&max_q) {
+                Some(Ordering::Greater) => {
+                    best_actions.clear();
+                    best_actions.push(action);
+                    max_q = q_value;
+                }
+                Some(Ordering::Equal) => {
+                    best_actions.push(action);
+                }
+                _ => {}
+            }
+        }
+        let mut rng = rand::thread_rng();
+        Some(*best_actions[rng.sample(Uniform::from(0..best_actions.len()))])
     }
 }
 
@@ -214,7 +278,12 @@ impl Model {
 
     pub fn dump_table(&self, path: &str) -> std::io::Result<()> {
         let mut file = File::create(path)?;
-        todo!()
+        for values in &self.q_table.0 {
+            for value in values {
+                file.write(&value.to_ne_bytes())?; // TODO: handle return value
+            }
+        }
+        Ok(())
     }
 
     fn decay(&mut self) {
@@ -257,26 +326,9 @@ impl Model {
         self.q_table.set_value(&prev_state, action, new_q);
     }
 
-    // TODO: try SmallVec here
-    fn get_valid_actions(&self) -> Vec<Action> {
-        self.env
-            .board()
-            .iter()
-            .enumerate()
-            .map(|(i, row)| row.iter().enumerate().map(move |(j, cell)| (i, j, cell)))
-            .flatten()
-            .filter_map(|(row, col, cell)| {
-                if cell.is_none() {
-                    return Some((row, col));
-                }
-                None
-            })
-            .collect()
-    }
-
     /// true - greedy, false - exploration
     fn choose_epsilon_greedy_action(&self) -> (Action, bool) {
-        let valid_actions = self.get_valid_actions();
+        let valid_actions = get_valid_actions(self.env.board());
         let mut rng = rand::thread_rng();
         if rng.sample(Uniform::from(0.0..1.0)) < self.exploration_level {
             (
@@ -333,7 +385,7 @@ impl Model {
 
     fn simulate_enemy_action(&mut self) {
         if let GameState::Turn(enemy) = self.env.state() {
-            let enemy_action = self.choose_best_action(&self.get_valid_actions());
+            let enemy_action = self.choose_best_action(&get_valid_actions(self.env.board()));
             self.perform_action(enemy, enemy_action);
         }
     }
@@ -437,8 +489,14 @@ mod test {
         // TODO: fix this
         // assert_eq!(calculate_reward(&board, 0), 5.8);
         // assert_eq!(calculate_reward(&board, 1), -5.8);
-        assert!(calculate_reward(&board, 0) > 5.8 - 0.000001 && calculate_reward(&board, 0) < 5.8 + 0.000001);
-        assert!(calculate_reward(&board, 1) > -5.8 - 0.000001 && calculate_reward(&board, 1) < -5.8 + 0.000001);
+        assert!(
+            calculate_reward(&board, 0) > 5.8 - 0.000001
+                && calculate_reward(&board, 0) < 5.8 + 0.000001
+        );
+        assert!(
+            calculate_reward(&board, 1) > -5.8 - 0.000001
+                && calculate_reward(&board, 1) < -5.8 + 0.000001
+        );
 
         // O - -
         // - X -

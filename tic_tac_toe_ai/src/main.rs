@@ -10,4 +10,5 @@ fn main() {
         }
         model.run_episode(verbose);
     }
+    model.dump_table("weights").unwrap();
 }
