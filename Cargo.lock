@@ -1406,6 +1406,7 @@ dependencies = [
  "prost",
  "rand",
  "server",
+ "tic_tac_toe_ai",
  "tonic",
  "tonic-build",
 ]

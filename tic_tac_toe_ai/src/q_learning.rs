@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::Path;
 
 use game_server::game::tic_tac_toe::{winning_combinations, FieldCol, FieldRow, TicTacToe};
 use game_server::game::{BoardCell, Game, GameState, PlayerId};
@@ -14,6 +15,7 @@ const WIN_REWARD: f32 = 10.0;
 const TWO_OUT_OF_THREE_REWARD: f32 = 3.0;
 const ONE_OUT_OF_THREE_REWARD: f32 = 1.4;
 
+const DECAY_INTERVAL: usize = 1000;
 const EXPLORATION_DECAY_RATE: f32 = 0.0001;
 const LEARNING_RATE_DECAY_RATE: f32 = 0.001;
 const MIN_EXPLORATION_RATE: f32 = 0.2;
@@ -72,11 +74,11 @@ fn calculate_reward(state: &<TicTacToe as Game>::Board, player: PlayerId) -> Rew
             (BoardCell(Some(p1)), BoardCell(Some(p2)), BoardCell(Some(p3)))
                 if p1 == p2 && p2 == p3 =>
             {
-                if *p1 == player {
+                return if *p1 == player {
                     WIN_REWARD
                 } else {
                     -WIN_REWARD
-                }
+                };
             }
             (BoardCell(None), BoardCell(Some(p2)), BoardCell(Some(p3))) if p2 == p3 => {
                 if *p2 == player {
@@ -170,7 +172,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn load(path: &str) -> std::io::Result<Self> {
+    pub fn load<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let mut file = File::open(path)?;
         let mut q_table = QTable::default();
         let mut buf = [0; 4];
@@ -270,7 +272,7 @@ impl Model {
             );
         }
         self.episode += 1;
-        if self.episode % 100 == 0 {
+        if self.episode % DECAY_INTERVAL == 0 {
             self.decay();
         }
         self.reset();
@@ -399,6 +401,13 @@ mod test {
 
     type TTTBoard = <TicTacToe as Game>::Board;
     type TTTIndex = <TicTacToe as Game>::TurnData;
+
+    fn get_action_space() -> Vec<Action> {
+        (0..3)
+            .map(|row| (0..3).map(move |col| (row, col)))
+            .flatten()
+            .collect()
+    }
 
     fn set_board_cell(board: &mut TTTBoard, index: (usize, usize), value: PlayerId) {
         board
@@ -616,17 +625,10 @@ mod test {
         assert_eq!(reward, 3.0);
 
         // init q values for next board state
-        for (action, value) in [
-            ((0, 0), 3.0),
-            ((0, 1), 0.0),
-            ((0, 2), -4.0),
-            ((1, 0), 5.0),
-            ((1, 1), 0.0),
-            ((1, 2), -4.0),
-            ((2, 0), -1.0),
-            ((2, 1), 0.0),
-            ((2, 2), 0.0),
-        ] {
+        for (action, value) in get_action_space()
+            .into_iter()
+            .zip([3.0, 0.0, -4.0, 5.0, 0.0, -4.0, -1.0, 0.0, 0.0])
+        {
             model.q_table.set_value(model.env.board(), action, value);
         }
 
@@ -663,17 +665,10 @@ mod test {
         assert_eq!(reward, -3.0);
 
         // init q values for next board state
-        for (action, value) in [
-            ((0, 0), -1.0),
-            ((0, 1), 3.0),
-            ((0, 2), 4.0),
-            ((1, 0), 0.0),
-            ((1, 1), 0.0),
-            ((1, 2), 0.0),
-            ((2, 0), 0.0),
-            ((2, 1), 0.0),
-            ((2, 2), -3.0),
-        ] {
+        for (action, value) in get_action_space()
+            .into_iter()
+            .zip([-1.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, -3.0])
+        {
             model.q_table.set_value(model.env.board(), action, value);
         }
 
@@ -683,6 +678,47 @@ mod test {
         itertools::assert_equal(
             model.q_table.get_values(&prev_state).to_vec(),
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0, 0.0],
+        );
+    }
+
+    /// agent - X
+    /// initial state: O X -
+    ///                - O X
+    ///                ^ * -
+    /// * - action that agent takes
+    /// ^ - action that enemy takes
+    #[test]
+    fn test_update_q_not_influenced_by_invalid_actions() {
+        let agent = 0;
+        let mut model = Model::new(1.0, 1.0);
+        // init board
+        model.perform_action(agent, (0, 1));
+        model.perform_action(1, (0, 0));
+        model.perform_action(agent, (1, 2));
+        model.perform_action(1, (1, 1));
+        // init q value for starting board and action
+        let action = (2, 1);
+        model.q_table.set_value(model.env.board(), action, -5.0);
+
+        let prev_state = model.env.board().clone();
+        model.perform_action(agent, action);
+        model.perform_action(1, (2, 0));
+        let reward = calculate_reward(model.env.board(), agent);
+        assert_eq!(reward, -7.6);
+
+        for (action, value) in get_action_space()
+            .into_iter()
+            .zip([0.0, 0.0, -6.0, -4.0, 0.0, 0.0, 0.0, 0.0, -7.0])
+        {
+            model.q_table.set_value(model.env.board(), action, value);
+        }
+
+        model.update_q(&prev_state, action, reward);
+        let updated_q = -11.6; // -5 + (-7.6 + -4 - -5)
+
+        itertools::assert_equal(
+            model.q_table.get_values(&prev_state).to_vec(),
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0],
         );
     }
 }

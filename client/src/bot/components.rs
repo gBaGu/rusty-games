@@ -9,7 +9,7 @@ use crate::game::{Position, BOARD_SIZE};
 const MIN_MOVE_DELAY: u64 = 500;
 const MAX_MOVE_DELAY: u64 = 1500;
 
-#[derive(Debug, Component)]
+#[derive(Component)]
 pub struct Bot {
     id: u64,
     delay_timer: Timer,
@@ -52,7 +52,7 @@ impl Bot {
         self.delay_timer.pause();
     }
 
-    pub fn get_move(&self, board: &[[BoardCell<GamePlayerId>; BOARD_SIZE]]) -> Position {
+    pub fn get_move(&self, board: &[[BoardCell<GamePlayerId>; BOARD_SIZE]]) -> Option<Position> {
         self.move_strategy.get_move(board)
     }
 }
