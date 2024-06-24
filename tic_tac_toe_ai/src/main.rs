@@ -16,9 +16,6 @@ fn main() {
     let periods = 300000;
     for i in 0..periods {
         let verbose = i % (periods / 10000) == 0;
-        if verbose {
-            println!("starting episode {}", i);
-        }
         model.run_episode(verbose);
     }
     model.dump_table(&output_path).unwrap();

@@ -90,7 +90,7 @@ pub fn state_transition(
                         {
                             commands.spawn(Bot::new(bot_id, MoveStrategy::QLearningModel(agent)));
                         } else {
-                            println!("failed to load bot");
+                            println!("failed to load agent");
                         }
                         println!("state transition: {:?}", new_state);
                         next_app_state.set(new_state);

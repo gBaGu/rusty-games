@@ -223,7 +223,6 @@ impl Agent {
         }
 
         let q_values = self.q_table.get_values(state_to_index(board));
-        println!("q_values: {:?}", q_values);
         let best_actions = get_best_actions(&valid_actions, q_values);
         if best_actions.is_empty() {
             None
@@ -262,6 +261,7 @@ impl Model {
     pub fn run_episode(&mut self, verbose: bool) {
         let mut step: usize = 0;
         let mut total_reward = 0.0;
+        // for half of games simulate first action to train agent to play both X and O
         if self.episode % 2 == 1 {
             self.simulate_enemy_action();
         }
