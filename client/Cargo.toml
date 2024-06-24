@@ -10,6 +10,7 @@ bevy_simple_text_input = "0.7.0"
 game-server = { package = "server", path = "../server" }
 prost = "0.12.6"
 rand = "0.8.5"
+tic-tac-toe-ai = { package = "tic_tac_toe_ai", path = "../tic_tac_toe_ai" }
 tonic = "0.11.0"
 
 [build-dependencies]

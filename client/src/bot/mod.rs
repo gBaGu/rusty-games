@@ -10,6 +10,8 @@ pub use strategy::MoveStrategy;
 use crate::game::{GameStateSystems, GameTypeSystems};
 use systems::make_turn;
 
+pub const AGENT_PATH: &str = "assets/agents/default.weights";
+
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BotSystems;
 

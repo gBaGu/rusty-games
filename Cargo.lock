@@ -1406,6 +1406,7 @@ dependencies = [
  "prost",
  "rand",
  "server",
+ "tic_tac_toe_ai",
  "tonic",
  "tonic-build",
 ]
@@ -3695,6 +3696,15 @@ checksum = "8b9ef9bad013ada3808854ceac7b46812a6465ba368859a37e2100283d2d719c"
 dependencies = [
  "cfg-if",
  "once_cell",
+]
+
+[[package]]
+name = "tic_tac_toe_ai"
+version = "0.1.0"
+dependencies = [
+ "itertools 0.13.0",
+ "rand",
+ "server",
 ]
 
 [[package]]

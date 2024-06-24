@@ -1,0 +1,11 @@
+[package]
+name = "tic_tac_toe_ai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game-server = { package = "server", path = "../server" }
+rand = "0.8.5"
+
+[dev-dependencies]
+itertools = "0.13.0"

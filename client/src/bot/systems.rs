@@ -24,7 +24,11 @@ pub fn make_turn(
             if bot.tick_delay(time.delta()).just_finished() {
                 bot.reset_delay();
                 let pos = bot.get_move(game.board());
-                game.trigger_turn(&mut network_turn_data, &mut local_turn_data, auth, pos);
+                if let Some(pos) = pos {
+                    game.trigger_turn(&mut network_turn_data, &mut local_turn_data, auth, pos);
+                } else {
+                    println!("failed to get move from bot");
+                }
             }
         }
     }

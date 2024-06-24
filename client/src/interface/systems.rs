@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use bevy::app::AppExit;
+use bevy::asset::io::file::FileAssetReader;
 use bevy::asset::AssetServer;
 use bevy::ecs::change_detection::{Res, ResMut};
 use bevy::ecs::entity::Entity;
@@ -19,6 +20,7 @@ use bevy::utils::default;
 use bevy::window::{PrimaryWindow, Window};
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
 use game_server::game::{FinishedState, Game, GameState};
+use tic_tac_toe_ai::Agent;
 
 use super::components::{
     CreateGame, JoinGame, MenuNavigationButtonBundle, NetworkGameTextInputBundle, Overlay,
@@ -30,7 +32,7 @@ use super::ingame::InGameUIBundle;
 use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::board::{BoardBundle, TileFilled, TilePressed};
-use crate::bot::{Bot, MoveStrategy};
+use crate::bot::{Bot, MoveStrategy, AGENT_PATH};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
     Authority, CellUpdated, CurrentGame, GameExit, GameInfo, LocalGame, LocalGameTurn,
@@ -83,7 +85,13 @@ pub fn state_transition(
                             &asset_server,
                         );
                         commands.insert_resource(game);
-                        commands.spawn(Bot::new(bot_id, MoveStrategy::Random));
+                        if let Ok(agent) =
+                            Agent::load(FileAssetReader::get_base_path().join(AGENT_PATH))
+                        {
+                            commands.spawn(Bot::new(bot_id, MoveStrategy::QLearningModel(agent)));
+                        } else {
+                            println!("failed to load agent");
+                        }
                         println!("state transition: {:?}", new_state);
                         next_app_state.set(new_state);
                     } else {
