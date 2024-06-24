@@ -12,10 +12,10 @@ fn main() {
     }
     let output_path = args[1].clone();
 
-    let mut model = Model::new(0.8, 0.9);
-    let periods = 100000;
+    let mut model = Model::new(0.6, 0.9);
+    let periods = 300000;
     for i in 0..periods {
-        let verbose = i % (periods / 1000) == 0;
+        let verbose = i % (periods / 10000) == 0;
         if verbose {
             println!("starting episode {}", i);
         }
