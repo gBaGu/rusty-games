@@ -65,6 +65,32 @@ fn get_valid_actions(board: &<TicTacToe as Game>::Board) -> Vec<Action> {
         .collect()
 }
 
+fn get_best_actions(actions: &[Action], action_values: &[Option<QValue>]) -> Vec<Action> {
+    let mut best_actions = Vec::with_capacity(STATE_SIZE);
+    let mut max_q = None;
+    for action in actions.iter() {
+        if let Some(q_value) = action_values[action_to_index(*action)] {
+            if let Some(max) = max_q {
+                match q_value.partial_cmp(&max) {
+                    Some(Ordering::Greater) => {
+                        best_actions.clear();
+                        best_actions.push(*action);
+                        let _ = max_q.insert(q_value);
+                    }
+                    Some(Ordering::Equal) => {
+                        best_actions.push(*action);
+                    }
+                    _ => {}
+                }
+            } else {
+                let _ = max_q.insert(q_value);
+                best_actions.push(*action);
+            }
+        }
+    }
+    best_actions
+}
+
 fn calculate_reward(state: &<TicTacToe as Game>::Board, player: PlayerId) -> Reward {
     let mut reward = 0.0;
     for (id1, id2, id3) in winning_combinations() {
@@ -190,31 +216,23 @@ impl Agent {
         Ok(Self { q_table })
     }
 
-    pub fn get_action(&self, board: &<TicTacToe as Game>::Board) -> Option<Action> {
+    pub fn get_best_action(&self, board: &<TicTacToe as Game>::Board) -> Option<Action> {
         let valid_actions = get_valid_actions(board);
         if valid_actions.is_empty() {
             return None;
         }
 
         let q_values = self.q_table.get_values(state_to_index(board));
-        let mut best_actions = Vec::with_capacity(STATE_SIZE);
-        let mut max_q = q_values[action_to_index(valid_actions[0])];
-        for action in valid_actions.iter() {
-            let q_value = q_values[action_to_index(*action)];
-            match q_value.partial_cmp(&max_q) {
-                Some(Ordering::Greater) => {
-                    best_actions.clear();
-                    best_actions.push(action);
-                    max_q = q_value;
-                }
-                Some(Ordering::Equal) => {
-                    best_actions.push(action);
-                }
-                _ => {}
-            }
+        println!("q_values: {:?}", q_values);
+        let best_actions = get_best_actions(&valid_actions, q_values);
+        if best_actions.is_empty() {
+            None
+        } else if best_actions.len() == 1 {
+            Some(best_actions[0])
+        } else {
+            let mut rng = rand::thread_rng();
+            Some(best_actions[rng.sample(Uniform::from(0..best_actions.len()))])
         }
-        let mut rng = rand::thread_rng();
-        Some(*best_actions[rng.sample(Uniform::from(0..best_actions.len()))])
     }
 }
 
@@ -366,29 +384,12 @@ impl Model {
             panic!("no available actions");
         }
         let q_values = self.q_table.get_values(state_to_index(self.env.board()));
-        let mut best_actions = Vec::with_capacity(STATE_SIZE);
-        let mut max_q = q_values[action_to_index(actions[0])];
-        for action in actions {
-            let q_value = q_values[action_to_index(*action)];
-            match q_value.partial_cmp(&max_q) {
-                Some(Ordering::Greater) => {
-                    best_actions.clear();
-                    best_actions.push(action);
-                    max_q = q_value;
-                }
-                Some(Ordering::Equal) => {
-                    best_actions.push(action);
-                }
-                _ => {}
-            }
-        }
+        let best_actions = get_best_actions(&actions, q_values);
         if best_actions.len() == 1 {
-            *best_actions[0]
-        } else if best_actions.len() > 1 {
-            let mut rng = rand::thread_rng();
-            *best_actions[rng.sample(Uniform::from(0..best_actions.len()))]
+            best_actions[0]
         } else {
-            unreachable!()
+            let mut rng = rand::thread_rng();
+            best_actions[rng.sample(Uniform::from(0..best_actions.len()))]
         }
     }
 

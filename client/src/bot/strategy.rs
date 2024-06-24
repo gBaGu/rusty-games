@@ -40,7 +40,7 @@ impl MoveStrategy {
                     }
                 }
                 agent
-                    .get_action(&ttt_board)
+                    .get_best_action(&ttt_board)
                     .and_then(|action| Some(Position::new(action.0 as u32, action.1 as u32)))
             }
         }
