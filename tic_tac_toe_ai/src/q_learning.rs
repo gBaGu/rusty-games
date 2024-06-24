@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::ops::BitAnd;
 use std::path::Path;
 
 use game_server::game::tic_tac_toe::{winning_combinations, FieldCol, FieldRow, TicTacToe};
@@ -22,7 +23,7 @@ const MIN_EXPLORATION_RATE: f32 = 0.2;
 const MIN_LEARNING_RATE: f32 = 0.05;
 
 type Action = (usize, usize);
-type ActionValues = [QValue; STATE_SIZE];
+type ActionValues = [Option<QValue>; STATE_SIZE];
 type QValue = f32;
 type Reward = f32;
 
@@ -135,26 +136,30 @@ impl Default for QTable {
 }
 
 impl QTable {
-    pub fn get_max_value(&self, state_index: usize) -> QValue {
-        let mut max_q = f32::NEG_INFINITY;
+    pub fn get_max_value(&self, state_index: usize) -> Option<QValue> {
+        let mut max_q = None;
         for val in self.get_values(state_index) {
-            if val > &max_q {
+            if let Some(max) = max_q {
+                if matches!(val, Some(current) if *current > max) {
+                    max_q = *val;
+                }
+            } else {
                 max_q = *val;
             }
         }
         max_q
     }
 
-    pub fn get_value(&self, state_index: usize, action_index: usize) -> QValue {
+    pub fn get_value(&self, state_index: usize, action_index: usize) -> Option<QValue> {
         self.0[state_index][action_index]
     }
 
-    pub fn get_values(&self, state_index: usize) -> &[QValue] {
+    pub fn get_values(&self, state_index: usize) -> &[Option<QValue>] {
         self.0[state_index].as_slice()
     }
 
     pub fn set_value(&mut self, state_index: usize, action_index: usize, new_val: QValue) {
-        self.0[state_index][action_index] = new_val;
+        self.0[state_index][action_index] = Some(new_val);
     }
 }
 
@@ -166,11 +171,20 @@ impl Agent {
     pub fn load<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let mut file = File::open(path)?;
         let mut q_table = QTable::default();
+        let mut metadata_buf = [0; 2];
         let mut buf = [0; 4];
         for values in q_table.0.iter_mut() {
-            for value in values {
-                file.read(&mut buf)?; // TODO: handle return value
-                *value = f32::from_ne_bytes(buf);
+            file.read(&mut metadata_buf)?;
+            let metadata = u16::from_ne_bytes(metadata_buf);
+            if metadata == 0 {
+                continue;
+            }
+            for (i, value) in values.iter_mut().enumerate() {
+                let mask = 2u16.pow(i as u32);
+                if metadata.bitand(mask) == mask {
+                    file.read(&mut buf)?; // TODO: handle return value
+                    let _ = value.insert(f32::from_ne_bytes(buf));
+                }
             }
         }
         Ok(Self { q_table })
@@ -273,8 +287,17 @@ impl Model {
     pub fn dump_table(&self, path: &str) -> std::io::Result<()> {
         let mut file = File::create(path)?;
         for values in &self.q_table.0 {
+            let mut metadata = 0;
+            for (i, value) in values.iter().enumerate() {
+                if value.is_some() {
+                    metadata += 2u16.pow(i as u32);
+                }
+            }
+            file.write(&metadata.to_ne_bytes())?;
             for value in values {
-                file.write(&value.to_ne_bytes())?; // TODO: handle return value
+                if let Some(value) = value {
+                    file.write(&value.to_ne_bytes())?; // TODO: handle return value
+                }
             }
         }
         Ok(())
@@ -314,8 +337,8 @@ impl Model {
         let q_prev = self.q_table.get_value(prev_state_index, action_index);
         let max_q_next = self.q_table.get_max_value(state_to_index(self.env.board()));
         let new_q = calculate_q(
-            q_prev,
-            max_q_next,
+            q_prev.unwrap_or_default(),
+            max_q_next.unwrap_or_default(),
             reward,
             self.current_learning_rate,
             self.gamma,
@@ -398,13 +421,6 @@ mod test {
     type TTTBoard = <TicTacToe as Game>::Board;
     type TTTIndex = <TicTacToe as Game>::TurnData;
 
-    fn get_action_space() -> Vec<Action> {
-        (0..3)
-            .map(|row| (0..3).map(move |col| (row, col)))
-            .flatten()
-            .collect()
-    }
-
     fn set_board_cell(board: &mut TTTBoard, index: (usize, usize), value: PlayerId) {
         board
             .get_mut_ref(TTTIndex::new(
@@ -412,6 +428,20 @@ mod test {
                 FieldCol::try_from(index.1).unwrap(),
             ))
             .0 = Some(value);
+    }
+
+    #[test]
+    fn test_dump_load() {
+        let mut model = Model::new(1.0, 1.0);
+        // fill with some data
+        for i in 0..9u8 {
+            model.q_table.set_value(i.into(), i.into(), i.into());
+        }
+
+        let tmp_file = "tmp";
+        model.dump_table(tmp_file).unwrap();
+        let agent = Agent::load(tmp_file).unwrap();
+        itertools::assert_equal(model.q_table.0, agent.q_table.0);
     }
 
     #[test]
@@ -542,7 +572,7 @@ mod test {
                 .q_table
                 .get_values(state_to_index(&prev_state))
                 .to_vec(),
-            [0.0, 0.0, 0.0, 0.0, reward, 0.0, 0.0, 0.0, 0.0],
+            [None, None, None, None, Some(reward), None, None, None, None],
         );
 
         // step 1
@@ -567,7 +597,7 @@ mod test {
                 .q_table
                 .get_values(state_to_index(&prev_state))
                 .to_vec(),
-            [reward, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [Some(reward), None, None, None, None, None, None, None, None],
         );
 
         // step 2
@@ -591,7 +621,7 @@ mod test {
                 .q_table
                 .get_values(state_to_index(&prev_state))
                 .to_vec(),
-            [0.0, 0.0, 0.0, 0.0, 0.0, reward, 0.0, 0.0, 0.0],
+            [None, None, None, None, None, Some(reward), None, None, None],
         );
 
         // step 3
@@ -615,7 +645,7 @@ mod test {
                 .q_table
                 .get_values(state_to_index(&prev_state))
                 .to_vec(),
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, reward, 0.0],
+            [None, None, None, None, None, None, None, Some(reward), None],
         );
     }
 
@@ -649,10 +679,7 @@ mod test {
         assert_eq!(reward, 3.0);
 
         // init q values for next board state
-        for (action, value) in get_action_space()
-            .into_iter()
-            .zip([3.0, 0.0, -4.0, 5.0, 0.0, -4.0, -1.0, 0.0, 0.0])
-        {
+        for (action, value) in [((0, 0), 3.0), ((1, 0), 5.0), ((2, 0), -1.0)] {
             model.q_table.set_value(
                 state_to_index(model.env.board()),
                 action_to_index(action),
@@ -667,7 +694,17 @@ mod test {
                 .q_table
                 .get_values(state_to_index(&prev_state))
                 .to_vec(),
-            [0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0, 0.0, 0.0],
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(updated_q),
+                None,
+                None,
+                None,
+            ],
         );
     }
 
@@ -700,10 +737,7 @@ mod test {
         assert_eq!(reward, -3.0);
 
         // init q values for next board state
-        for (action, value) in get_action_space()
-            .into_iter()
-            .zip([-1.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, -3.0])
-        {
+        for (action, value) in [((0, 0), -1.0), ((0, 1), 3.0), ((0, 2), 4.0), ((2, 2), -3.0)] {
             model.q_table.set_value(
                 state_to_index(model.env.board()),
                 action_to_index(action),
@@ -719,7 +753,17 @@ mod test {
                 .q_table
                 .get_values(state_to_index(&prev_state))
                 .to_vec(),
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0, 0.0],
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(updated_q),
+                None,
+                None,
+            ],
         );
     }
 
@@ -753,10 +797,7 @@ mod test {
         assert_eq!(reward, -7.6);
 
         // init q values for next board state
-        for (action, value) in get_action_space()
-            .into_iter()
-            .zip([0.0, 0.0, -6.0, -4.0, 0.0, 0.0, 0.0, 0.0, -7.0])
-        {
+        for (action, value) in [((0, 2), -6.0), ((1, 0), -4.0), ((2, 2), -7.0)] {
             model.q_table.set_value(
                 state_to_index(model.env.board()),
                 action_to_index(action),
@@ -772,7 +813,17 @@ mod test {
                 .q_table
                 .get_values(state_to_index(&prev_state))
                 .to_vec(),
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0],
+            [
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(updated_q),
+                None,
+            ],
         );
     }
 }
