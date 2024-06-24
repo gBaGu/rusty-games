@@ -15,7 +15,7 @@ fn main() {
     let mut model = Model::new(0.8, 0.9);
     let periods = 100000;
     for i in 0..periods {
-        let verbose = i % (periods / 100) == 0;
+        let verbose = i % (periods / 1000) == 0;
         if verbose {
             println!("starting episode {}", i);
         }

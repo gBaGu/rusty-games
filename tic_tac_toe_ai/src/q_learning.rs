@@ -17,8 +17,9 @@ const ONE_OUT_OF_THREE_REWARD: f32 = 1.4;
 
 const DECAY_INTERVAL: usize = 1000;
 const EXPLORATION_DECAY_RATE: f32 = 0.0001;
-const LEARNING_RATE_DECAY_RATE: f32 = 0.001;
+const LEARNING_RATE_DECAY_RATE: f32 = 0.0001;
 const MIN_EXPLORATION_RATE: f32 = 0.2;
+const MIN_LEARNING_RATE: f32 = 0.05;
 
 type Action = (usize, usize);
 type ActionValues = [QValue; STATE_SIZE];
@@ -283,8 +284,9 @@ impl Model {
         self.exploration_level = (-EXPLORATION_DECAY_RATE * self.episode as f32)
             .exp()
             .max(MIN_EXPLORATION_RATE);
-        self.current_learning_rate =
-            self.initial_learning_rate / (1.0 + LEARNING_RATE_DECAY_RATE * self.episode as f32)
+        self.current_learning_rate = (self.initial_learning_rate
+            / (1.0 + LEARNING_RATE_DECAY_RATE * self.episode as f32))
+            .max(MIN_LEARNING_RATE);
     }
 
     fn reset(&mut self) {
@@ -381,7 +383,7 @@ impl Model {
 
     fn simulate_enemy_action(&mut self) {
         if let GameState::Turn(enemy) = self.env.state() {
-            let enemy_action = self.choose_best_action(&get_valid_actions(self.env.board()));
+            let (enemy_action, _) = self.choose_epsilon_greedy_action();
             self.perform_action(enemy, enemy_action);
         }
     }
