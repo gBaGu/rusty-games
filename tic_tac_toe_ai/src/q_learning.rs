@@ -33,10 +33,6 @@ fn action_to_index(action: Action) -> usize {
     (action.0 * 3) + action.1
 }
 
-fn index_to_action(index: usize) -> Action {
-    (index / 3, index % 3)
-}
-
 fn state_to_index(state: &<TicTacToe as Game>::Board) -> usize {
     let board_iter = state.iter().flatten();
     if board_iter.clone().all(|cell| cell.is_none()) {
@@ -138,9 +134,9 @@ impl Default for QTable {
 }
 
 impl QTable {
-    pub fn get_max_value(&self, state: &<TicTacToe as Game>::Board) -> QValue {
+    pub fn get_max_value(&self, state_index: usize) -> QValue {
         let mut max_q = f32::NEG_INFINITY;
-        for val in self.get_values(state) {
+        for val in self.get_values(state_index) {
             if val > &max_q {
                 max_q = *val;
             }
@@ -148,22 +144,16 @@ impl QTable {
         max_q
     }
 
-    pub fn get_value(&self, state: &<TicTacToe as Game>::Board, action: Action) -> QValue {
-        self.0[state_to_index(state)][action_to_index(action)]
+    pub fn get_value(&self, state_index: usize, action_index: usize) -> QValue {
+        self.0[state_index][action_index]
     }
 
-    pub fn get_values(&self, state: &<TicTacToe as Game>::Board) -> &[QValue] {
-        self.0[state_to_index(state)].as_slice()
+    pub fn get_values(&self, state_index: usize) -> &[QValue] {
+        self.0[state_index].as_slice()
     }
 
-    pub fn set_value(
-        &mut self,
-        state: &<TicTacToe as Game>::Board,
-        action: Action,
-        new_val: QValue,
-    ) {
-        // TODO: move state_to_index and action_to_index to Model level
-        self.0[state_to_index(state)][action_to_index(action)] = new_val;
+    pub fn set_value(&mut self, state_index: usize, action_index: usize, new_val: QValue) {
+        self.0[state_index][action_index] = new_val;
     }
 }
 
@@ -191,7 +181,7 @@ impl Agent {
             return None;
         }
 
-        let q_values = self.q_table.get_values(board);
+        let q_values = self.q_table.get_values(state_to_index(board));
         let mut best_actions = Vec::with_capacity(STATE_SIZE);
         let mut max_q = q_values[action_to_index(valid_actions[0])];
         for action in valid_actions.iter() {
@@ -245,7 +235,8 @@ impl Model {
         while matches!(self.env.state(), GameState::Turn(_)) {
             let (action, greedy) = self.choose_epsilon_greedy_action();
             let prev_state = self.env.board().clone();
-            let prev_state_values = self.q_table.get_values(&prev_state).to_vec();
+            let prev_state_index = state_to_index(&prev_state);
+            let prev_state_values = self.q_table.get_values(prev_state_index).to_vec();
             let reward = self.step(action);
             self.update_q(&prev_state, action, reward);
 
@@ -259,7 +250,7 @@ impl Model {
                 println!(
                     "rewards before: {:?}\nrewards after: {:?}",
                     prev_state_values,
-                    self.q_table.get_values(&prev_state)
+                    self.q_table.get_values(prev_state_index)
                 );
             }
             total_reward += reward;
@@ -316,8 +307,10 @@ impl Model {
         action: Action,
         reward: Reward,
     ) {
-        let q_prev = self.q_table.get_value(&prev_state, action);
-        let max_q_next = self.q_table.get_max_value(self.env.board());
+        let prev_state_index = state_to_index(&prev_state);
+        let action_index = action_to_index(action);
+        let q_prev = self.q_table.get_value(prev_state_index, action_index);
+        let max_q_next = self.q_table.get_max_value(state_to_index(self.env.board()));
         let new_q = calculate_q(
             q_prev,
             max_q_next,
@@ -325,7 +318,8 @@ impl Model {
             self.current_learning_rate,
             self.gamma,
         );
-        self.q_table.set_value(&prev_state, action, new_q);
+        self.q_table
+            .set_value(prev_state_index, action_index, new_q);
     }
 
     /// true - greedy, false - exploration
@@ -346,7 +340,7 @@ impl Model {
         if actions.is_empty() {
             panic!("no available actions");
         }
-        let q_values = self.q_table.get_values(self.env.board());
+        let q_values = self.q_table.get_values(state_to_index(self.env.board()));
         let mut best_actions = Vec::with_capacity(STATE_SIZE);
         let mut max_q = q_values[action_to_index(actions[0])];
         for action in actions {
@@ -518,8 +512,8 @@ mod test {
         // - X -
         // X - O
         set_board_cell(&mut board, (0, 2), 0);
-        assert_eq!(calculate_reward(&board, 0), 12.8);
-        assert_eq!(calculate_reward(&board, 1), -12.8);
+        assert_eq!(calculate_reward(&board, 0), 10.0);
+        assert_eq!(calculate_reward(&board, 1), -10.0);
     }
 
     #[test]
@@ -534,12 +528,18 @@ mod test {
         assert_eq!(reward, 1.4);
 
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             ActionValues::default(),
         );
         model.update_q(&prev_state, action, reward);
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             [0.0, 0.0, 0.0, 0.0, reward, 0.0, 0.0, 0.0, 0.0],
         );
 
@@ -553,12 +553,18 @@ mod test {
         assert!(reward > -0.2 - f32::EPSILON && reward < -0.2 + f32::EPSILON);
 
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             ActionValues::default(),
         );
         model.update_q(&prev_state, action, reward);
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             [reward, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         );
 
@@ -571,12 +577,18 @@ mod test {
         assert_eq!(reward, 0.0);
 
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             ActionValues::default(),
         );
         model.update_q(&prev_state, action, reward);
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             [0.0, 0.0, 0.0, 0.0, 0.0, reward, 0.0, 0.0, 0.0],
         );
 
@@ -589,12 +601,18 @@ mod test {
         assert_eq!(reward, 0.0);
 
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             ActionValues::default(),
         );
         model.update_q(&prev_state, action, reward);
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, reward, 0.0],
         );
     }
@@ -616,7 +634,11 @@ mod test {
         model.perform_action(1, (0, 1));
         // init q value for starting board and action
         let action = (1, 2);
-        model.q_table.set_value(model.env.board(), action, -1.0);
+        model.q_table.set_value(
+            state_to_index(model.env.board()),
+            action_to_index(action),
+            -1.0,
+        );
 
         let prev_state = model.env.board().clone();
         model.perform_action(agent, action);
@@ -629,13 +651,20 @@ mod test {
             .into_iter()
             .zip([3.0, 0.0, -4.0, 5.0, 0.0, -4.0, -1.0, 0.0, 0.0])
         {
-            model.q_table.set_value(model.env.board(), action, value);
+            model.q_table.set_value(
+                state_to_index(model.env.board()),
+                action_to_index(action),
+                value,
+            );
         }
 
         model.update_q(&prev_state, action, reward);
         let updated_q = 8.0; // reward + max q
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             [0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0, 0.0, 0.0],
         );
     }
@@ -656,7 +685,11 @@ mod test {
         model.perform_action(0, (2, 1));
         // init q value for starting board and action
         let action = (2, 0);
-        model.q_table.set_value(model.env.board(), action, 2.0);
+        model.q_table.set_value(
+            state_to_index(model.env.board()),
+            action_to_index(action),
+            2.0,
+        );
 
         let prev_state = model.env.board().clone();
         model.perform_action(agent, action);
@@ -669,14 +702,21 @@ mod test {
             .into_iter()
             .zip([-1.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, -3.0])
         {
-            model.q_table.set_value(model.env.board(), action, value);
+            model.q_table.set_value(
+                state_to_index(model.env.board()),
+                action_to_index(action),
+                value,
+            );
         }
 
         model.update_q(&prev_state, action, reward);
         let updated_q = 1.1; // 2 + 0.5*(-3 + (0.8*4) - 2)
 
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0, 0.0],
         );
     }
@@ -698,7 +738,11 @@ mod test {
         model.perform_action(1, (1, 1));
         // init q value for starting board and action
         let action = (2, 1);
-        model.q_table.set_value(model.env.board(), action, -5.0);
+        model.q_table.set_value(
+            state_to_index(model.env.board()),
+            action_to_index(action),
+            -5.0,
+        );
 
         let prev_state = model.env.board().clone();
         model.perform_action(agent, action);
@@ -706,18 +750,26 @@ mod test {
         let reward = calculate_reward(model.env.board(), agent);
         assert_eq!(reward, -7.6);
 
+        // init q values for next board state
         for (action, value) in get_action_space()
             .into_iter()
             .zip([0.0, 0.0, -6.0, -4.0, 0.0, 0.0, 0.0, 0.0, -7.0])
         {
-            model.q_table.set_value(model.env.board(), action, value);
+            model.q_table.set_value(
+                state_to_index(model.env.board()),
+                action_to_index(action),
+                value,
+            );
         }
 
         model.update_q(&prev_state, action, reward);
         let updated_q = -11.6; // -5 + (-7.6 + -4 - -5)
 
         itertools::assert_equal(
-            model.q_table.get_values(&prev_state).to_vec(),
+            model
+                .q_table
+                .get_values(state_to_index(&prev_state))
+                .to_vec(),
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, updated_q, 0.0],
         );
     }
