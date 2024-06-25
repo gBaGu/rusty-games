@@ -12,8 +12,8 @@ fn main() {
     }
     let output_path = args[1].clone();
 
-    let mut model = Model::new(0.6, 0.9);
-    let periods = 300000;
+    let mut model = Model::new(rand::thread_rng(), 0.6, 0.9);
+    let periods = 1000000;
     for i in 0..periods {
         let verbose = i % (periods / 10000) == 0;
         model.run_episode(verbose);
