@@ -23,7 +23,7 @@ pub fn calculate_tile_center(board_size: Vec2, tile_size: Vec2, tile_pos: (u32, 
     let tile_x =
         (tile_size.x + BORDER_WIDTH) * tile_pos.1 as f32 + tile_size.x / 2.0 - board_size.x / 2.0;
     let tile_y =
-        (tile_size.y + BORDER_WIDTH) * tile_pos.0 as f32 + tile_size.y / 2.0 - board_size.y / 2.0;
+        (tile_size.y + BORDER_WIDTH) * (2 - tile_pos.0) as f32 + tile_size.y / 2.0 - board_size.y / 2.0;
     Vec2::new(tile_x, tile_y)
 }
 
@@ -89,5 +89,57 @@ impl Plugin for BoardPlugin {
                     (handle_game_over, win_animation).in_set(GameStateSystems::Finished),
                 ),
             );
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_calculate_tile_center() {
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 0)),
+            Vec2::new(-35.0, 27.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 1)),
+            Vec2::new(-4.0, 27.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 2)),
+            Vec2::new(27.0, 27.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 0)),
+            Vec2::new(-35.0, -4.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 1)),
+            Vec2::new(-4.0, -4.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 2)),
+            Vec2::new(27.0, -4.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 0)),
+            Vec2::new(-35.0, -35.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 1)),
+            Vec2::new(-4.0, -35.0)
+        );
+        assert_eq!(
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 2)),
+            Vec2::new(27.0, -35.0)
+        );
+    }
+
+    #[test]
+    fn test_calculate_tile_size() {
+        assert_eq!(calculate_tile_size(Vec2::splat(302.0)), Vec2::splat(100.0));
+        assert_eq!(calculate_tile_size(Vec2::new(62.0, 32.0)), Vec2::new(20.0, 10.0));
+        assert_eq!(calculate_tile_size(Vec2::new(50.0, 53.0)), Vec2::new(16.0, 17.0));
     }
 }

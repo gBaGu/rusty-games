@@ -33,8 +33,7 @@ pub fn create(mut commands: Commands, new_board: Query<(Entity, &Sprite), Added<
             for row in 0..3 {
                 for col in 0..3 {
                     let tile_center = calculate_tile_center(board_size, tile_size, (row, col));
-                    // invert y because server expects top left tile to be (0, 0)
-                    let pos = Position::new(2 - row, col);
+                    let pos = Position::new(row, col);
                     builder.spawn(TileBundle::new(tile_size, tile_center.extend(1.0), pos));
                 }
             }
