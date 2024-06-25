@@ -17,9 +17,9 @@ const TWO_OUT_OF_THREE_REWARD: f32 = 3.0;
 const ONE_OUT_OF_THREE_REWARD: f32 = 1.3;
 
 const DECAY_INTERVAL: usize = 1000;
-const EXPLORATION_DECAY_RATE: f32 = 0.0001;
-const LEARNING_RATE_DECAY_RATE: f32 = 0.0001;
-const MIN_EXPLORATION_RATE: f32 = 0.1;
+const EXPLORATION_DECAY_RATE: f32 = 0.00001;
+const LEARNING_RATE_DECAY_RATE: f32 = 0.00001;
+const MIN_EXPLORATION_RATE: f32 = 0.2;
 const MIN_LEARNING_RATE: f32 = 0.1;
 
 type Action = (usize, usize);
@@ -235,7 +235,7 @@ impl Agent {
     }
 }
 
-pub struct Model {
+pub struct Model<R> {
     initial_learning_rate: f32,
     current_learning_rate: f32,
     exploration_level: f32,
@@ -243,10 +243,11 @@ pub struct Model {
     episode: usize,
     q_table: QTable,
     env: TicTacToe,
+    rng: R,
 }
 
-impl Model {
-    pub fn new(gamma: f32, lr: f32) -> Self {
+impl<R: Rng> Model<R> {
+    pub fn new(rng: R, gamma: f32, lr: f32) -> Self {
         Self {
             initial_learning_rate: lr,
             current_learning_rate: lr,
@@ -255,6 +256,7 @@ impl Model {
             episode: 0,
             q_table: Default::default(),
             env: Default::default(),
+            rng,
         }
     }
 
@@ -366,12 +368,11 @@ impl Model {
     }
 
     /// true - greedy, false - exploration
-    fn choose_epsilon_greedy_action(&self) -> (Action, bool) {
+    fn choose_epsilon_greedy_action(&mut self) -> (Action, bool) {
         let valid_actions = get_valid_actions(self.env.board());
-        let mut rng = rand::thread_rng();
-        if rng.sample(Uniform::from(0.0..1.0)) < self.exploration_level {
+        if self.rng.sample(Uniform::from(0.0..1.0)) < self.exploration_level {
             (
-                valid_actions[rng.sample(Uniform::from(0..valid_actions.len()))],
+                valid_actions[self.rng.sample(Uniform::from(0..valid_actions.len()))],
                 false,
             )
         } else {
@@ -379,7 +380,7 @@ impl Model {
         }
     }
 
-    fn choose_best_action(&self, actions: &Vec<Action>) -> Action {
+    fn choose_best_action(&mut self, actions: &Vec<Action>) -> Action {
         if actions.is_empty() {
             panic!("no available actions");
         }
@@ -388,8 +389,11 @@ impl Model {
         if best_actions.len() == 1 {
             best_actions[0]
         } else {
-            let mut rng = rand::thread_rng();
-            best_actions[rng.sample(Uniform::from(0..best_actions.len()))]
+            if best_actions.is_empty() {
+                actions[self.rng.sample(Uniform::from(0..actions.len()))]
+            } else {
+                best_actions[self.rng.sample(Uniform::from(0..best_actions.len()))]
+            }
         }
     }
 
@@ -415,6 +419,8 @@ impl Model {
 
 #[cfg(test)]
 mod test {
+    use rand_chacha::rand_core::SeedableRng;
+
     use super::*;
     use game_server::game::tic_tac_toe::{FieldCol, FieldRow, TicTacToe};
     use game_server::game::Game;
@@ -433,7 +439,7 @@ mod test {
 
     #[test]
     fn test_dump_load() {
-        let mut model = Model::new(1.0, 1.0);
+        let mut model = Model::new(rand::thread_rng(), 1.0, 1.0);
         // fill with some data
         for i in 0..9u8 {
             model.q_table.set_value(i.into(), i.into(), i.into());
@@ -544,6 +550,32 @@ mod test {
         assert_eq!(calculate_reward(&board, 1), -10.0);
     }
 
+    #[test]
+    fn test_choose_best_action() {
+        let rng = rand_chacha::ChaCha8Rng::seed_from_u64(0);
+        let mut model = Model::new(rng, 1.0, 1.0);
+        // starting actions
+        let valid_actions = get_valid_actions(model.env.board());
+
+        // uninitialized state -> choose randomly from all actions
+        assert_eq!(model.choose_best_action(&valid_actions), (2, 0));
+
+        // add single negative q_value
+        model.q_table.set_value(0, 0, -10.0);
+        // choose added value because it's the only value that was set
+        assert_eq!(model.choose_best_action(&valid_actions), (0, 0));
+
+        // add single zero q_value
+        model.q_table.set_value(0, 8, 0.0);
+        // choose added value because it's the only value that was set
+        assert_eq!(model.choose_best_action(&valid_actions), (2, 2));
+
+        // add second zero q_value
+        model.q_table.set_value(0, 4, 0.0);
+        // randomly choose between two zeroes
+        assert_eq!(model.choose_best_action(&valid_actions), (1, 1));
+    }
+
     /// agent - X
     /// scenario: X O O   order: 2 7 1
     ///           O X X          5 0 4
@@ -551,7 +583,7 @@ mod test {
     #[test]
     fn test_update_q_first_episode_best_rewards_for_x() {
         let agent = 0;
-        let mut model = Model::new(1.0, 1.0);
+        let mut model = Model::new(rand::thread_rng(), 1.0, 1.0);
         // step 0
         let mut prev_state = model.env.board().clone();
         let mut prev_state_index = state_to_index(&prev_state);
@@ -657,7 +689,7 @@ mod test {
     #[test]
     fn test_update_q_with_filled_table_lr_1_gamma_1() {
         let agent = 0;
-        let mut model = Model::new(1.0, 1.0);
+        let mut model = Model::new(rand::thread_rng(), 1.0, 1.0);
         // init board
         model.perform_action(agent, (2, 2));
         model.perform_action(1, (2, 1));
@@ -706,7 +738,7 @@ mod test {
     #[test]
     fn test_update_q_with_filled_table_lr_05_gamma_08() {
         let agent = 1;
-        let mut model = Model::new(0.8, 0.5);
+        let mut model = Model::new(rand::thread_rng(), 0.8, 0.5);
         // init board
         model.perform_action(0, (1, 0));
         model.perform_action(agent, (1, 2));
@@ -754,7 +786,7 @@ mod test {
     #[test]
     fn test_update_q_not_influenced_by_invalid_actions() {
         let agent = 0;
-        let mut model = Model::new(1.0, 1.0);
+        let mut model = Model::new(rand::thread_rng(), 1.0, 1.0);
         // init board
         model.perform_action(agent, (0, 1));
         model.perform_action(1, (0, 0));
