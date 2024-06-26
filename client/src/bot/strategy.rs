@@ -1,4 +1,4 @@
-use game_server::game::tic_tac_toe::{FieldCol, FieldRow, TicTacToe};
+use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{BoardCell, Game, PlayerId as GamePlayerId};
 use rand::{thread_rng, Rng};
 use tic_tac_toe_ai::Agent;
@@ -33,10 +33,7 @@ impl MoveStrategy {
                 let mut ttt_board = <TicTacToe as Game>::Board::default();
                 for (i, row) in board.iter().enumerate() {
                     for (j, cell) in row.iter().enumerate() {
-                        *ttt_board.get_mut_ref(<TicTacToe as Game>::TurnData::new(
-                            FieldRow::try_from(i).ok()?,
-                            FieldCol::try_from(j).ok()?,
-                        )) = *cell;
+                        ttt_board[(i, j).into()] = *cell;
                     }
                 }
                 agent

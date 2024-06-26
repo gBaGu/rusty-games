@@ -1,6 +1,6 @@
 extern crate server;
 
-use server::game::tic_tac_toe::{FieldCol, FieldRow, TicTacToe};
+use server::game::tic_tac_toe::TicTacToe;
 use server::game::Game;
 
 fn main() {
@@ -9,25 +9,25 @@ fn main() {
     let mut ttt = TicTacToe::new();
 
     let mut turn_data;
-    turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R2, FieldCol::C2);
+    turn_data = <TicTacToe as Game>::TurnData::new(1, 1);
     ttt.update(player1, turn_data).unwrap();
     println!("{:?}", ttt);
-    turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R2, FieldCol::C3);
+    turn_data = <TicTacToe as Game>::TurnData::new(1, 2);
     ttt.update(player2, turn_data).unwrap();
     println!("{:?}", ttt);
-    turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R3, FieldCol::C3);
+    turn_data = <TicTacToe as Game>::TurnData::new(2, 2);
     ttt.update(player1, turn_data).unwrap();
     println!("{:?}", ttt);
-    turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R1, FieldCol::C1);
+    turn_data = <TicTacToe as Game>::TurnData::new(0, 0);
     ttt.update(player2, turn_data).unwrap();
     println!("{:?}", ttt);
-    turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R3, FieldCol::C2);
+    turn_data = <TicTacToe as Game>::TurnData::new(2, 1);
     ttt.update(player1, turn_data).unwrap();
     println!("{:?}", ttt);
-    turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R1, FieldCol::C2);
+    turn_data = <TicTacToe as Game>::TurnData::new(0, 1);
     ttt.update(player2, turn_data).unwrap();
     println!("{:?}", ttt);
-    turn_data = <TicTacToe as Game>::TurnData::new(FieldRow::R3, FieldCol::C1);
+    turn_data = <TicTacToe as Game>::TurnData::new(2, 0);
     ttt.update(player1, turn_data).unwrap();
     println!("{:?}", ttt);
 }

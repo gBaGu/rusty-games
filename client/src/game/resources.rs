@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
+use game_server::game::{BoardCell, Game, GameState, PlayerId as GamePlayerId};
 
 use super::error::GameError;
 use super::{

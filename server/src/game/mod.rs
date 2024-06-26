@@ -8,10 +8,11 @@ pub(crate) mod player_pool;
 
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
+use generic_array::ArrayLength;
 
 use encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
 use error::GameError;
-use grid::{Grid, WithLength};
+use grid::Grid;
 use player_pool::{Player, PlayerQueue};
 
 pub type GameResult<T> = Result<T, GameError>;
@@ -94,7 +95,7 @@ pub trait GameBoard {
     fn get_content(&self) -> Vec<Vec<Self::Item>>;
 }
 
-impl<T, Row: WithLength, Col: WithLength> GameBoard for Grid<T, Row, Col>
+impl<T, R: ArrayLength, C: ArrayLength> GameBoard for Grid<T, R, C>
 where
     T: Clone + ToProtobuf,
 {

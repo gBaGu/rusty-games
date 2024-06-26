@@ -1,17 +1,17 @@
 use prost::Message;
 
-use crate::game::chess::index::{Col, Index, Row};
 use crate::game::encoding::{FromProtobuf, FromProtobufError};
+use crate::game::grid::GridIndex;
 use crate::proto::PositionPair;
 
 #[derive(Clone, Copy, Debug)]
 pub struct TurnData {
-    pub from: Index,
-    pub to: Index,
+    pub from: GridIndex,
+    pub to: GridIndex,
 }
 
 impl TurnData {
-    pub fn new(from: Index, to: Index) -> Self {
+    pub fn new(from: GridIndex, to: GridIndex) -> Self {
         Self { from, to }
     }
 }
@@ -30,13 +30,13 @@ impl FromProtobuf for TurnData {
                 missing_field: "second".to_string(),
             })?;
         let turn_data = TurnData::new(
-            Index::new(
-                Row(usize::try_from(first.row)?),
-                Col(usize::try_from(first.col)?),
+            GridIndex::new(
+                usize::try_from(first.row)?,
+                usize::try_from(first.col)?,
             ),
-            Index::new(
-                Row(usize::try_from(second.row)?),
-                Col(usize::try_from(second.col)?),
+            GridIndex::new(
+                usize::try_from(second.row)?,
+                usize::try_from(second.col)?,
             ),
         );
         Ok(turn_data)
