@@ -1,22 +1,17 @@
-use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::{BoardCell, Game, PlayerId as GamePlayerId};
 use rand::{thread_rng, Rng};
 use tic_tac_toe_ai::Agent;
 
-use crate::game::{Position, BOARD_SIZE};
+use crate::game::{Position, TTTBoard};
 
-fn get_random_position(board: &[[BoardCell<GamePlayerId>; BOARD_SIZE]]) -> Position {
+fn get_random_position(board: &TTTBoard) -> Position {
     let mut rng = thread_rng();
     let empty_cells: Vec<_> = board
-        .iter()
-        .enumerate()
-        .map(|(i, row)| row.iter().enumerate().map(move |(j, cell)| (i, j, cell)))
-        .flatten()
-        .filter(|(_, _, cell)| cell.is_none())
+        .all_indexed()
+        .filter(|(_, cell)| cell.is_none())
         .collect();
     let index = rng.gen_range(0..empty_cells.len());
     let rand_cell = empty_cells[index];
-    Position::new(rand_cell.0 as u32, rand_cell.1 as u32)
+    Position::new(rand_cell.0.row() as u32, rand_cell.0.col() as u32)
 }
 
 pub enum MoveStrategy {
@@ -25,21 +20,12 @@ pub enum MoveStrategy {
 }
 
 impl MoveStrategy {
-    pub fn get_move(&self, board: &[[BoardCell<GamePlayerId>; BOARD_SIZE]]) -> Option<Position> {
+    pub fn get_move(&self, board: &TTTBoard) -> Option<Position> {
         match self {
             MoveStrategy::Random => Some(get_random_position(board)),
-            MoveStrategy::QLearningModel(agent) => {
-                // TODO: use this board in client
-                let mut ttt_board = <TicTacToe as Game>::Board::default();
-                for (i, row) in board.iter().enumerate() {
-                    for (j, cell) in row.iter().enumerate() {
-                        ttt_board[(i, j).into()] = *cell;
-                    }
-                }
-                agent
-                    .get_best_action(&ttt_board)
-                    .and_then(|action| Some(Position::new(action.0 as u32, action.1 as u32)))
-            }
+            MoveStrategy::QLearningModel(agent) => agent
+                .get_best_action(&board)
+                .and_then(|action| Some(Position::new(action.0 as u32, action.1 as u32))),
         }
     }
 }

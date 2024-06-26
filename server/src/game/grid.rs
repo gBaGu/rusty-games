@@ -129,6 +129,13 @@ impl<T, R: ArrayLength, C: ArrayLength> IndexMut<GridIndex> for Grid<T, R, C> {
 }
 
 impl<T, R: ArrayLength, C: ArrayLength> Grid<T, R, C> {
+    /// Returns an iterator to indexed grid elements row by row
+    pub fn all_indexed(&self) -> impl Iterator<Item = (GridIndex, &T)> {
+        (0..self.contents.len())
+            .map(|i| self.right_iter((i, 0).into()).indexed())
+            .flatten()
+    }
+
     /// Returns an iterator with rightwards direction that starts with a `pos`.
     pub fn right_iter(&self, pos: GridIndex) -> RightGridIterator<T, R, C> {
         RightGridIterator {
@@ -480,6 +487,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use generic_array::typenum;
 
     #[test]
     fn test_is_adjacent() {
@@ -502,5 +510,21 @@ mod test {
         assert!(!ones.is_adjacent(&GridIndex::new(1, 3)));
         assert!(!ones.is_adjacent(&GridIndex::new(2, 3)));
         assert!(!ones.is_adjacent(&GridIndex::new(3, 0)));
+    }
+
+    #[test]
+    fn test_all_indexed() {
+        let mut grid = Grid::<usize, typenum::U2, typenum::U2>::default();
+        grid[(1, 1).into()] = 1;
+        itertools::assert_equal(
+            grid.all_indexed(),
+            [
+                ((0, 0).into(), &0),
+                ((0, 1).into(), &0),
+                ((1, 0).into(), &0),
+                ((1, 1).into(), &1),
+            ]
+            .into_iter(),
+        );
     }
 }

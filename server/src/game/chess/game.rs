@@ -276,12 +276,6 @@ impl Chess {
             .is_some()
     }
 
-    fn is_friendly(&self, position: GridIndex, player: PlayerId) -> bool {
-        self.board[position]
-            .filter(|target| !target.is_enemy(player))
-            .is_some()
-    }
-
     fn is_in_check(&self, id: PlayerId) -> bool {
         if let Some(threats) = self.player_state.get(&id).map(|state| &state.check) {
             return !threats.is_empty();

@@ -1,10 +1,9 @@
 use bevy::prelude::{Component, Timer, TimerMode};
-use game_server::game::{BoardCell, PlayerId as GamePlayerId};
 use rand::{thread_rng, Rng};
 use std::time::Duration;
 
 use crate::bot::strategy::MoveStrategy;
-use crate::game::{Position, BOARD_SIZE};
+use crate::game::{Position, TTTBoard};
 
 const MIN_MOVE_DELAY: u64 = 500;
 const MAX_MOVE_DELAY: u64 = 1500;
@@ -52,7 +51,7 @@ impl Bot {
         self.delay_timer.pause();
     }
 
-    pub fn get_move(&self, board: &[[BoardCell<GamePlayerId>; BOARD_SIZE]]) -> Option<Position> {
+    pub fn get_move(&self, board: &TTTBoard) -> Option<Position> {
         self.move_strategy.get_move(board)
     }
 }

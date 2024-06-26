@@ -13,7 +13,7 @@ pub use events::{
     CellUpdated, GameExit, GameOver, LocalGameTurn, NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
 pub use game_info::{FullGameInfo, GameInfo};
-pub use resources::{Authority, CurrentGame, GameType, LocalGame};
+pub use resources::{Authority, CurrentGame, GameType, LocalGame, TTTBoard};
 
 use crate::grpc::{CallGetGame, NetworkSystems};
 use resources::RefreshGameTimer;

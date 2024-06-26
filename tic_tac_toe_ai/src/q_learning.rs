@@ -52,13 +52,10 @@ fn state_to_index(state: &<TicTacToe as Game>::Board) -> usize {
 // TODO: try SmallVec here
 fn get_valid_actions(board: &<TicTacToe as Game>::Board) -> Vec<Action> {
     board
-        .iter()
-        .enumerate()
-        .map(|(i, row)| row.iter().enumerate().map(move |(j, cell)| (i, j, cell)))
-        .flatten()
-        .filter_map(|(row, col, cell)| {
+        .all_indexed()
+        .filter_map(|(index, cell)| {
             if cell.is_none() {
-                return Some((row, col));
+                return Some((index.row(), index.col()));
             }
             None
         })

@@ -456,10 +456,7 @@ pub fn make_turn(
         return;
     };
     for event in board_button_pressed.read() {
-        if game
-            .get_cell((event.pos().row() as usize, event.pos().col() as usize))
-            .is_some()
-        {
+        if game.board()[(event.pos().row() as usize, event.pos().col() as usize).into()].is_some() {
             println!("cell is occupied");
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             continue;

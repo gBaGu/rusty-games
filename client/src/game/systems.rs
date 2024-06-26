@@ -224,7 +224,7 @@ pub fn update_game(
                     for (i, row) in full_info.board.iter().enumerate() {
                         for (j, cell) in row.iter().enumerate() {
                             if let BoardCell(Some(player)) = cell {
-                                let local_cell = game.board()[i][j];
+                                let local_cell = game.board()[(i, j).into()];
                                 if local_cell.is_none() {
                                     game.set_cell((i, j), *player);
                                     let pos = Position::new(i as u32, j as u32);

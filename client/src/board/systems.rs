@@ -131,9 +131,9 @@ pub fn handle_game_over(
             };
             let Some((index1, _, index3)) =
                 winning_combinations().into_iter().find(|(id1, id2, id3)| {
-                    let cell1 = game.get_cell((id1.row().into(), id1.col().into()));
-                    let cell2 = game.get_cell((id2.row().into(), id2.col().into()));
-                    let cell3 = game.get_cell((id3.row().into(), id3.col().into()));
+                    let cell1 = game.board()[*id1];
+                    let cell2 = game.board()[*id2];
+                    let cell3 = game.board()[*id3];
                     if cell1 == cell2 && cell2 == cell3 {
                         return cell1.is_some();
                     }
@@ -147,14 +147,8 @@ pub fn handle_game_over(
                     &asset_server,
                     &mut texture_atlas_layouts,
                     board_size,
-                    (
-                        usize::from(index1.row()) as u32,
-                        usize::from(index1.col()) as u32,
-                    ),
-                    (
-                        usize::from(index3.row()) as u32,
-                        usize::from(index3.col()) as u32,
-                    ),
+                    (index1.row() as u32, index1.col() as u32),
+                    (index3.row() as u32, index3.col() as u32),
                 ))
                 .id();
             commands.entity(*board).add_child(animation);
