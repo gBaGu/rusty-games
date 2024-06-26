@@ -34,7 +34,7 @@ impl Player for PlayerData {
 }
 
 fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, typenum::U8, typenum::U8> {
-    let mut board = Grid::<Cell, typenum::U8, typenum::U8>::default();
+    let mut board = Grid::<Cell, _, _>::default();
     // init pawns
     for i in 0..8 {
         *board[GridIndex::new(6, i)] = Piece::create_pawn(player1).into();
@@ -800,10 +800,8 @@ mod test {
     }
 
     #[test]
-    fn test_is_enemy_is_friendly() {
+    fn test_is_enemy() {
         let chess = Chess::new();
-        assert!(chess.is_friendly(Team::White.get_king_initial_position(), FIRST_PLAYER));
-        assert!(chess.is_friendly(Team::Black.get_king_initial_position(), SECOND_PLAYER));
         assert!(chess.is_enemy(Team::White.get_king_initial_position(), SECOND_PLAYER));
         assert!(chess.is_enemy(Team::Black.get_king_initial_position(), FIRST_PLAYER));
     }

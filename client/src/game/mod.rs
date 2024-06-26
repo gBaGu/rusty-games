@@ -6,14 +6,15 @@ mod resources;
 mod systems;
 
 use bevy::prelude::*;
-use game_server::game::GameState;
+use game_server::game::tic_tac_toe::TicTacToe;
+use game_server::game::{Game, GameState};
 
 pub use components::Position;
 pub use events::{
     CellUpdated, GameExit, GameOver, LocalGameTurn, NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
 pub use game_info::{FullGameInfo, GameInfo};
-pub use resources::{Authority, CurrentGame, GameType, LocalGame, TTTBoard};
+pub use resources::{Authority, CurrentGame, GameType, LocalGame};
 
 use crate::grpc::{CallGetGame, NetworkSystems};
 use resources::RefreshGameTimer;
@@ -28,6 +29,8 @@ pub const BOARD_SIZE: usize = 3;
 
 const BOARD_PROTO_SIZE: usize = BOARD_SIZE * BOARD_SIZE;
 const PLAYERS_SIZE: usize = 2;
+
+pub type TTTBoard = <TicTacToe as Game>::Board;
 
 fn game_is_finished(game: Option<Res<CurrentGame>>) -> bool {
     matches!(
@@ -117,7 +120,8 @@ impl Plugin for GamePlugin {
                         refresh_game.run_if(not(any_with_component::<CallGetGame>)),
                         make_turn_network,
                     )
-                        .in_set(GameTypeSystems::Network).in_set(NetworkSystems),
+                        .in_set(GameTypeSystems::Network)
+                        .in_set(NetworkSystems),
                     make_turn_local.in_set(GameTypeSystems::Local),
                 )
                     .in_set(GameStateSystems::InProgress),

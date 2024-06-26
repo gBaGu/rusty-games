@@ -1,14 +1,12 @@
 use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::{Game, GameState, PlayerId as GamePlayerId};
+use game_server::game::{GameState, PlayerId as GamePlayerId};
 
 use super::error::GameError;
 use super::{
-    GameInfo, LocalGameTurn, NetworkGameTurn, Position, GAME_REFRESH_INTERVAL_SEC, O_SPRITE_PATH,
-    X_SPRITE_PATH,
+    GameInfo, LocalGameTurn, NetworkGameTurn, Position, TTTBoard, GAME_REFRESH_INTERVAL_SEC,
+    O_SPRITE_PATH, X_SPRITE_PATH,
 };
-
-pub type TTTBoard = <TicTacToe as Game>::Board;
 
 #[derive(Deref, DerefMut, Resource)]
 pub struct RefreshGameTimer(pub Timer);
