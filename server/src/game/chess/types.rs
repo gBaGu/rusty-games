@@ -1,8 +1,7 @@
 use prost::Message;
 
-use crate::game::chess::index::{Col, Index, Row};
 use crate::game::encoding::ToProtobuf;
-use crate::game::grid::WithLength;
+use crate::game::grid::GridIndex;
 use crate::game::PlayerId;
 use crate::proto;
 
@@ -22,31 +21,31 @@ pub enum Team {
 }
 
 impl Team {
-    pub fn get_king_initial_position(&self) -> Index {
+    pub fn get_king_initial_position(&self) -> GridIndex {
         match self {
-            Team::White => Index::new(Row::max(), Col(4)),
-            Team::Black => Index::new(Row(0), Col(4)),
+            Team::White => GridIndex::new(7, 4),
+            Team::Black => GridIndex::new(0, 4),
         }
     }
 
-    pub fn get_left_rook_initial_position(&self) -> Index {
+    pub fn get_left_rook_initial_position(&self) -> GridIndex {
         match self {
-            Team::White => Index::new(Row::max(), Col(0)),
-            Team::Black => Index::new(Row(0), Col(0)),
+            Team::White => GridIndex::new(7, 0),
+            Team::Black => GridIndex::new(0, 0),
         }
     }
 
-    pub fn get_right_rook_initial_position(&self) -> Index {
+    pub fn get_right_rook_initial_position(&self) -> GridIndex {
         match self {
-            Team::White => Index::new(Row::max(), Col::max()),
-            Team::Black => Index::new(Row(0), Col::max()),
+            Team::White => GridIndex::new(7, 7),
+            Team::Black => GridIndex::new(0, 7),
         }
     }
 
-    pub fn get_pawn_initial_row(&self) -> Row {
+    pub fn get_pawn_initial_row(&self) -> usize {
         match self {
-            Team::White => Row::max() - 1,
-            Team::Black => Row(1),
+            Team::White => 6,
+            Team::Black => 1,
         }
     }
 }

@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::ops::BitAnd;
 use std::path::Path;
 
-use game_server::game::tic_tac_toe::{winning_combinations, FieldCol, FieldRow, TicTacToe};
+use game_server::game::tic_tac_toe::{winning_combinations, TicTacToe};
 use game_server::game::{BoardCell, Game, GameState, PlayerId};
 use rand::distributions::Uniform;
 use rand::Rng;
@@ -52,13 +52,10 @@ fn state_to_index(state: &<TicTacToe as Game>::Board) -> usize {
 // TODO: try SmallVec here
 fn get_valid_actions(board: &<TicTacToe as Game>::Board) -> Vec<Action> {
     board
-        .iter()
-        .enumerate()
-        .map(|(i, row)| row.iter().enumerate().map(move |(j, cell)| (i, j, cell)))
-        .flatten()
-        .filter_map(|(row, col, cell)| {
+        .all_indexed()
+        .filter_map(|(index, cell)| {
             if cell.is_none() {
-                return Some((row, col));
+                return Some((index.row(), index.col()));
             }
             None
         })
@@ -94,53 +91,53 @@ fn get_best_actions(actions: &[Action], action_values: &[Option<QValue>]) -> Vec
 fn calculate_reward(state: &<TicTacToe as Game>::Board, player: PlayerId) -> Reward {
     let mut reward = 0.0;
     for (id1, id2, id3) in winning_combinations() {
-        reward += match (state.get_ref(id1), state.get_ref(id2), state.get_ref(id3)) {
+        reward += match (state[id1], state[id2], state[id3]) {
             (BoardCell(Some(p1)), BoardCell(Some(p2)), BoardCell(Some(p3)))
                 if p1 == p2 && p2 == p3 =>
             {
-                return if *p1 == player {
+                return if p1 == player {
                     WIN_REWARD
                 } else {
                     -WIN_REWARD
                 };
             }
             (BoardCell(None), BoardCell(Some(p2)), BoardCell(Some(p3))) if p2 == p3 => {
-                if *p2 == player {
+                if p2 == player {
                     TWO_OUT_OF_THREE_REWARD
                 } else {
                     -TWO_OUT_OF_THREE_REWARD
                 }
             }
             (BoardCell(Some(p1)), BoardCell(None), BoardCell(Some(p3))) if p1 == p3 => {
-                if *p1 == player {
+                if p1 == player {
                     TWO_OUT_OF_THREE_REWARD
                 } else {
                     -TWO_OUT_OF_THREE_REWARD
                 }
             }
             (BoardCell(Some(p1)), BoardCell(Some(p2)), BoardCell(None)) if p1 == p2 => {
-                if *p1 == player {
+                if p1 == player {
                     TWO_OUT_OF_THREE_REWARD
                 } else {
                     -TWO_OUT_OF_THREE_REWARD
                 }
             }
             (BoardCell(Some(p1)), BoardCell(None), BoardCell(None)) => {
-                if *p1 == player {
+                if p1 == player {
                     ONE_OUT_OF_THREE_REWARD
                 } else {
                     -ONE_OUT_OF_THREE_REWARD
                 }
             }
             (BoardCell(None), BoardCell(Some(p2)), BoardCell(None)) => {
-                if *p2 == player {
+                if p2 == player {
                     ONE_OUT_OF_THREE_REWARD
                 } else {
                     -ONE_OUT_OF_THREE_REWARD
                 }
             }
             (BoardCell(None), BoardCell(None), BoardCell(Some(p3))) => {
-                if *p3 == player {
+                if p3 == player {
                     ONE_OUT_OF_THREE_REWARD
                 } else {
                     -ONE_OUT_OF_THREE_REWARD
@@ -398,15 +395,7 @@ impl<R: Rng> Model<R> {
     }
 
     fn perform_action(&mut self, id: PlayerId, action: Action) {
-        self.env
-            .update(
-                id,
-                <TicTacToe as Game>::TurnData::new(
-                    FieldRow::try_from(action.0).unwrap(),
-                    FieldCol::try_from(action.1).unwrap(),
-                ),
-            )
-            .unwrap();
+        self.env.update(id, action.into()).unwrap();
     }
 
     fn simulate_enemy_action(&mut self) {
@@ -422,20 +411,10 @@ mod test {
     use rand_chacha::rand_core::SeedableRng;
 
     use super::*;
-    use game_server::game::tic_tac_toe::{FieldCol, FieldRow, TicTacToe};
+    use game_server::game::tic_tac_toe::TicTacToe;
     use game_server::game::Game;
 
     type TTTBoard = <TicTacToe as Game>::Board;
-    type TTTIndex = <TicTacToe as Game>::TurnData;
-
-    fn set_board_cell(board: &mut TTTBoard, index: (usize, usize), value: PlayerId) {
-        board
-            .get_mut_ref(TTTIndex::new(
-                FieldRow::try_from(index.0).unwrap(),
-                FieldCol::try_from(index.1).unwrap(),
-            ))
-            .0 = Some(value);
-    }
 
     #[test]
     fn test_dump_load() {
@@ -460,50 +439,50 @@ mod test {
         let empty_board = TTTBoard::default();
         {
             let mut board = empty_board.clone();
-            set_board_cell(&mut board, (2, 1), 0);
+            board[(2, 1).into()].0 = Some(0);
             assert_eq!(state_to_index(&board), 3);
         }
         {
             let mut board = empty_board.clone();
-            set_board_cell(&mut board, (1, 1), 0);
-            set_board_cell(&mut board, (2, 0), 1);
-            set_board_cell(&mut board, (2, 2), 0);
+            board[(1, 1).into()].0 = Some(0);
+            board[(2, 0).into()].0 = Some(1);
+            board[(2, 2).into()].0 = Some(0);
             assert_eq!(state_to_index(&board), 100);
         }
         {
             let mut board = empty_board.clone();
-            set_board_cell(&mut board, (2, 2), 0);
-            set_board_cell(&mut board, (0, 1), 1);
-            set_board_cell(&mut board, (1, 1), 0);
+            board[(2, 2).into()].0 = Some(0);
+            board[(0, 1).into()].0 = Some(1);
+            board[(1, 1).into()].0 = Some(0);
             assert_eq!(state_to_index(&board), 4456);
         }
         {
             let mut board = empty_board.clone();
-            set_board_cell(&mut board, (2, 0), 0);
-            set_board_cell(&mut board, (0, 2), 1);
-            set_board_cell(&mut board, (0, 1), 0);
-            set_board_cell(&mut board, (1, 0), 1);
+            board[(2, 0).into()].0 = Some(0);
+            board[(0, 2).into()].0 = Some(1);
+            board[(0, 1).into()].0 = Some(0);
+            board[(1, 0).into()].0 = Some(1);
             assert_eq!(state_to_index(&board), 4140);
         }
         {
             let mut board = empty_board.clone();
-            set_board_cell(&mut board, (0, 0), 1);
-            set_board_cell(&mut board, (0, 1), 1);
-            set_board_cell(&mut board, (0, 2), 1);
-            set_board_cell(&mut board, (1, 0), 1);
-            set_board_cell(&mut board, (1, 1), 1);
+            board[(0, 0).into()].0 = Some(1);
+            board[(0, 1).into()].0 = Some(1);
+            board[(0, 2).into()].0 = Some(1);
+            board[(1, 0).into()].0 = Some(1);
+            board[(1, 1).into()].0 = Some(1);
             assert_eq!(state_to_index(&board), 19602);
         }
         {
             let mut board = empty_board.clone();
-            set_board_cell(&mut board, (0, 0), 1);
-            set_board_cell(&mut board, (0, 1), 1);
-            set_board_cell(&mut board, (0, 2), 1);
-            set_board_cell(&mut board, (1, 0), 1);
-            set_board_cell(&mut board, (1, 1), 0);
-            set_board_cell(&mut board, (1, 2), 0);
-            set_board_cell(&mut board, (2, 0), 0);
-            set_board_cell(&mut board, (2, 1), 0);
+            board[(0, 0).into()].0 = Some(1);
+            board[(0, 1).into()].0 = Some(1);
+            board[(0, 2).into()].0 = Some(1);
+            board[(1, 0).into()].0 = Some(1);
+            board[(1, 1).into()].0 = Some(0);
+            board[(1, 2).into()].0 = Some(0);
+            board[(2, 0).into()].0 = Some(0);
+            board[(2, 1).into()].0 = Some(0);
             assert_eq!(state_to_index(&board), 19560);
         }
     }
@@ -517,35 +496,35 @@ mod test {
         // - - -
         // - X -
         // - - -
-        set_board_cell(&mut board, (1, 1), 0);
+        board[(1, 1).into()].0 = Some(0);
         assert_eq!(calculate_reward(&board, 0), 5.2);
         assert_eq!(calculate_reward(&board, 1), -5.2);
 
         // - - -
         // - X -
         // - - O
-        set_board_cell(&mut board, (2, 2), 1);
+        board[(2, 2).into()].0 = Some(1);
         assert_eq!(calculate_reward(&board, 0), 1.3);
         assert_eq!(calculate_reward(&board, 1), -1.3);
 
         // - - -
         // - X -
         // X - O
-        set_board_cell(&mut board, (2, 0), 0);
+        board[(2, 0).into()].0 = Some(0);
         assert_eq!(calculate_reward(&board, 0), 5.6);
         assert_eq!(calculate_reward(&board, 1), -5.6);
 
         // O - -
         // - X -
         // X - O
-        set_board_cell(&mut board, (0, 0), 1);
+        board[(0, 0).into()].0 = Some(1);
         assert_eq!(calculate_reward(&board, 0), 3.0);
         assert_eq!(calculate_reward(&board, 1), -3.0);
 
         // O - X
         // - X -
         // X - O
-        set_board_cell(&mut board, (0, 2), 0);
+        board[(0, 2).into()].0 = Some(0);
         assert_eq!(calculate_reward(&board, 0), 10.0);
         assert_eq!(calculate_reward(&board, 1), -10.0);
     }

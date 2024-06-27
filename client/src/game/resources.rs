@@ -1,10 +1,10 @@
 use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
+use game_server::game::{GameState, PlayerId as GamePlayerId};
 
 use super::error::GameError;
 use super::{
-    GameInfo, LocalGameTurn, NetworkGameTurn, Position, BOARD_SIZE, GAME_REFRESH_INTERVAL_SEC,
+    GameInfo, LocalGameTurn, NetworkGameTurn, Position, TTTBoard, GAME_REFRESH_INTERVAL_SEC,
     O_SPRITE_PATH, X_SPRITE_PATH,
 };
 
@@ -75,7 +75,7 @@ pub struct CurrentGame {
     user_data: PlayerData,
     enemy_data: PlayerData,
     state: GameState,
-    board: [[BoardCell<GamePlayerId>; BOARD_SIZE]; BOARD_SIZE],
+    board: TTTBoard,
     board_entity: Option<Entity>,
 }
 
@@ -128,7 +128,7 @@ impl CurrentGame {
         bot_id: u64,
         user_first: bool,
         state: GameState,
-        board: [[BoardCell<GamePlayerId>; BOARD_SIZE]; BOARD_SIZE],
+        board: TTTBoard,
         asset_server: &AssetServer,
     ) -> Self {
         let x_img = asset_server.load(X_SPRITE_PATH);
@@ -165,7 +165,7 @@ impl CurrentGame {
         self.state
     }
 
-    pub fn board(&self) -> &[[BoardCell<GamePlayerId>; BOARD_SIZE]] {
+    pub fn board(&self) -> &TTTBoard {
         &self.board
     }
 
@@ -194,16 +194,12 @@ impl CurrentGame {
         }
     }
 
-    pub fn get_cell(&self, pos: (usize, usize)) -> BoardCell<GamePlayerId> {
-        self.board[pos.0][pos.1]
-    }
-
     pub fn set_board(&mut self, board: Entity) {
         self.board_entity = Some(board);
     }
 
     pub fn set_cell(&mut self, pos: (usize, usize), player_id: GamePlayerId) {
-        self.board[pos.0][pos.1] = player_id.into()
+        self.board[pos.into()] = player_id.into()
     }
 
     pub fn set_state(&mut self, state: GameState) {
