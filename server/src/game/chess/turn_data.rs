@@ -1,6 +1,6 @@
 use prost::Message;
 
-use crate::game::encoding::{FromProtobuf, FromProtobufError};
+use crate::game::encoding::{FromProtobuf, ProtobufError, ProtobufResult, ToProtobuf};
 use crate::game::grid::GridIndex;
 use crate::proto::PositionPair;
 
@@ -17,16 +17,16 @@ impl TurnData {
 }
 
 impl FromProtobuf for TurnData {
-    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
+    fn from_protobuf(buf: &[u8]) -> Result<Self, ProtobufError> {
         let pos = PositionPair::decode(buf)?;
         let first = pos
             .first
-            .ok_or_else(|| FromProtobufError::MessageDataMissing {
+            .ok_or_else(|| ProtobufError::MessageDataMissing {
                 missing_field: "first".to_string(),
             })?;
         let second = pos
             .second
-            .ok_or_else(|| FromProtobufError::MessageDataMissing {
+            .ok_or_else(|| ProtobufError::MessageDataMissing {
                 missing_field: "second".to_string(),
             })?;
         let turn_data = TurnData::new(
@@ -40,5 +40,11 @@ impl FromProtobuf for TurnData {
             ),
         );
         Ok(turn_data)
+    }
+}
+
+impl ToProtobuf for TurnData {
+    fn to_protobuf(self) -> ProtobufResult<Vec<u8>> {
+        PositionPair::try_from(self)?.to_protobuf()
     }
 }

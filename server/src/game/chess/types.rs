@@ -1,6 +1,6 @@
 use prost::Message;
 
-use crate::game::encoding::ToProtobuf;
+use crate::game::encoding::{ProtobufResult, ToProtobuf};
 use crate::game::grid::GridIndex;
 use crate::game::PlayerId;
 use crate::proto;
@@ -67,8 +67,8 @@ pub struct Piece {
 }
 
 impl ToProtobuf for Piece {
-    fn to_protobuf(self) -> Vec<u8> {
-        <Self as Into<proto::ChessPiece>>::into(self).encode_to_vec()
+    fn to_protobuf(self) -> ProtobufResult<Vec<u8>> {
+        Ok(<Self as Into<proto::ChessPiece>>::into(self).encode_to_vec())
     }
 }
 

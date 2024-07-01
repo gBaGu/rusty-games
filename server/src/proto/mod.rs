@@ -2,6 +2,7 @@ tonic::include_proto!("game");
 
 use crate::game;
 use crate::game::chess;
+use std::num::TryFromIntError;
 
 pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
 
@@ -41,5 +42,27 @@ impl From<chess::types::Piece> for ChessPiece {
             kind: kind.into(),
             owner: value.owner,
         }
+    }
+}
+
+impl TryFrom<game::grid::GridIndex> for Position {
+    type Error = TryFromIntError;
+
+    fn try_from(value: game::grid::GridIndex) -> Result<Self, Self::Error> {
+        Ok(Self {
+            row: value.row().try_into()?,
+            col: value.col().try_into()?,
+        })
+    }
+}
+
+impl TryFrom<chess::turn_data::TurnData> for PositionPair {
+    type Error = TryFromIntError;
+
+    fn try_from(value: chess::turn_data::TurnData) -> Result<Self, Self::Error> {
+        Ok(Self {
+            first: Some(value.from.try_into()?),
+            second: Some(value.to.try_into()?),
+        })
     }
 }

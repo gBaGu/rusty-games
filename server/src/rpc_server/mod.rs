@@ -1,6 +1,9 @@
 pub mod rpc;
 
 mod game_storage;
+mod lobby;
+mod lobby_manager;
+mod error;
 
 use tonic_reflection::server::{Builder, Error, ServerReflection, ServerReflectionServer};
 
@@ -9,7 +12,7 @@ use crate::proto::{
     FILE_DESCRIPTOR_SET,
 };
 
-pub use game_storage::GameId;
+pub use rpc::GameId;
 
 pub fn spec_service() -> Result<ServerReflectionServer<impl ServerReflection>, Error> {
     let spec = Builder::configure()
