@@ -2,11 +2,11 @@ use std::marker::PhantomData;
 
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
-use tonic::{Response, Status, Streaming};
+use tonic::Streaming;
 
 use super::error::RpcError;
 use super::lobby::Connection;
-use super::rpc::{GameImpl, RpcInnerResult, RpcResult, UserId};
+use super::rpc::{GameImpl, RpcInnerResult, UserId};
 use super::GameId;
 use crate::game::{Game, GameState};
 use crate::proto;
@@ -116,19 +116,18 @@ impl<T> LobbyManager<T> {
         game: GameId,
         user: UserId,
         stream: Streaming<proto::GameSessionRequest>,
-    ) -> RpcResult<<GameImpl as proto::game_server::Game>::GameSessionStream> { // TODO: consider replacing proto type
+    ) -> RpcInnerResult<<GameImpl as proto::game_server::Game>::GameSessionStream> { // TODO: consider replacing proto type
         let command_sender = self.command_sender();
         let (s, mut r) = unbounded_channel();
         let conn = Connection::new(game, user, stream, command_sender, s);
-        self.add_connection(game, conn)
-            .map_err(|err| Status::invalid_argument(err.to_string()))?;
+        self.add_connection(game, conn)?;
         let reply_stream = async_stream::try_stream! {
             while let Some(data) = r.recv().await {
-                let (player_id, data) = data.map_err(|err| Status::internal(err.to_string()))?;
+                let (player_id, data) = data?;
                 yield proto::GameSessionReply { player_id, turn_data: data };
             }
         };
-        Ok(Response::new(Box::pin(reply_stream)))
+        Ok(Box::pin(reply_stream))
     }
 }
 

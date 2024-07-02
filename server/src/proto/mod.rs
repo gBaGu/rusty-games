@@ -6,6 +6,15 @@ use std::num::TryFromIntError;
 
 pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
 
+impl game_session_request::Request {
+    pub fn name(&self) -> String {
+        match self {
+            Self::Init(_) => "Init".into(),
+            Self::TurnData(_) => "TurnData".into(),
+        }
+    }
+}
+
 impl From<game::GameState> for GameState {
     fn from(value: game::GameState) -> Self {
         match value {

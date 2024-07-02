@@ -62,9 +62,9 @@ impl UpdateRequestReader {
                                 }
                             }
                             _ => {
-                                if let Err(err) = reply_sender.send(Err(RpcError::InvalidRequest {
-                                    reason: "expected update request".into(),
-                                })) {
+                                if let Err(err) = reply_sender.send(Err(
+                                    RpcError::unexpected_request("TurnData", request.name()),
+                                )) {
                                     println!("failed to send error to client: {}", err);
                                     continue;
                                 }
@@ -195,8 +195,11 @@ impl<T: Game> Lobby<T> {
             .get_player_position(player)
             .ok_or(RpcError::ForeignGame)?
             .try_into()
-            .map_err(|_| RpcError::Internal {
-                reason: "internal player index is out of bounds".into(),
+            .map_err(|err| {
+                RpcError::internal(format!(
+                    "failed to convert usize to player position: {}",
+                    err
+                ))
             })?;
         let state = self.game.update(player_position, decoded_data)?;
         for conn in self.connections.iter() {

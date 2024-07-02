@@ -30,21 +30,17 @@ impl proto::game_server::Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
-        let game_type = proto::GameType::try_from(request.game_type)
-            .map_err(|e| Status::invalid_argument(e.to_string()))?;
-        let player1 = request
+        let game_type =
+            proto::GameType::try_from(request.game_type).map_err(|_| RpcError::InvalidGameType)?;
+        let player1 = *request
             .player_ids
             .first()
-            .cloned()
-            .ok_or_else(|| Status::invalid_argument("player ids missing"))?;
+            .ok_or(RpcError::RequestDataMissing("player_ids".into()))?;
         let game_info = match game_type {
-            proto::GameType::TicTacToe => self.tic_tac_toe.create(player1, &request.player_ids),
-            proto::GameType::Chess => self.chess.create(player1, &request.player_ids),
-            proto::GameType::Unspecified => {
-                return Err(Status::invalid_argument("invalid game type"))
-            }
-        }
-        .map_err(|err| Status::internal(err.to_string()))?;
+            proto::GameType::TicTacToe => self.tic_tac_toe.create(player1, &request.player_ids)?,
+            proto::GameType::Chess => self.chess.create(player1, &request.player_ids)?,
+            proto::GameType::Unspecified => return Err(RpcError::InvalidGameType.into()),
+        };
         Ok(Response::new(proto::CreateGameReply {
             game_info: Some(game_info),
         }))
@@ -57,18 +53,17 @@ impl proto::game_server::Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
-        let game_type = proto::GameType::try_from(request.game_type)
-            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let game_type =
+            proto::GameType::try_from(request.game_type).map_err(|_| RpcError::InvalidGameType)?;
         let game = request.game_id;
         let player = request.player_id;
         let game_state = match game_type {
-            proto::GameType::TicTacToe => self.tic_tac_toe.update(game, player, &request.turn_data),
-            proto::GameType::Chess => self.chess.update(game, player, &request.turn_data),
-            proto::GameType::Unspecified => {
-                return Err(Status::invalid_argument("invalid game type"))
+            proto::GameType::TicTacToe => {
+                self.tic_tac_toe.update(game, player, &request.turn_data)?
             }
-        }
-        .map_err(|err| Status::internal(err.to_string()))?;
+            proto::GameType::Chess => self.chess.update(game, player, &request.turn_data)?,
+            proto::GameType::Unspecified => return Err(RpcError::InvalidGameType.into()),
+        };
         Ok(Response::new(proto::MakeTurnReply {
             game_state: Some(game_state.into()),
         }))
@@ -84,48 +79,27 @@ impl proto::game_server::Game for GameImpl {
         println!("Got streaming MakeTurn request");
 
         let mut input_stream = request.into_inner();
-        // TODO: maybe create fn get_next_game_session_request(stream) -> Option<RpcInnerResult<game_session_request::Request>>
         let Some(request) = input_stream.next().await else {
             // got empty stream, return empty
             return Ok(Response::new(Box::pin(tokio_stream::empty())));
         };
-        let request = match request {
-            Ok(req) => {
-                let Some(req) = req.request else {
-                    return Err(Status::invalid_argument("empty request"));
-                };
-                req
-            }
-            Err(err) => {
-                return Err(Status::invalid_argument(err.to_string()));
-            }
+        let request = request?.request.ok_or(RpcError::EmptyRequest)?;
+        let proto::game_session_request::Request::Init(session) = request else {
+            return Err(RpcError::unexpected_request("Init", request.name()).into());
         };
-        match request {
-            proto::game_session_request::Request::Init(session) => {
-                let game_type = proto::GameType::try_from(session.game_type)
-                    .map_err(|e| Status::invalid_argument(e.to_string()))?;
-                match game_type {
-                    proto::GameType::TicTacToe => self.tic_tac_toe.start_game_session(
-                        session.game_id,
-                        session.player_id,
-                        input_stream,
-                    ),
-                    proto::GameType::Chess => self.chess.start_game_session(
-                        session.game_id,
-                        session.player_id,
-                        input_stream,
-                    ),
-                    proto::GameType::Unspecified => {
-                        return Err(Status::invalid_argument("invalid game type"))
-                    }
-                }
+        let game_type =
+            proto::GameType::try_from(session.game_type).map_err(|_| RpcError::InvalidGameType)?;
+        let game = session.game_id;
+        let player = session.player_id;
+        let stream = match game_type {
+            proto::GameType::TicTacToe => {
+                self.tic_tac_toe
+                    .start_game_session(game, player, input_stream)?
             }
-            _ => {
-                return Err(Status::invalid_argument(
-                    "expected first request to be init request",
-                ))
-            }
-        }
+            proto::GameType::Chess => self.chess.start_game_session(game, player, input_stream)?,
+            proto::GameType::Unspecified => return Err(RpcError::InvalidGameType.into()),
+        };
+        Ok(Response::new(stream))
     }
 
     async fn delete_game(
@@ -135,18 +109,15 @@ impl proto::game_server::Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
-        let game_type = proto::GameType::try_from(request.game_type)
-            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let game_type =
+            proto::GameType::try_from(request.game_type).map_err(|_| RpcError::InvalidGameType)?;
         // For now, it's a creator id
         let game = request.game_id;
         match game_type {
-            proto::GameType::TicTacToe => self.tic_tac_toe.delete(game),
-            proto::GameType::Chess => self.chess.delete(game),
-            proto::GameType::Unspecified => {
-                return Err(Status::invalid_argument("invalid game type"))
-            }
-        }
-        .map_err(|err| Status::internal(err.to_string()))?;
+            proto::GameType::TicTacToe => self.tic_tac_toe.delete(game)?,
+            proto::GameType::Chess => self.chess.delete(game)?,
+            proto::GameType::Unspecified => return Err(RpcError::InvalidGameType.into()),
+        };
         Ok(Response::new(proto::DeleteGameReply {}))
     }
 
@@ -157,17 +128,14 @@ impl proto::game_server::Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
-        let game_type = proto::GameType::try_from(request.game_type)
-            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let game_type =
+            proto::GameType::try_from(request.game_type).map_err(|_| RpcError::InvalidGameType)?;
         let game = request.game_id;
         let info = match game_type {
-            proto::GameType::TicTacToe => self.tic_tac_toe.get_game(game),
-            proto::GameType::Chess => self.chess.get_game(game),
-            proto::GameType::Unspecified => {
-                return Err(Status::invalid_argument("invalid game type"))
-            }
-        }
-        .map_err(|err| Status::internal(err.to_string()))?;
+            proto::GameType::TicTacToe => self.tic_tac_toe.get_game(game)?,
+            proto::GameType::Chess => self.chess.get_game(game)?,
+            proto::GameType::Unspecified => return Err(RpcError::InvalidGameType.into()),
+        };
         Ok(Response::new(proto::GetGameReply {
             game_info: Some(info),
         }))
@@ -180,17 +148,14 @@ impl proto::game_server::Game for GameImpl {
         println!("Got request {:?}", request);
 
         let request = request.into_inner();
-        let game_type = proto::GameType::try_from(request.game_type)
-            .map_err(|e| Status::invalid_argument(e.to_string()))?;
+        let game_type =
+            proto::GameType::try_from(request.game_type).map_err(|_| RpcError::InvalidGameType)?;
         let player = request.player_id;
         let games = match game_type {
-            proto::GameType::TicTacToe => self.tic_tac_toe.get_player_games(player),
-            proto::GameType::Chess => self.chess.get_player_games(player),
-            proto::GameType::Unspecified => {
-                return Err(Status::invalid_argument("invalid game type"))
-            }
-        }
-        .map_err(|err| Status::internal(err.to_string()))?;
+            proto::GameType::TicTacToe => self.tic_tac_toe.get_player_games(player)?,
+            proto::GameType::Chess => self.chess.get_player_games(player)?,
+            proto::GameType::Unspecified => return Err(RpcError::InvalidGameType.into()),
+        };
         Ok(Response::new(proto::GetPlayerGamesReply { games }))
     }
 }
