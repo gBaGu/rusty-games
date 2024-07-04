@@ -1,8 +1,9 @@
 tonic::include_proto!("game");
 
+use std::num::TryFromIntError;
+
 use crate::game;
 use crate::game::chess;
-use std::num::TryFromIntError;
 
 pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
 

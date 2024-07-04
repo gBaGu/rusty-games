@@ -76,7 +76,7 @@ impl proto::game_server::Game for GameImpl {
         &self,
         request: Request<Streaming<proto::GameSessionRequest>>,
     ) -> RpcResult<Self::GameSessionStream> {
-        println!("Got streaming MakeTurn request");
+        println!("Got GameSession request");
 
         let mut input_stream = request.into_inner();
         let Some(request) = input_stream.next().await else {

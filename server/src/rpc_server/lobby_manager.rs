@@ -5,12 +5,12 @@ use tokio::task::JoinHandle;
 use tonic::Streaming;
 
 use super::error::RpcError;
-use super::lobby::Connection;
+use super::game_storage::GameStorage;
+use super::lobby::{Connection, UpdateRequestReader};
 use super::rpc::{GameImpl, RpcInnerResult, UserId};
 use super::GameId;
 use crate::game::{Game, GameState};
 use crate::proto;
-use crate::rpc_server::game_storage::GameStorage;
 
 #[derive(Debug)]
 pub enum WorkerCommand {
@@ -43,6 +43,10 @@ where
                 };
                 match command {
                     WorkerCommand::UpdateGame { game, user, data } => {
+                        println!(
+                            "worker: UpdateGame game={}, user={}, data={:?}",
+                            game, user, data
+                        );
                         if let Err(err) = storage.update(game, user, &data) {
                             if let Err(err) = storage.notify_err(game, user, err) {
                                 println!("worker: failed to notify on error: {}", err);
@@ -50,6 +54,7 @@ where
                         }
                     }
                     WorkerCommand::Disconnect { game, user } => {
+                        println!("worker: Disconnect game={}, user={}", game, user);
                         match storage.disconnect(game, user) {
                             Ok(conn) => {
                                 if let Some(mut conn) = conn {
@@ -78,7 +83,7 @@ pub struct LobbyManager<T> {
 
 impl<T> Drop for LobbyManager<T> {
     fn drop(&mut self) {
-        self.command_sender.send(None).unwrap();
+        self.command_sender.send(None).unwrap(); // TODO: remove unwrap here
     }
 }
 
@@ -103,12 +108,28 @@ impl<T> LobbyManager<T> {
         self.command_sender.clone()
     }
 
-    pub fn add_connection(&self, game: GameId, conn: Connection) -> RpcInnerResult<()> {
+    pub fn create_connection(
+        &self,
+        game: GameId,
+        user: UserId,
+        stream: Streaming<proto::GameSessionRequest>,
+    ) -> RpcInnerResult<UnboundedReceiver<RpcInnerResult<(UserId, Vec<u8>)>>> {
+        let command_sender = self.command_sender();
+        let (s, r) = unbounded_channel();
         let mut guard = self.storage.lock()?;
-        Ok(guard
+        let lobby = guard
             .get_mut(&game)
-            .ok_or(RpcError::NoSuchGame { id: game })?
-            .add_connection(conn))
+            .ok_or(RpcError::NoSuchGame { id: game })?;
+        let request_reader = UpdateRequestReader::new(
+            game,
+            user,
+            stream,
+            command_sender,
+            s.clone(),
+            lobby.reader_cancellation_token(),
+        );
+        lobby.add_connection(Connection::new(user, request_reader, s));
+        Ok(r)
     }
 
     pub fn start_game_session(
@@ -116,13 +137,11 @@ impl<T> LobbyManager<T> {
         game: GameId,
         user: UserId,
         stream: Streaming<proto::GameSessionRequest>,
-    ) -> RpcInnerResult<<GameImpl as proto::game_server::Game>::GameSessionStream> { // TODO: consider replacing proto type
-        let command_sender = self.command_sender();
-        let (s, mut r) = unbounded_channel();
-        let conn = Connection::new(game, user, stream, command_sender, s);
-        self.add_connection(game, conn)?;
+    ) -> RpcInnerResult<<GameImpl as proto::game_server::Game>::GameSessionStream> {
+        // TODO: consider replacing proto type
+        let mut reply_receiver = self.create_connection(game, user, stream)?;
         let reply_stream = async_stream::try_stream! {
-            while let Some(data) = r.recv().await {
+            while let Some(data) = reply_receiver.recv().await {
                 let (player_id, data) = data?;
                 yield proto::GameSessionReply { player_id, turn_data: data };
             }

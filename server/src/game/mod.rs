@@ -1,9 +1,9 @@
 pub mod chess;
 pub mod encoding;
+pub mod grid;
 pub mod tic_tac_toe;
 
 pub(crate) mod error;
-pub(crate) mod grid;
 pub(crate) mod player_pool;
 
 use std::fmt::{Display, Formatter};

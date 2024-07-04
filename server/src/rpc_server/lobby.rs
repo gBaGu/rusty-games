@@ -1,9 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
 use smallvec::SmallVec;
+use tokio::select;
 use tokio::sync::mpsc::{error::SendError, UnboundedSender};
 use tokio::task::{JoinError, JoinHandle};
 use tokio_stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 use tonic::Streaming;
 
 use super::error::RpcError;
@@ -16,9 +18,9 @@ use crate::proto::{game_session_request, GameSessionRequest};
 
 type ChannelSendResult<T> = Result<(), SendError<T>>;
 
-#[derive(Debug)]
 /// Thread that reads update data from input stream and sends it to worker
-struct UpdateRequestReader(JoinHandle<()>);
+#[derive(Debug)]
+pub struct UpdateRequestReader(JoinHandle<()>);
 
 impl Deref for UpdateRequestReader {
     type Target = JoinHandle<()>;
@@ -41,39 +43,49 @@ impl UpdateRequestReader {
         mut stream: Streaming<GameSessionRequest>,
         command_sender: UnboundedSender<Option<WorkerCommand>>,
         reply_sender: UnboundedSender<RpcInnerResult<(UserId, Vec<u8>)>>,
+        cancellation_token: CancellationToken,
     ) -> Self {
         let reader_thread = tokio::spawn(async move {
-            while let Some(res) = stream.next().await {
-                match res {
-                    Ok(request) => {
-                        let Some(request) = request.request else {
-                            if let Err(err) = reply_sender.send(Err(RpcError::EmptyRequest)) {
-                                println!("failed to send error to client: {}", err);
-                            }
-                            continue;
+            loop {
+                select! {
+                    biased;
+                    _ = cancellation_token.cancelled() => break,
+                    v = stream.next() => {
+                        let Some(res) = v else {
+                            break;
                         };
-                        match request {
-                            game_session_request::Request::TurnData(data) => {
-                                let update = WorkerCommand::UpdateGame { game, user, data };
-                                if let Err(err) = command_sender.send(Some(update)) {
-                                    if let Err(err) = reply_sender.send(Err(err.into())) {
+                        match res {
+                            Ok(request) => {
+                                let Some(request) = request.request else {
+                                    if let Err(err) = reply_sender.send(Err(RpcError::EmptyRequest)) {
                                         println!("failed to send error to client: {}", err);
+                                    }
+                                    continue;
+                                };
+                                match request {
+                                    game_session_request::Request::TurnData(data) => {
+                                        let update = WorkerCommand::UpdateGame { game, user, data };
+                                        if let Err(err) = command_sender.send(Some(update)) {
+                                            if let Err(err) = reply_sender.send(Err(err.into())) {
+                                                println!("failed to send error to client: {}", err);
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        if let Err(err) = reply_sender.send(Err(
+                                            RpcError::unexpected_request("TurnData", request.name()),
+                                        )) {
+                                            println!("failed to send error to client: {}", err);
+                                            continue;
+                                        }
                                     }
                                 }
                             }
-                            _ => {
-                                if let Err(err) = reply_sender.send(Err(
-                                    RpcError::unexpected_request("TurnData", request.name()),
-                                )) {
+                            Err(err) => {
+                                if let Err(err) = reply_sender.send(Err(err.into())) {
                                     println!("failed to send error to client: {}", err);
-                                    continue;
                                 }
                             }
-                        }
-                    }
-                    Err(err) => {
-                        if let Err(err) = reply_sender.send(Err(err.into())) {
-                            println!("failed to send error to client: {}", err);
                         }
                     }
                 }
@@ -91,27 +103,19 @@ impl UpdateRequestReader {
 #[derive(Debug)]
 pub struct Connection {
     id: UserId,
-    reader: UpdateRequestReader,
+    request_reader: UpdateRequestReader,
     reply_sender: UnboundedSender<RpcInnerResult<(UserId, Vec<u8>)>>, // TODO: create type for (UserId, Vec<u8>)
 }
 
 impl Connection {
     pub fn new(
-        game: GameId,
         user: UserId,
-        stream: Streaming<GameSessionRequest>,
-        command_sender: UnboundedSender<Option<WorkerCommand>>,
+        request_reader: UpdateRequestReader,
         reply_sender: UnboundedSender<RpcInnerResult<(UserId, Vec<u8>)>>,
     ) -> Self {
         Self {
             id: user,
-            reader: UpdateRequestReader::new(
-                game,
-                user,
-                stream,
-                command_sender,
-                reply_sender.clone(),
-            ),
+            request_reader,
             reply_sender,
         }
     }
@@ -132,7 +136,7 @@ impl Connection {
     }
 
     pub async fn wait(&mut self) -> Result<(), JoinError> {
-        self.reader.deref_mut().await
+        self.request_reader.deref_mut().await
     }
 }
 
@@ -141,6 +145,7 @@ pub struct Lobby<T> {
     players: SmallVec<[UserId; 8]>,
     game: T,
     connections: Vec<Connection>,
+    reader_cancellation_token: CancellationToken,
 }
 
 impl<T> Lobby<T> {
@@ -150,6 +155,10 @@ impl<T> Lobby<T> {
 
     pub fn players(&self) -> &[UserId] {
         self.players.as_slice()
+    }
+
+    pub fn reader_cancellation_token(&self) -> CancellationToken {
+        self.reader_cancellation_token.clone()
     }
 
     pub fn get_player_position(&self, user: UserId) -> Option<usize> {
@@ -186,6 +195,7 @@ impl<T: Game> Lobby<T> {
             players: SmallVec::from_slice(players),
             game: T::new(),
             connections: Default::default(),
+            reader_cancellation_token: Default::default(),
         }
     }
 
@@ -206,6 +216,9 @@ impl<T: Game> Lobby<T> {
             if let Err(err) = conn.notify(player, data.to_vec()) {
                 println!("failed to notify subscriber: {}", err);
             }
+        }
+        if matches!(state, GameState::Finished(_)) {
+            self.reader_cancellation_token.cancel();
         }
         Ok(state)
     }
