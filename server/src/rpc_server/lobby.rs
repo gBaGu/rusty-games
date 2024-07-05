@@ -41,7 +41,7 @@ impl UpdateRequestReader {
         game: GameId,
         user: UserId,
         mut stream: Streaming<GameSessionRequest>,
-        command_sender: UnboundedSender<Option<WorkerCommand>>,
+        command_sender: UnboundedSender<WorkerCommand>,
         reply_sender: UnboundedSender<RpcInnerResult<(UserId, Vec<u8>)>>,
         cancellation_token: CancellationToken,
     ) -> Self {
@@ -65,7 +65,7 @@ impl UpdateRequestReader {
                                 match request {
                                     game_session_request::Request::TurnData(data) => {
                                         let update = WorkerCommand::UpdateGame { game, user, data };
-                                        if let Err(err) = command_sender.send(Some(update)) {
+                                        if let Err(err) = command_sender.send(update) {
                                             if let Err(err) = reply_sender.send(Err(err.into())) {
                                                 println!("failed to send error to client: {}", err);
                                             }
@@ -90,7 +90,7 @@ impl UpdateRequestReader {
                     }
                 }
             }
-            if let Err(err) = command_sender.send(Some(WorkerCommand::Disconnect { game, user })) {
+            if let Err(err) = command_sender.send(WorkerCommand::Disconnect { game, user }) {
                 if let Err(err) = reply_sender.send(Err(err.into())) {
                     println!("failed to send error to client: {}", err);
                 }

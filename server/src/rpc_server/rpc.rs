@@ -1,6 +1,9 @@
+use std::future::Future;
 use std::pin::Pin;
+use tokio::task::JoinError;
 
 use tokio_stream::{Stream, StreamExt};
+use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status, Streaming};
 
 use super::error::RpcError;
@@ -19,6 +22,20 @@ pub type RpcInnerResult<T> = Result<T, RpcError>;
 pub struct GameImpl {
     tic_tac_toe: LobbyManager<TicTacToe>,
     chess: LobbyManager<Chess>,
+}
+
+impl GameImpl {
+    pub fn start_workers(
+        &mut self,
+        ct: CancellationToken,
+    ) -> impl Future<Output = Result<(), JoinError>> {
+        let ttt_worker = self.tic_tac_toe.start_worker(ct.clone());
+        let chess_worker = self.chess.start_worker(ct.clone());
+        async move {
+            ttt_worker.await?;
+            chess_worker.await
+        }
+    }
 }
 
 #[tonic::async_trait]

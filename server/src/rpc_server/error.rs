@@ -38,6 +38,8 @@ pub enum RpcError {
     UnexpectedRequest { expected: String, found: String },
     #[error("`{0}` is missing from request")]
     RequestDataMissing(String),
+    #[error("worker is not running")]
+    WorkerDown,
     #[error(transparent)]
     GameError(#[from] GameError),
 }
@@ -74,6 +76,7 @@ impl From<RpcError> for Status {
             | RpcError::MutexPoison { .. }
             | RpcError::TurnDataConversion { .. }
             | RpcError::ChannelSendFailed { .. }
+            | RpcError::WorkerDown
             | RpcError::GameError(_) => Status::internal(value.to_string()),
         }
     }

@@ -1,7 +1,10 @@
+use std::future::{Future, IntoFuture};
 use std::marker::PhantomData;
 
+use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tonic::Streaming;
 
 use super::error::RpcError;
@@ -27,49 +30,71 @@ pub enum WorkerCommand {
 
 pub struct Worker<T>((JoinHandle<()>, PhantomData<T>));
 
+impl<T> IntoFuture for Worker<T> {
+    type Output = <JoinHandle<()> as Future>::Output;
+    type IntoFuture = JoinHandle<()>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        self.0 .0.into_future()
+    }
+}
+
 impl<T> Worker<T>
 where
     T: Game + Send + 'static,
 {
     pub fn new(
         storage: GameStorage<T>,
-        mut command_receiver: UnboundedReceiver<Option<WorkerCommand>>,
+        mut command_receiver: UnboundedReceiver<WorkerCommand>,
+        ct: CancellationToken,
     ) -> Self {
         let worker = tokio::spawn(async move {
-            while let Some(command) = command_receiver.recv().await {
-                let Some(command) = command else {
-                    println!("worker: no more commands");
-                    break;
-                };
-                match command {
-                    WorkerCommand::UpdateGame { game, user, data } => {
-                        println!(
-                            "worker: UpdateGame game={}, user={}, data={:?}",
-                            game, user, data
-                        );
-                        if let Err(err) = storage.update(game, user, &data) {
-                            if let Err(err) = storage.notify_err(game, user, err) {
-                                println!("worker: failed to notify on error: {}", err);
-                            }
-                        }
-                    }
-                    WorkerCommand::Disconnect { game, user } => {
-                        println!("worker: Disconnect game={}, user={}", game, user);
-                        match storage.disconnect(game, user) {
-                            Ok(conn) => {
-                                if let Some(mut conn) = conn {
-                                    if let Err(err) = conn.wait().await {
-                                        println!("worker: failed to join reader: {}", err);
+            let mut cancelled = false;
+            loop {
+                select! {
+                    biased;
+                    _ = ct.cancelled(), if !cancelled => {
+                        command_receiver.close();
+                        cancelled = true;
+                        println!("worker: cancelled");
+                        break;
+                    },
+                    v = command_receiver.recv() => {
+                        let Some(command) = v else {
+                            break;
+                        };
+                        match command {
+                            WorkerCommand::UpdateGame { game, user, data } => {
+                                println!(
+                                    "worker: UpdateGame game={}, user={}, data={:?}",
+                                    game, user, data
+                                );
+                                if let Err(err) = storage.update(game, user, &data) {
+                                    if let Err(err) = storage.notify_err(game, user, err) {
+                                        println!("worker: failed to notify on error: {}", err);
                                     }
                                 }
                             }
-                            Err(err) => {
-                                println!("worker: failed to disconnect user {}: {}", user, err);
+                            WorkerCommand::Disconnect { game, user } => {
+                                println!("worker: Disconnect game={}, user={}", game, user);
+                                match storage.disconnect(game, user) {
+                                    Ok(conn) => {
+                                        if let Some(mut conn) = conn {
+                                            if let Err(err) = conn.wait().await {
+                                                println!("worker: failed to join reader: {}", err);
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        println!("worker: failed to disconnect user {}: {}", user, err);
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+            println!("worker: finished");
         });
         Self((worker, Default::default()))
     }
@@ -77,35 +102,32 @@ where
 
 pub struct LobbyManager<T> {
     storage: GameStorage<T>,
-    command_sender: UnboundedSender<Option<WorkerCommand>>,
-    worker: Worker<T>,
+    command_sender: Option<UnboundedSender<WorkerCommand>>,
 }
 
-impl<T> Drop for LobbyManager<T> {
-    fn drop(&mut self) {
-        self.command_sender.send(None).unwrap(); // TODO: remove unwrap here
-    }
-}
-
-impl<T> Default for LobbyManager<T>
-where
-    T: Game + Send + 'static,
-{
+impl<T> Default for LobbyManager<T> {
     fn default() -> Self {
-        let storage = GameStorage::default();
-        let (s, r) = unbounded_channel();
-        let worker = Worker::new(storage.clone(), r);
         Self {
-            storage,
-            command_sender: s,
-            worker,
+            storage: Default::default(),
+            command_sender: None,
         }
     }
 }
 
+impl<T> LobbyManager<T>
+where
+    T: Game + Send + 'static,
+{
+    pub fn start_worker(&mut self, ct: CancellationToken) -> Worker<T> {
+        let (s, r) = unbounded_channel();
+        let _ = self.command_sender.insert(s);
+        Worker::new(self.storage.clone(), r, ct)
+    }
+}
+
 impl<T> LobbyManager<T> {
-    pub fn command_sender(&self) -> UnboundedSender<Option<WorkerCommand>> {
-        self.command_sender.clone()
+    pub fn command_sender(&self) -> &Option<UnboundedSender<WorkerCommand>> {
+        &self.command_sender
     }
 
     pub fn create_connection(
@@ -114,7 +136,9 @@ impl<T> LobbyManager<T> {
         user: UserId,
         stream: Streaming<proto::GameSessionRequest>,
     ) -> RpcInnerResult<UnboundedReceiver<RpcInnerResult<(UserId, Vec<u8>)>>> {
-        let command_sender = self.command_sender();
+        let Some(command_sender) = self.command_sender() else {
+            return Err(RpcError::WorkerDown);
+        };
         let (s, r) = unbounded_channel();
         let mut guard = self.storage.lock()?;
         let lobby = guard
@@ -124,7 +148,7 @@ impl<T> LobbyManager<T> {
             game,
             user,
             stream,
-            command_sender,
+            command_sender.clone(),
             s.clone(),
             lobby.reader_cancellation_token(),
         );

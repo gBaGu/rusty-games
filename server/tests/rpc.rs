@@ -1,6 +1,6 @@
 extern crate server;
 
-use std::time::Duration;
+use std::net::SocketAddr;
 
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::task::JoinHandle;
@@ -12,8 +12,10 @@ use tonic::{Code, Request};
 use server::game::encoding::ToProtobuf;
 use server::game::grid::GridIndex;
 use server::game::BoardCell;
+use server::proto::game_client::GameClient;
+use server::proto::game_server::GameServer;
 use server::proto::*;
-use server::rpc_server::*;
+use server::rpc_server::rpc::GameImpl;
 
 fn create_game_session_request_stream<S, T>(
     game_type: i32,
@@ -47,43 +49,31 @@ where
     }
 }
 
-async fn run_server(
-    addr: &str,
-) -> (
-    JoinHandle<()>,
-    CancellationToken,
-    game_client::GameClient<Channel>,
-) {
+async fn run_server(addr: &str) -> (JoinHandle<()>, CancellationToken) {
     let ct = CancellationToken::new();
     let ct_cloned = ct.clone();
-    let addr = addr.parse().unwrap();
+    let addr: SocketAddr = addr.parse().unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let incoming =
+        tonic::transport::server::TcpIncoming::from_listener(listener, true, None).unwrap();
     let t = tokio::spawn(async move {
+        let mut game_impl = GameImpl::default();
+        let workers = game_impl.start_workers(ct_cloned);
         Server::builder()
-            .add_service(game_service())
-            .serve_with_shutdown(addr, ct_cloned.cancelled())
+            .add_service(GameServer::new(game_impl))
+            .serve_with_incoming_shutdown(incoming, async move {
+                if let Err(err) = workers.await {
+                    println!("workers join task failed: {}", err);
+                };
+            })
             .await
             .unwrap();
     });
-    let mut n_retry = 0;
-    let mut retry_interval = 200;
-    while n_retry < 10 {
-        tokio::time::sleep(Duration::from_millis(retry_interval)).await;
-        match game_client::GameClient::connect(format!("http://{}", addr)).await {
-            Ok(client) => return (t, ct, client),
-            Err(err) => {
-                println!("unable to connect to server: {}\n reconnecting...", err);
-            }
-        }
-        n_retry += 1;
-        retry_interval += 50;
-    }
-    ct.cancel();
-    t.await.unwrap();
-    panic!("unable to run and connect to server");
+    return (t, ct);
 }
 
 /// Creates a game with id=1 and player_ids=[1, 2]
-async fn create_test_game(client: &mut game_client::GameClient<Channel>) {
+async fn create_test_game(client: &mut GameClient<Channel>) {
     let request = Request::new(CreateGameRequest {
         game_type: 1,
         player_ids: vec![1, 2],
@@ -95,7 +85,10 @@ async fn create_test_game(client: &mut game_client::GameClient<Channel>) {
 #[tokio::test]
 async fn game_session_invalid_request() {
     let addr = "127.0.0.1:50051";
-    let (server_thread, ct, mut client) = run_server(addr).await;
+    let (server_thread, ct) = run_server(addr).await;
+    let mut client = GameClient::connect(format!("http://{}", addr))
+        .await
+        .unwrap();
     create_test_game(&mut client).await;
 
     // request oneof value is not set
@@ -126,7 +119,10 @@ async fn game_session_invalid_request() {
 #[tokio::test]
 async fn game_session_unexpected_stream_request() {
     let addr = "127.0.0.1:50051";
-    let (server_thread, ct, mut client) = run_server(addr).await;
+    let (server_thread, ct) = run_server(addr).await;
+    let mut client = GameClient::connect(format!("http://{}", addr))
+        .await
+        .unwrap();
     create_test_game(&mut client).await;
 
     // first request is not Init
@@ -203,7 +199,10 @@ async fn game_session_unexpected_stream_request() {
 #[tokio::test]
 async fn game_session_ttt_success() {
     let addr = "127.0.0.1:50051";
-    let (server_thread, ct, mut client) = run_server(addr).await;
+    let (server_thread, ct) = run_server(addr).await;
+    let mut client = GameClient::connect(format!("http://{}", addr))
+        .await
+        .unwrap();
     create_test_game(&mut client).await;
 
     let player1_moves: Vec<GridIndex> =
@@ -301,7 +300,10 @@ async fn game_session_ttt_success() {
 #[tokio::test]
 async fn game_session_ttt_session_retry_success() {
     let addr = "127.0.0.1:50051";
-    let (server_thread, ct, mut client) = run_server(addr).await;
+    let (server_thread, ct) = run_server(addr).await;
+    let mut client = GameClient::connect(format!("http://{}", addr))
+        .await
+        .unwrap();
     create_test_game(&mut client).await;
 
     let player1_moves_session1: Vec<GridIndex> = vec![(1, 1).into(), (0, 2).into()];
@@ -424,7 +426,10 @@ async fn game_session_ttt_session_retry_success() {
 #[tokio::test]
 async fn game_session_turn_notification_on_single_request() {
     let addr = "127.0.0.1:50051";
-    let (server_thread, ct, mut client) = run_server(addr).await;
+    let (server_thread, ct) = run_server(addr).await;
+    let mut client = GameClient::connect(format!("http://{}", addr))
+        .await
+        .unwrap();
     create_test_game(&mut client).await;
 
     let (p1_ready_sender, p1_ready_receiver) = unbounded_channel();
