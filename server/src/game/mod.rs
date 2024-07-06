@@ -1,22 +1,22 @@
 pub mod chess;
 pub mod encoding;
+pub mod grid;
 pub mod tic_tac_toe;
 
 pub(crate) mod error;
-pub(crate) mod grid;
 pub(crate) mod player_pool;
 
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use generic_array::ArrayLength;
 
-use encoding::{FromProtobuf, FromProtobufError, ToProtobuf};
+use encoding::{FromProtobuf, ProtobufError, ToProtobuf};
 use error::GameError;
 use grid::Grid;
 use player_pool::{Player, PlayerQueue};
 
 pub type GameResult<T> = Result<T, GameError>;
-pub type PlayerId = u32; // TODO: change to u8
+pub type PlayerId = u32; // TODO: change to u8, rename to PlayerPosition
 
 impl Player for PlayerId {
     type Id = PlayerId;
@@ -77,14 +77,14 @@ pub enum GameState {
 }
 
 impl TryFrom<crate::proto::GameState> for GameState {
-    type Error = FromProtobufError;
+    type Error = ProtobufError;
 
     fn try_from(value: crate::proto::GameState) -> Result<Self, Self::Error> {
         let state = match (value.next_player_id, value.winner) {
             (Some(next), None) => GameState::Turn(next),
             (None, Some(winner)) => GameState::Finished(FinishedState::Win(winner)),
             (None, None) => GameState::Finished(FinishedState::Draw),
-            _ => return Err(FromProtobufError::InvalidGameState),
+            _ => return Err(ProtobufError::InvalidGameState),
         };
         Ok(state)
     }

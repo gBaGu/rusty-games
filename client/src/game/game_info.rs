@@ -1,5 +1,5 @@
 use bevy::prelude::Component;
-use game_server::game::encoding::{FromProtobuf, FromProtobufError};
+use game_server::game::encoding::{FromProtobuf, ProtobufError};
 use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
 use game_server::proto;
 
@@ -19,12 +19,12 @@ impl GameInfo {
 }
 
 impl TryFrom<proto::GameInfo> for GameInfo {
-    type Error = FromProtobufError;
+    type Error = ProtobufError;
 
     fn try_from(value: proto::GameInfo) -> Result<Self, Self::Error> {
         let state = value
             .game_state
-            .ok_or(FromProtobufError::MessageDataMissing {
+            .ok_or(ProtobufError::MessageDataMissing {
                 missing_field: "game_state".to_string(),
             })?;
         let players_len = value.players.len();
@@ -32,7 +32,7 @@ impl TryFrom<proto::GameInfo> for GameInfo {
             value
                 .players
                 .try_into()
-                .map_err(|_| FromProtobufError::InvalidPlayersLength {
+                .map_err(|_| ProtobufError::InvalidPlayersLength {
                     expected: PLAYERS_SIZE,
                     found: players_len,
                 })?;
@@ -51,7 +51,7 @@ pub struct FullGameInfo {
 }
 
 impl TryFrom<proto::GameInfo> for FullGameInfo {
-    type Error = FromProtobufError;
+    type Error = ProtobufError;
 
     fn try_from(value: proto::GameInfo) -> Result<Self, Self::Error> {
         let mut full_info = Self {
@@ -59,12 +59,12 @@ impl TryFrom<proto::GameInfo> for FullGameInfo {
             board: Default::default(),
         };
         if value.board.is_empty() {
-            return Err(FromProtobufError::MessageDataMissing {
+            return Err(ProtobufError::MessageDataMissing {
                 missing_field: "board".to_string(),
             });
         }
         if value.board.len() != BOARD_PROTO_SIZE {
-            return Err(FromProtobufError::InvalidBoardLength {
+            return Err(ProtobufError::InvalidBoardLength {
                 expected: BOARD_PROTO_SIZE,
                 found: value.board.len(),
             });

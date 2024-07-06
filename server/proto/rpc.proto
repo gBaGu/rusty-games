@@ -7,7 +7,7 @@ import public "chess.proto";
 service Game {
   rpc CreateGame (CreateGameRequest) returns (CreateGameReply);
   rpc MakeTurn (MakeTurnRequest) returns (MakeTurnReply);
-  rpc MakeTurnStreaming (stream MakeTurnRequest) returns (stream MakeTurnReply);
+  rpc GameSession (stream GameSessionRequest) returns (stream GameSessionReply);
   rpc DeleteGame (DeleteGameRequest) returns (DeleteGameReply);
 
   rpc GetGame (GetGameRequest) returns (GetGameReply);
@@ -33,6 +33,24 @@ message MakeTurnRequest {
 
 message MakeTurnReply {
   GameState game_state = 1;
+}
+
+message GameSession {
+  GameType game_type = 1;
+  uint64 game_id = 2;
+  uint64 player_id = 3;
+}
+
+message GameSessionRequest {
+  oneof request {
+    GameSession init = 1;
+    bytes turn_data = 2;
+  }
+}
+
+message GameSessionReply {
+  uint32 player_position = 1;
+  bytes turn_data = 2;
 }
 
 message DeleteGameRequest {

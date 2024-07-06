@@ -1,12 +1,9 @@
 use generic_array::typenum;
-use prost::Message;
 
-use super::encoding::{FromProtobuf, FromProtobufError};
 use super::grid::{Grid, GridIndex};
 use crate::game::error::GameError;
 use crate::game::player_pool::PlayerIdQueue;
 use crate::game::{BoardCell, Game, GameResult, GameState, PlayerId};
-use crate::proto::Position;
 
 pub fn winning_combinations() -> [(GridIndex, GridIndex, GridIndex); 8] {
     [
@@ -22,15 +19,6 @@ pub fn winning_combinations() -> [(GridIndex, GridIndex, GridIndex); 8] {
 }
 
 type Cell = BoardCell<PlayerId>;
-
-impl FromProtobuf for GridIndex {
-    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
-        let pos = Position::decode(buf)?;
-        let row: usize = usize::try_from(pos.row)?;
-        let col: usize = usize::try_from(pos.col)?;
-        Ok(Self::new(row, col))
-    }
-}
 
 #[derive(Debug)]
 pub struct TicTacToe {

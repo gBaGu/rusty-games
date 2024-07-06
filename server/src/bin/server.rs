@@ -1,6 +1,11 @@
 extern crate server;
 
+use tokio::signal;
+use tokio_util::sync::CancellationToken;
+
+use server::proto::game_server::GameServer;
 use server::rpc_server;
+use server::rpc_server::rpc::GameImpl;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,11 +18,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = format!("[::1]:{}", port).parse()?;
     println!("listening for connections on {}", addr);
 
-    tonic::transport::Server::builder()
+    let ct = CancellationToken::new();
+    let mut game_impl = GameImpl::default();
+    let workers = game_impl.start_workers(ct.clone());
+    let shutdown_signal = async move {
+        if let Err(err) = workers.await {
+            println!("unable to wait for workers task: {}", err);
+        };
+    };
+    let server = tonic::transport::Server::builder()
         .add_service(rpc_server::spec_service()?)
-        .add_service(rpc_server::game_service())
-        .serve(addr)
-        .await?;
+        .add_service(GameServer::new(game_impl))
+        .serve_with_shutdown(addr, shutdown_signal);
+
+    if let Err(err) = signal::ctrl_c().await {
+        println!("unable to listen for shutdown signal: {}", err);
+    }
+    ct.cancel();
+    server.await?;
 
     Ok(())
 }

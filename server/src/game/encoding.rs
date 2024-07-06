@@ -2,10 +2,13 @@ use prost::Message;
 use std::num::TryFromIntError;
 
 use crate::game::BoardCell;
-use crate::proto::Maybe;
+use crate::game::grid::GridIndex;
+use crate::proto::{Maybe, Position};
+
+pub type ProtobufResult<T> = Result<T, ProtobufError>;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
-pub enum FromProtobufError {
+pub enum ProtobufError {
     #[error("invalid row (expected: 1-{max_expected}, found: {found})")]
     InvalidGridRow { max_expected: usize, found: usize },
     #[error("invalid column (expected: 1-{max_expected}, found: {found})")]
@@ -25,21 +28,21 @@ pub enum FromProtobufError {
 }
 
 pub trait FromProtobuf: Sized {
-    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError>;
+    fn from_protobuf(buf: &[u8]) -> ProtobufResult<Self>;
 }
 
 pub trait ToProtobuf {
-    fn to_protobuf(self) -> Vec<u8>;
+    fn to_protobuf(self) -> ProtobufResult<Vec<u8>>;
 }
 
 impl<T: Default + prost::Message> FromProtobuf for T {
-    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
+    fn from_protobuf(buf: &[u8]) -> ProtobufResult<Self> {
         Ok(T::decode(buf)?)
     }
 }
 
 impl<T: FromProtobuf> FromProtobuf for BoardCell<T> {
-    fn from_protobuf(buf: &[u8]) -> Result<Self, FromProtobufError> {
+    fn from_protobuf(buf: &[u8]) -> ProtobufResult<Self> {
         let maybe = Maybe::decode(buf)?;
         match maybe.item {
             Some(bytes) => Ok(T::from_protobuf(&bytes)?.into()),
@@ -48,18 +51,33 @@ impl<T: FromProtobuf> FromProtobuf for BoardCell<T> {
     }
 }
 
+impl FromProtobuf for GridIndex {
+    fn from_protobuf(buf: &[u8]) -> Result<Self, ProtobufError> {
+        let pos = Position::decode(buf)?;
+        let row: usize = usize::try_from(pos.row)?;
+        let col: usize = usize::try_from(pos.col)?;
+        Ok(Self::new(row, col))
+    }
+}
+
 impl<T: prost::Message> ToProtobuf for T {
-    fn to_protobuf(self) -> Vec<u8> {
-        self.encode_to_vec()
+    fn to_protobuf(self) -> ProtobufResult<Vec<u8>> {
+        Ok(self.encode_to_vec())
     }
 }
 
 impl<T: ToProtobuf> ToProtobuf for BoardCell<T> {
-    fn to_protobuf(self) -> Vec<u8> {
+    fn to_protobuf(self) -> ProtobufResult<Vec<u8>> {
         let mut maybe = Maybe::default();
         if let BoardCell(Some(val)) = self {
-            maybe.item = Some(val.to_protobuf());
+            maybe.item = Some(val.to_protobuf()?);
         }
-        maybe.encode_to_vec()
+        Ok(maybe.encode_to_vec())
+    }
+}
+
+impl ToProtobuf for GridIndex {
+    fn to_protobuf(self) -> ProtobufResult<Vec<u8>> {
+        Position::try_from(self)?.to_protobuf()
     }
 }
