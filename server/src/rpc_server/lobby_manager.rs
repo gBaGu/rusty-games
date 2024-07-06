@@ -9,7 +9,7 @@ use tonic::Streaming;
 
 use super::error::RpcError;
 use super::game_storage::GameStorage;
-use super::lobby::{Connection, UpdateRequestReader};
+use super::lobby::{Connection, MoveEvent, UpdateRequestReader};
 use super::rpc::{GameImpl, RpcInnerResult, UserId};
 use super::GameId;
 use crate::game::{Game, GameState};
@@ -135,7 +135,7 @@ impl<T> LobbyManager<T> {
         game: GameId,
         user: UserId,
         stream: Streaming<proto::GameSessionRequest>,
-    ) -> RpcInnerResult<UnboundedReceiver<RpcInnerResult<(UserId, Vec<u8>)>>> {
+    ) -> RpcInnerResult<UnboundedReceiver<RpcInnerResult<MoveEvent>>> {
         let Some(command_sender) = self.command_sender() else {
             return Err(RpcError::WorkerDown);
         };
@@ -165,9 +165,9 @@ impl<T> LobbyManager<T> {
         // TODO: consider replacing proto type
         let mut reply_receiver = self.create_connection(game, user, stream)?;
         let reply_stream = async_stream::try_stream! {
-            while let Some(data) = reply_receiver.recv().await {
-                let (player_id, data) = data?;
-                yield proto::GameSessionReply { player_id, turn_data: data };
+            while let Some(event) = reply_receiver.recv().await {
+                let MoveEvent { player, data } = event?;
+                yield proto::GameSessionReply { player_position: player, turn_data: data };
             }
         };
         Ok(Box::pin(reply_stream))

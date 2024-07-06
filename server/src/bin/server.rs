@@ -21,14 +21,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ct = CancellationToken::new();
     let mut game_impl = GameImpl::default();
     let workers = game_impl.start_workers(ct.clone());
+    let shutdown_signal = async move {
+        if let Err(err) = workers.await {
+            println!("unable to wait for workers task: {}", err);
+        };
+    };
     let server = tonic::transport::Server::builder()
         .add_service(rpc_server::spec_service()?)
         .add_service(GameServer::new(game_impl))
-        .serve_with_shutdown(addr, async move {
-            if let Err(err) = workers.await {
-                println!("workers join task failed: {}", err);
-            };
-        });
+        .serve_with_shutdown(addr, shutdown_signal);
 
     if let Err(err) = signal::ctrl_c().await {
         println!("unable to listen for shutdown signal: {}", err);

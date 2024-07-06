@@ -13,10 +13,22 @@ use super::lobby_manager::WorkerCommand;
 use super::rpc::{RpcInnerResult, UserId};
 use super::GameId;
 use crate::game::encoding::FromProtobuf;
-use crate::game::{Game, GameState};
+use crate::game::{Game, GameState, PlayerId};
 use crate::proto::{game_session_request, GameSessionRequest};
 
 type ChannelSendResult<T> = Result<(), SendError<T>>;
+
+#[derive(Debug)]
+pub struct MoveEvent {
+    pub player: PlayerId,
+    pub data: Vec<u8>,
+}
+
+impl MoveEvent {
+    pub fn new(player: PlayerId, data: Vec<u8>) -> Self {
+        Self { player, data }
+    }
+}
 
 /// Thread that reads update data from input stream and sends it to worker
 #[derive(Debug)]
@@ -42,7 +54,7 @@ impl UpdateRequestReader {
         user: UserId,
         mut stream: Streaming<GameSessionRequest>,
         command_sender: UnboundedSender<WorkerCommand>,
-        reply_sender: UnboundedSender<RpcInnerResult<(UserId, Vec<u8>)>>,
+        reply_sender: UnboundedSender<RpcInnerResult<MoveEvent>>,
         cancellation_token: CancellationToken,
     ) -> Self {
         let reader_thread = tokio::spawn(async move {
@@ -104,14 +116,14 @@ impl UpdateRequestReader {
 pub struct Connection {
     id: UserId,
     request_reader: UpdateRequestReader,
-    reply_sender: UnboundedSender<RpcInnerResult<(UserId, Vec<u8>)>>, // TODO: create type for (UserId, Vec<u8>)
+    reply_sender: UnboundedSender<RpcInnerResult<MoveEvent>>,
 }
 
 impl Connection {
     pub fn new(
         user: UserId,
         request_reader: UpdateRequestReader,
-        reply_sender: UnboundedSender<RpcInnerResult<(UserId, Vec<u8>)>>,
+        reply_sender: UnboundedSender<RpcInnerResult<MoveEvent>>,
     ) -> Self {
         Self {
             id: user,
@@ -122,16 +134,13 @@ impl Connection {
 
     pub fn notify(
         &self,
-        user: UserId,
+        player: PlayerId,
         data: Vec<u8>,
-    ) -> ChannelSendResult<RpcInnerResult<(UserId, Vec<u8>)>> {
-        self.reply_sender.send(Ok((user, data)))
+    ) -> ChannelSendResult<RpcInnerResult<MoveEvent>> {
+        self.reply_sender.send(Ok(MoveEvent::new(player, data)))
     }
 
-    pub fn notify_err(
-        &self,
-        err: RpcError,
-    ) -> ChannelSendResult<RpcInnerResult<(UserId, Vec<u8>)>> {
+    pub fn notify_err(&self, err: RpcError) -> ChannelSendResult<RpcInnerResult<MoveEvent>> {
         self.reply_sender.send(Err(err))
     }
 
@@ -213,7 +222,7 @@ impl<T: Game> Lobby<T> {
             })?;
         let state = self.game.update(player_position, decoded_data)?;
         for conn in self.connections.iter() {
-            if let Err(err) = conn.notify(player, data.to_vec()) {
+            if let Err(err) = conn.notify(player_position, data.to_vec()) {
                 println!("failed to notify subscriber: {}", err);
             }
         }

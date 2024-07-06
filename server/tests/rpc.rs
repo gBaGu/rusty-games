@@ -73,10 +73,10 @@ async fn run_server(addr: &str) -> (JoinHandle<()>, CancellationToken) {
 }
 
 /// Creates a game with id=1 and player_ids=[1, 2]
-async fn create_test_game(client: &mut GameClient<Channel>) {
+async fn create_tic_tac_toe_game(client: &mut GameClient<Channel>, players: &[u64]) {
     let request = Request::new(CreateGameRequest {
         game_type: 1,
-        player_ids: vec![1, 2],
+        player_ids: players.to_vec(),
     });
     client.create_game(request).await.unwrap();
 }
@@ -89,7 +89,7 @@ async fn game_session_invalid_request() {
     let mut client = GameClient::connect(format!("http://{}", addr))
         .await
         .unwrap();
-    create_test_game(&mut client).await;
+    create_tic_tac_toe_game(&mut client, &[1, 2]).await;
 
     // request oneof value is not set
     let status = client
@@ -123,7 +123,7 @@ async fn game_session_unexpected_stream_request() {
     let mut client = GameClient::connect(format!("http://{}", addr))
         .await
         .unwrap();
-    create_test_game(&mut client).await;
+    create_tic_tac_toe_game(&mut client, &[1, 2]).await;
 
     // first request is not Init
     let status = client
@@ -203,7 +203,7 @@ async fn game_session_ttt_success() {
     let mut client = GameClient::connect(format!("http://{}", addr))
         .await
         .unwrap();
-    create_test_game(&mut client).await;
+    create_tic_tac_toe_game(&mut client, &[1, 2]).await;
 
     let player1_moves: Vec<GridIndex> =
         vec![(1, 1).into(), (0, 2).into(), (0, 0).into(), (2, 2).into()];
@@ -304,7 +304,7 @@ async fn game_session_ttt_session_retry_success() {
     let mut client = GameClient::connect(format!("http://{}", addr))
         .await
         .unwrap();
-    create_test_game(&mut client).await;
+    create_tic_tac_toe_game(&mut client, &[1, 2]).await;
 
     let player1_moves_session1: Vec<GridIndex> = vec![(1, 1).into(), (0, 2).into()];
     let player1_moves_session2: Vec<GridIndex> = vec![(0, 0).into(), (2, 2).into()];
@@ -430,7 +430,7 @@ async fn game_session_turn_notification_on_single_request() {
     let mut client = GameClient::connect(format!("http://{}", addr))
         .await
         .unwrap();
-    create_test_game(&mut client).await;
+    create_tic_tac_toe_game(&mut client, &[1, 2]).await;
 
     let (p1_ready_sender, p1_ready_receiver) = unbounded_channel();
     let only_init =
@@ -484,6 +484,64 @@ async fn game_session_turn_notification_on_single_request() {
             BoardCell::<u32>(None).to_protobuf().unwrap(),
         ],
     );
+
+    ct.cancel();
+    server_thread.await.unwrap();
+}
+
+#[serial_test::serial]
+#[tokio::test]
+async fn get_player_games() {
+    let addr = "127.0.0.1:50051";
+    let (server_thread, ct) = run_server(addr).await;
+    let mut client = GameClient::connect(format!("http://{}", addr))
+        .await
+        .unwrap();
+    create_tic_tac_toe_game(&mut client, &[1, 2]).await;
+    create_tic_tac_toe_game(&mut client, &[6, 1]).await;
+    create_tic_tac_toe_game(&mut client, &[2, 1]).await;
+    create_tic_tac_toe_game(&mut client, &[4, 5]).await;
+
+    let games = client
+        .get_player_games(Request::new(GetPlayerGamesRequest {
+            game_type: 1,
+            player_id: 1,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(games.games.len(), 3);
+    let game = games.games.iter().find(|g| g.game_id == 1).unwrap();
+    assert_eq!(game.players, vec![1, 2]);
+    let game = games.games.iter().find(|g| g.game_id == 2).unwrap();
+    assert_eq!(game.players, vec![2, 1]);
+    let game = games.games.iter().find(|g| g.game_id == 6).unwrap();
+    assert_eq!(game.players, vec![6, 1]);
+
+    let games = client
+        .get_player_games(Request::new(GetPlayerGamesRequest {
+            game_type: 1,
+            player_id: 2,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(games.games.len(), 2);
+    let game = games.games.iter().find(|g| g.game_id == 1).unwrap();
+    assert_eq!(game.players, vec![1, 2]);
+    let game = games.games.iter().find(|g| g.game_id == 2).unwrap();
+    assert_eq!(game.players, vec![2, 1]);
+
+    let games = client
+        .get_player_games(Request::new(GetPlayerGamesRequest {
+            game_type: 1,
+            player_id: 5,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(games.games.len(), 1);
+    assert_eq!(games.games[0].players, vec![4, 5]);
 
     ct.cancel();
     server_thread.await.unwrap();

@@ -49,7 +49,7 @@ message GameSessionRequest {
 }
 
 message GameSessionReply {
-  uint64 player_id = 1;
+  uint32 player_position = 1;
   bytes turn_data = 2;
 }
 
