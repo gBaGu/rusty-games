@@ -26,16 +26,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("unable to wait for workers task: {}", err);
         };
     };
-    let server = tonic::transport::Server::builder()
+    let shutdown_input_task = tokio::spawn(async move {
+        if let Err(err) = signal::ctrl_c().await {
+            println!("unable to listen for shutdown signal: {}", err);
+        }
+        ct.cancel();
+    });
+    tonic::transport::Server::builder()
         .add_service(rpc_server::spec_service()?)
         .add_service(GameServer::new(game_impl))
-        .serve_with_shutdown(addr, shutdown_signal);
-
-    if let Err(err) = signal::ctrl_c().await {
-        println!("unable to listen for shutdown signal: {}", err);
-    }
-    ct.cancel();
-    server.await?;
+        .serve_with_shutdown(addr, shutdown_signal)
+        .await?;
+    shutdown_input_task.await?;
 
     Ok(())
 }
