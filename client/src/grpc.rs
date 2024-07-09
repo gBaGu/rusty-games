@@ -3,9 +3,8 @@ use std::ops::DerefMut;
 use std::time::Duration;
 
 use async_compat::CompatExt;
-use bevy::prelude::{Commands, Component, Deref, DerefMut, Entity, Res, ResMut, Resource, SystemSet, TimerMode};
+use bevy::prelude::*;
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
-use bevy::time::{Time, Timer};
 use game_server::proto;
 use game_server::rpc_server::rpc::RpcResult;
 use prost::Message;
@@ -13,10 +12,10 @@ use tonic::transport;
 use tonic::Request;
 
 pub const DEFAULT_GRPC_SERVER_ADDRESS: &str = "http://localhost:50051";
-pub const RECONNECT_INTERVAL_SEC: f32 = 5.0;
+pub const CONNECT_INTERVAL_SEC: f32 = 5.0;
 
-pub fn is_client_connected(client: Res<GrpcClient>) -> bool {
-    client.is_some()
+pub fn client_exists_and_connected(client: Option<Res<GrpcClient>>) -> bool {
+    matches!(client, Some(c) if c.connected)
 }
 
 /// System set for network communication systems.
@@ -25,27 +24,19 @@ pub struct NetworkSystems;
 
 pub type GameClient = proto::game_client::GameClient<transport::Channel>;
 
-#[derive(Debug, Default, Deref, DerefMut, Resource)]
+#[derive(Debug, Resource)]
 pub struct GrpcClient {
-    #[deref]
-    inner: Option<GameClient>,
-    connect: Option<Task<Result<GameClient, transport::Error>>>,
+    game: GameClient,
+    connected: bool,
 }
 
 impl GrpcClient {
-    pub fn from_game_client(client: GameClient) -> Self {
-        Self {
-            inner: Some(client),
-            connect: None,
-        }
-    }
-
     pub fn create_game(
         &self,
         player_id: u64,
         opponent_id: u64,
     ) -> Option<Task<RpcResult<proto::CreateGameReply>>> {
-        let mut client = self.inner.as_ref().cloned()?;
+        let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
                 .create_game(Request::new(proto::CreateGameRequest {
@@ -64,7 +55,7 @@ impl GrpcClient {
         row: u32,
         col: u32,
     ) -> Option<Task<RpcResult<proto::MakeTurnReply>>> {
-        let mut client = self.inner.as_ref().cloned()?;
+        let mut client = self.game.clone();
         let position = proto::Position { row, col };
         let task = IoTaskPool::get().spawn(async move {
             client
@@ -80,7 +71,7 @@ impl GrpcClient {
     }
 
     pub fn load_game(&self, game_id: u64) -> Option<Task<RpcResult<proto::GetGameReply>>> {
-        let mut client = self.inner.as_ref().cloned()?;
+        let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
                 .get_game(Request::new(proto::GetGameRequest {
@@ -96,7 +87,7 @@ impl GrpcClient {
         &self,
         player_id: u64,
     ) -> Option<Task<RpcResult<proto::GetPlayerGamesReply>>> {
-        let mut client = self.inner.as_ref().cloned()?;
+        let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
                 .get_player_games(Request::new(proto::GetPlayerGamesRequest {
@@ -110,12 +101,12 @@ impl GrpcClient {
 }
 
 #[derive(Deref, DerefMut, Resource)]
-pub struct ReconnectTimer(pub Timer);
+pub struct ConnectTimer(pub Timer);
 
-impl Default for ReconnectTimer {
+impl Default for ConnectTimer {
     fn default() -> Self {
-        let mut t = Timer::from_seconds(RECONNECT_INTERVAL_SEC, TimerMode::Repeating);
-        t.set_elapsed(Duration::from_secs_f32(RECONNECT_INTERVAL_SEC));
+        let mut t = Timer::from_seconds(CONNECT_INTERVAL_SEC, TimerMode::Repeating);
+        t.set_elapsed(Duration::from_secs_f32(CONNECT_INTERVAL_SEC));
         Self(t)
     }
 }
@@ -151,6 +142,10 @@ where
     }
 }
 
+/// Task component for connecting to grpc server
+#[derive(Component, Deref, DerefMut)]
+pub struct ConnectClient(pub Task<Result<transport::Channel, transport::Error>>);
+
 /// Task component for creating game over grpc
 #[derive(Component, Deref, DerefMut)]
 pub struct CallCreateGame(pub Task<RpcResult<proto::CreateGameReply>>);
@@ -167,36 +162,43 @@ pub struct CallGetGame(pub Task<RpcResult<proto::GetGameReply>>);
 #[derive(Component, Deref, DerefMut)]
 pub struct CallGetPlayerGames(pub Task<RpcResult<proto::GetPlayerGamesReply>>);
 
-pub fn reconnect(
-    mut client: ResMut<GrpcClient>,
-    mut timer: ResMut<ReconnectTimer>,
-    time: Res<Time>,
-) {
-    if client.is_some() {
-        timer.reset();
-        return;
-    }
-
-    if timer.tick(time.delta()).just_finished() && client.connect.is_none() {
-        println!("reconnecting to grpc server...");
+pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
+    if timer.tick(time.delta()).just_finished() {
+        println!("trying to connect to grpc server...");
         let task = IoTaskPool::get().spawn(async move {
-            GameClient::connect(DEFAULT_GRPC_SERVER_ADDRESS)
+            transport::Endpoint::new(DEFAULT_GRPC_SERVER_ADDRESS)?
+                .connect()
                 .compat()
                 .await
         });
-        client.connect = Some(task);
+        commands.spawn(ConnectClient(task));
     }
 }
 
-pub fn handle_reconnect(mut client: ResMut<GrpcClient>) {
-    if let Some(task) = &mut client.connect {
-        if let Some(res) = block_on(future::poll_once(task)) {
-            match res {
-                Ok(c) => *client = GrpcClient::from_game_client(c),
-                Err(err) => {
-                    println!("grpc client connect failed: {:?}", err);
-                    client.connect.take();
-                }
+pub fn handle_connect(
+    mut commands: Commands,
+    mut connect_task: Query<(Entity, &mut ConnectClient)>,
+    client: Option<Res<GrpcClient>>,
+) {
+    let Ok((entity, mut task)) = connect_task.get_single_mut() else {
+        println!("unable to get a single connect task");
+        return;
+    };
+    let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
+    if let Some(res) = task.poll_once() {
+        if client.is_some() {
+            return;
+        }
+        match res {
+            Ok(c) => {
+                let client = GrpcClient {
+                    game: GameClient::new(c),
+                    connected: true,
+                };
+                commands.insert_resource(client);
+            },
+            Err(err) => {
+                println!("grpc client connect failed: {:?}", err);
             }
         }
     }
