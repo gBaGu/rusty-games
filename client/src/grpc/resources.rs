@@ -30,9 +30,6 @@ impl GrpcClient {
     }
 
     pub fn set_connected(&mut self, connected: bool) {
-        if self.connected != connected {
-            println!("connection status changed: {}", connected);
-        }
         self.connected = connected;
     }
 

@@ -67,6 +67,8 @@ impl Plugin for InterfacePlugin {
                 Update,
                 (
                     game_list::update,
+                    game_list::on_connect,
+                    game_list::on_disconnect,
                     state_transition,
                     submit_press,
                     text_input_focus,

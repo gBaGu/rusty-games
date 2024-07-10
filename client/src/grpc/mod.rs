@@ -2,6 +2,7 @@ mod components;
 mod resources;
 mod systems;
 mod task_entity;
+mod events;
 
 use bevy::prelude::*;
 use game_server::proto;
@@ -9,6 +10,7 @@ use tonic::transport;
 use tonic_health::pb::health_client;
 
 pub use components::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn};
+pub use events::{Connected, Disconnected};
 pub use resources::GrpcClient;
 pub use task_entity::TaskEntity;
 
@@ -37,6 +39,8 @@ impl Plugin for GrpcPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ConnectTimer>()
             .configure_sets(Update, NetworkSystems.run_if(client_exists_and_connected))
+            .add_event::<Connected>()
+            .add_event::<Disconnected>()
             .add_systems(
                 Update,
                 (
