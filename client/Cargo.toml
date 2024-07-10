@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-channel = "2.3.1"
 async-compat = "0.2.3"
+async-io = "2.3.3"
 bevy = { version = "0.13.2", features = ["dynamic_linking"] }
 bevy_simple_text_input = "0.7.0"
 game-server = { package = "server", path = "../server" }
@@ -12,6 +14,7 @@ prost = "0.12.6"
 rand = "0.8.5"
 tic-tac-toe-ai = { package = "tic_tac_toe_ai", path = "../tic_tac_toe_ai" }
 tonic = "0.11.0"
+tonic-health = "0.11"
 
 [build-dependencies]
 tonic-build = "0.11.0"
