@@ -330,18 +330,23 @@ pub fn setup_play_over_network_menu(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     settings: Res<Settings>,
-    grpc_client: Res<GrpcClient>,
+    grpc_client: Option<Res<GrpcClient>>,
 ) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
     let mut game_list = GameListBundle::default();
     if let Some(id) = settings.user_id() {
-        if let Some(task) = grpc_client.load_player_games(id) {
-            commands.spawn(CallGetPlayerGames(task));
-        } else {
-            game_list.list = GameList::Message("Server is down".into());
-        }
+        match grpc_client {
+            Some(client) if client.connected() => {
+                if let Some(task) = client.load_player_games(id) {
+                    commands.spawn(CallGetPlayerGames(task));
+                } else {
+                    game_list.list = GameList::Message("Server is down".into());
+                }
+            }
+            _ => game_list.list = GameList::Message("Server is down".into()),
+        };
     } else {
         game_list.list = GameList::Message("No user id provided".into());
     }
