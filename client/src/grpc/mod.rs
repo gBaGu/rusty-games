@@ -1,16 +1,16 @@
 mod components;
+mod events;
 mod resources;
 mod systems;
 mod task_entity;
-mod events;
 
 use bevy::prelude::*;
 use game_server::proto;
 use tonic::transport;
 use tonic_health::pb::health_client;
 
-pub use components::{CallCreateGame, CallGetGame, CallGetPlayerGames, CallMakeTurn};
-pub use events::{Connected, Disconnected};
+pub use components::CallTask;
+pub use events::{Connected, Disconnected, RpcResultReady};
 pub use resources::GrpcClient;
 pub use task_entity::TaskEntity;
 
@@ -41,6 +41,10 @@ impl Plugin for GrpcPlugin {
             .configure_sets(Update, NetworkSystems.run_if(client_exists_and_connected))
             .add_event::<Connected>()
             .add_event::<Disconnected>()
+            .add_event::<RpcResultReady<proto::CreateGameReply>>()
+            .add_event::<RpcResultReady<proto::MakeTurnReply>>()
+            .add_event::<RpcResultReady<proto::GetGameReply>>()
+            .add_event::<RpcResultReady<proto::GetPlayerGamesReply>>()
             .add_systems(
                 Update,
                 (
@@ -54,6 +58,14 @@ impl Plugin for GrpcPlugin {
                             .and_then(not(any_with_component::<ReceiveUpdate>)),
                     ),
                     handle_receive_status.run_if(any_with_component::<ReceiveUpdate>),
+                    handle_response::<proto::CreateGameReply>
+                        .run_if(any_with_component::<CallTask<proto::CreateGameReply>>),
+                    handle_response::<proto::MakeTurnReply>
+                        .run_if(any_with_component::<CallTask<proto::MakeTurnReply>>),
+                    handle_response::<proto::GetGameReply>
+                        .run_if(any_with_component::<CallTask<proto::GetGameReply>>),
+                    handle_response::<proto::GetPlayerGamesReply>
+                        .run_if(any_with_component::<CallTask<proto::GetPlayerGamesReply>>),
                 ),
             );
     }

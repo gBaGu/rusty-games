@@ -3,7 +3,8 @@ use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
 use tonic::transport;
 
-use super::components::{ConnectClient, ReceiveUpdate};
+use super::components::{CallTask, ConnectClient, ReceiveUpdate};
+use super::events::RpcResultReady;
 use super::resources::{ConnectTimer, ConnectionStatusWatcher};
 use super::{
     Connected, Disconnected, GameClient, GrpcClient, HealthClient, TaskEntity,
@@ -33,7 +34,7 @@ pub fn handle_connect(
         println!("unable to get a single connect task");
         return;
     };
-    let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
+    let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task);
     if let Some(res) = task.poll_once() {
         if client.is_some() {
             return;
@@ -76,7 +77,7 @@ pub fn handle_receive_status(
         println!("unable to get a single connect task");
         return;
     };
-    let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
+    let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task);
     if let Some(res) = task.poll_once() {
         if let Some(mut client) = client {
             let updated_status = res.unwrap_or_else(|err| {
@@ -91,6 +92,19 @@ pub fn handle_receive_status(
                 connected.send(Connected);
             }
             client.set_connected(updated_status);
+        }
+    }
+}
+
+pub fn handle_response<T: Send + Sync + 'static>(
+    mut commands: Commands,
+    mut task: Query<(Entity, &mut CallTask<T>)>,
+    mut response_ready: EventWriter<RpcResultReady<T>>,
+) {
+    for (entity, mut task) in task.iter_mut() {
+        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task);
+        if let Some(res) = task.poll_once() {
+            response_ready.send(RpcResultReady::new(res));
         }
     }
 }

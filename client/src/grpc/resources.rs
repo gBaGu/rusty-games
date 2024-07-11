@@ -1,15 +1,14 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use bevy::tasks::{IoTaskPool, Task};
+use bevy::tasks::IoTaskPool;
 use game_server::proto;
-use game_server::rpc_server::rpc::RpcResult;
 use prost::Message;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Code, Request};
 use tonic_health::pb::{health_check_response::ServingStatus, HealthCheckRequest};
 
-use super::{GameClient, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC};
+use super::{GameClient, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC, CallTask};
 
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
@@ -37,7 +36,7 @@ impl GrpcClient {
         &self,
         player_id: u64,
         opponent_id: u64,
-    ) -> Option<Task<RpcResult<proto::CreateGameReply>>> {
+    ) -> Option<CallTask<proto::CreateGameReply>> {
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
@@ -47,7 +46,7 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Some(task)
+        Some(CallTask::new(task))
     }
 
     pub fn make_turn(
@@ -56,7 +55,7 @@ impl GrpcClient {
         player_id: u64,
         row: u32,
         col: u32,
-    ) -> Option<Task<RpcResult<proto::MakeTurnReply>>> {
+    ) -> Option<CallTask<proto::MakeTurnReply>> {
         let mut client = self.game.clone();
         let position = proto::Position { row, col };
         let task = IoTaskPool::get().spawn(async move {
@@ -69,10 +68,10 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Some(task)
+        Some(CallTask::new(task))
     }
 
-    pub fn load_game(&self, game_id: u64) -> Option<Task<RpcResult<proto::GetGameReply>>> {
+    pub fn load_game(&self, game_id: u64) -> Option<CallTask<proto::GetGameReply>> {
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
@@ -82,13 +81,13 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Some(task)
+        Some(CallTask::new(task))
     }
 
     pub fn load_player_games(
         &self,
         player_id: u64,
-    ) -> Option<Task<RpcResult<proto::GetPlayerGamesReply>>> {
+    ) -> Option<CallTask<proto::GetPlayerGamesReply>> {
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
@@ -98,7 +97,7 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Some(task)
+        Some(CallTask::new(task))
     }
 }
 

@@ -1,14 +1,13 @@
+use std::ops::Deref;
 use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{BoardCell, Game, GameState, PlayerId as GamePlayerId};
+use game_server::proto;
 
 use super::resources::{LocalGame, RefreshGameTimer};
-use super::{
-    CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, LocalGameTurn, NetworkGameTurn,
-    Position, StateUpdated, SuccessfulTurn,
-};
+use super::{CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, LocalGameTurn, NetworkGameTurn, Position, StateUpdated, SuccessfulTurn};
 use crate::commands::CommandsExt;
-use crate::grpc::{CallGetGame, CallMakeTurn, GrpcClient, TaskEntity};
+use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::common::ERROR_SOUND_PATH;
 use crate::Settings;
 
@@ -23,6 +22,7 @@ fn update_state_on_turn(
 ) {
     game.set_cell((pos.row() as usize, pos.col() as usize), player_id);
     game.set_state(state);
+    game.clear_pending_move();
     cell_updated.send(CellUpdated::new(pos, player_id));
     state_updated.send(StateUpdated(state));
     successful_turn.send(SuccessfulTurn::new(pos, player_id));
@@ -43,7 +43,7 @@ pub fn refresh_game(
     if timer.tick(time.delta()).just_finished() {
         if let GameType::Network(id) = game.game_type() {
             if let Some(task) = client.load_game(id) {
-                commands.spawn(CallGetGame(task));
+                commands.spawn(task);
             }
         }
     }
@@ -52,7 +52,7 @@ pub fn refresh_game(
 pub fn make_turn_network(
     mut commands: Commands,
     mut turn_data: EventReader<NetworkGameTurn>,
-    game: Res<CurrentGame>,
+    mut game: ResMut<CurrentGame>,
     settings: Res<Settings>,
     client: Res<GrpcClient>,
     asset_server: Res<AssetServer>,
@@ -71,7 +71,8 @@ pub fn make_turn_network(
         if let Some(task) =
             client.make_turn(event.game_id, user_id, event.pos.row(), event.pos.col())
         {
-            commands.spawn((CallMakeTurn(task), event.pos));
+            game.set_pending_move(event.pos);
+            commands.spawn(task);
         } else {
             println!("grpc server is down");
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
@@ -131,7 +132,7 @@ pub fn make_turn_local(
 }
 
 pub fn handle_make_turn(
-    mut make_turn: Query<(Entity, &mut CallMakeTurn, &Position)>,
+    mut make_turn_result: EventReader<RpcResultReady<proto::MakeTurnReply>>,
     mut commands: Commands,
     mut game: Option<ResMut<CurrentGame>>,
     mut cell_updated: EventWriter<CellUpdated>,
@@ -139,108 +140,101 @@ pub fn handle_make_turn(
     mut successful_turn: EventWriter<SuccessfulTurn>,
     asset_server: Res<AssetServer>,
 ) {
-    for (entity, mut task, pos) in make_turn.iter_mut() {
-        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
-        if let Some(res) = task.poll_once() {
-            let Some(game) = &mut game else {
-                println!("no current game, dropping MakeTurn response");
-                continue;
-            };
-            let player_id = game.user_data().game_player_id();
-            if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == player_id)
-            {
-                println!("not your turn");
-                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                continue;
-            }
-            match res {
-                Ok(response) => {
-                    if let Some(new_state) = response.into_inner().game_state {
-                        match new_state.try_into() {
-                            Ok(state) => {
-                                update_state_on_turn(
-                                    &mut cell_updated,
-                                    &mut state_updated,
-                                    &mut successful_turn,
-                                    game,
-                                    player_id,
-                                    state,
-                                    *pos,
-                                );
-                            }
-                            Err(err) => {
-                                println!("failed to convert game state: {}", err);
-                            }
+    for event in make_turn_result.read() {
+        let Some(game) = &mut game else {
+            println!("no current game, dropping MakeTurn response");
+            continue;
+        };
+        let Some(pending_move) = game.pending_move() else {
+            println!("no pending move, dropping MakeTurn response");
+            continue;
+        };
+        let player_id = game.user_data().game_player_id();
+        if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == player_id)
+        {
+            println!("not your turn");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        }
+        match event.deref() {
+            Ok(response) => {
+                if let Some(new_state) = &response.get_ref().game_state {
+                    match new_state.clone().try_into() {
+                        Ok(state) => {
+                            update_state_on_turn(
+                                &mut cell_updated,
+                                &mut state_updated,
+                                &mut successful_turn,
+                                game,
+                                player_id,
+                                state,
+                                pending_move,
+                            );
                         }
-                    } else {
-                        println!("MakeTurn returned empty response");
-                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                        Err(err) => {
+                            println!("failed to convert game state: {}", err);
+                        }
                     }
-                }
-                Err(err) => {
-                    println!("MakeTurn request failed: {}", err);
+                } else {
+                    println!("MakeTurn returned empty response");
                     commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                 }
-            };
-        }
+            }
+            Err(err) => {
+                println!("MakeTurn request failed: {}", err);
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            }
+        };
     }
 }
 
 pub fn update_game(
-    mut get_game: Query<(Entity, &mut CallGetGame)>,
-    mut commands: Commands,
-    mut game: Option<ResMut<CurrentGame>>,
+    mut get_game_result: EventReader<RpcResultReady<proto::GetGameReply>>,
+    mut game: ResMut<CurrentGame>,
     mut cell_updated: EventWriter<CellUpdated>,
     mut state_updated: EventWriter<StateUpdated>,
 ) {
-    for (entity, mut task) in get_game.iter_mut() {
-        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
-        if let Some(res) = task.poll_once() {
-            let Some(game) = &mut game else {
-                println!("no current game, dropping GetGame response");
-                continue;
-            };
-            match res {
-                Ok(response) => {
-                    let Some(info) = response.into_inner().game_info else {
-                        println!("dropping empty GetGame response");
-                        continue;
-                    };
-                    let GameType::Network(game_id) = game.game_type() else {
-                        println!("dropping GetGame response for local game");
-                        continue;
-                    };
-                    if info.game_id != game_id {
-                        println!("received game info for other game, dropping");
+    for event in get_game_result.read() {
+        match event.deref() {
+            Ok(response) => {
+                let Some(info) = &response.get_ref().game_info else {
+                    println!("dropping empty GetGame response");
+                    continue;
+                };
+                let GameType::Network(game_id) = game.game_type() else {
+                    println!("dropping GetGame response for local game");
+                    continue;
+                };
+                if info.game_id != game_id {
+                    println!("received game info for other game, dropping");
+                    continue;
+                }
+                let full_info = match FullGameInfo::try_from(info.clone()) {
+                    Ok(info) => info,
+                    Err(err) => {
+                        println!("failed to decode full game info: {}", err);
                         continue;
                     }
-                    let full_info = match FullGameInfo::try_from(info) {
-                        Ok(info) => info,
-                        Err(err) => {
-                            println!("failed to decode full game info: {}", err);
-                            continue;
-                        }
-                    };
-                    for (i, row) in full_info.board.iter().enumerate() {
-                        for (j, cell) in row.iter().enumerate() {
-                            if let BoardCell(Some(player)) = cell {
-                                let local_cell = game.board()[(i, j).into()];
-                                if local_cell.is_none() {
-                                    game.set_cell((i, j), *player);
-                                    let pos = Position::new(i as u32, j as u32);
-                                    cell_updated.send(CellUpdated::new(pos, *player));
-                                }
+                };
+                for (i, row) in full_info.board.iter().enumerate() {
+                    for (j, cell) in row.iter().enumerate() {
+                        if let BoardCell(Some(player)) = cell {
+                            let local_cell = game.board()[(i, j).into()];
+                            if local_cell.is_none() {
+                                game.set_cell((i, j), *player);
+                                let pos = Position::new(i as u32, j as u32);
+                                cell_updated.send(CellUpdated::new(pos, *player));
                             }
                         }
                     }
-                    if full_info.info.state != game.state() {
-                        game.set_state(full_info.info.state);
-                        state_updated.send(StateUpdated(full_info.info.state));
-                    }
                 }
-                Err(err) => {
-                    println!("GetGame request failed: {}", err);
+                if full_info.info.state != game.state() {
+                    game.set_state(full_info.info.state);
+                    state_updated.send(StateUpdated(full_info.info.state));
                 }
+            }
+            Err(err) => {
+                println!("GetGame request failed: {}", err);
             }
         }
     }

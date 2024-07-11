@@ -1,28 +1,21 @@
 use bevy::prelude::*;
 use bevy::tasks::Task;
 use tonic::transport;
-use game_server::proto;
 use game_server::rpc_server::rpc::RpcResult;
 
 /// Task component for connecting to grpc server
 #[derive(Component, Deref, DerefMut)]
 pub struct ConnectClient(pub Task<Result<transport::Channel, transport::Error>>);
 
-/// Task component for creating game over grpc
+/// Component for grpc call task
 #[derive(Component, Deref, DerefMut)]
-pub struct CallCreateGame(pub Task<RpcResult<proto::CreateGameReply>>);
+pub struct CallTask<T>(Task<RpcResult<T>>);
 
-/// Task component for updating game over grpc
-#[derive(Component, Deref, DerefMut)]
-pub struct CallMakeTurn(pub Task<RpcResult<proto::MakeTurnReply>>);
-
-/// Task component for loading full game data over grpc
-#[derive(Component, Deref, DerefMut)]
-pub struct CallGetGame(pub Task<RpcResult<proto::GetGameReply>>);
-
-/// Task component for loading player games over grpc
-#[derive(Component, Deref, DerefMut)]
-pub struct CallGetPlayerGames(pub Task<RpcResult<proto::GetPlayerGamesReply>>);
+impl<T> CallTask<T> {
+    pub fn new(task: Task<RpcResult<T>>) -> Self {
+        Self(task)
+    }
+}
 
 /// Task component for receiving grpc connection status
 #[derive(Component, Deref, DerefMut)]

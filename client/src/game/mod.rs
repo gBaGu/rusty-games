@@ -8,6 +8,7 @@ mod systems;
 use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{Game, GameState};
+use game_server::proto;
 
 pub use components::Position;
 pub use events::{
@@ -16,7 +17,7 @@ pub use events::{
 pub use game_info::{FullGameInfo, GameInfo};
 pub use resources::{Authority, CurrentGame, GameType, LocalGame};
 
-use crate::grpc::{CallGetGame, NetworkSystems};
+use crate::grpc::{CallTask, NetworkSystems};
 use resources::RefreshGameTimer;
 use systems::*;
 
@@ -117,15 +118,19 @@ impl Plugin for GamePlugin {
                 Update,
                 (
                     (
-                        refresh_game.run_if(not(any_with_component::<CallGetGame>)),
-                        make_turn_network,
+                        update_game,
+                        handle_make_turn,
+                        (
+                            refresh_game
+                                .run_if(not(any_with_component::<CallTask<proto::GetGameReply>>)),
+                            make_turn_network,
+                        )
+                            .in_set(NetworkSystems),
                     )
-                        .in_set(GameTypeSystems::Network)
-                        .in_set(NetworkSystems),
+                        .in_set(GameTypeSystems::Network),
                     make_turn_local.in_set(GameTypeSystems::Local),
                 )
                     .in_set(GameStateSystems::InProgress),
-            )
-            .add_systems(Update, (update_game, handle_make_turn)); // grpc call handlers
+            );
     }
 }

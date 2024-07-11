@@ -75,6 +75,7 @@ pub struct CurrentGame {
     user_data: PlayerData,
     enemy_data: PlayerData,
     state: GameState,
+    pending_move: Option<Position>,
     board: TTTBoard,
     board_entity: Option<Entity>,
 }
@@ -91,6 +92,7 @@ impl CurrentGame {
             user_data,
             enemy_data,
             state,
+            pending_move: None,
             board: Default::default(),
             board_entity: None,
         }
@@ -165,6 +167,10 @@ impl CurrentGame {
         self.state
     }
 
+    pub fn pending_move(&self) -> Option<Position> {
+        self.pending_move
+    }
+
     pub fn board(&self) -> &TTTBoard {
         &self.board
     }
@@ -204,6 +210,14 @@ impl CurrentGame {
 
     pub fn set_state(&mut self, state: GameState) {
         self.state = state;
+    }
+
+    pub fn set_pending_move(&mut self, val: Position) {
+        self.pending_move = Some(val);
+    }
+
+    pub fn clear_pending_move(&mut self) {
+        self.pending_move.take();
     }
 
     pub fn trigger_turn(
