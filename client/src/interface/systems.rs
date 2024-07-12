@@ -481,7 +481,7 @@ pub fn make_turn(
     }
 }
 
-pub fn refresh_player_games(
+pub fn send_get_player_games(
     mut game_list: Query<&mut GameList>,
     mut commands: Commands,
     mut timer: ResMut<RefreshGamesTimer>,
@@ -500,17 +500,21 @@ pub fn refresh_player_games(
         };
         if let Some(task) = client.load_player_games(id) {
             commands.spawn(task);
+            timer.reset();
+            timer.pause();
         } else {
             *list = GameList::Message("Server is down".into());
         }
     }
 }
 
-pub fn handle_player_games_task(
+pub fn handle_get_player_games(
     mut get_games_result: EventReader<RpcResultReady<proto::GetPlayerGamesReply>>,
+    mut timer: ResMut<RefreshGamesTimer>,
     mut games_ready: EventWriter<PlayerGamesReady>,
 ) {
     for event in get_games_result.read() {
+        timer.unpause();
         match event.deref() {
             Ok(response) => {
                 let games: Result<Vec<GameInfo>, _> = response

@@ -1,11 +1,14 @@
-use std::ops::Deref;
 use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{BoardCell, Game, GameState, PlayerId as GamePlayerId};
 use game_server::proto;
+use std::ops::Deref;
 
 use super::resources::{LocalGame, RefreshGameTimer};
-use super::{CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, LocalGameTurn, NetworkGameTurn, Position, StateUpdated, SuccessfulTurn};
+use super::{
+    CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, LocalGameTurn, NetworkGameTurn,
+    Position, StateUpdated, SuccessfulTurn,
+};
 use crate::commands::CommandsExt;
 use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::common::ERROR_SOUND_PATH;
@@ -33,7 +36,8 @@ pub fn game_initialized(mut state_updated: EventWriter<StateUpdated>, game: Res<
     state_updated.send(StateUpdated(game.state()));
 }
 
-pub fn refresh_game(
+/// Update timer and if it's finished stop it and create a grpc call task
+pub fn send_get_game(
     mut commands: Commands,
     mut timer: ResMut<RefreshGameTimer>,
     game: Res<CurrentGame>,
@@ -44,6 +48,8 @@ pub fn refresh_game(
         if let GameType::Network(id) = game.game_type() {
             if let Some(task) = client.load_game(id) {
                 commands.spawn(task);
+                timer.reset();
+                timer.pause();
             }
         }
     }
@@ -150,8 +156,7 @@ pub fn handle_make_turn(
             continue;
         };
         let player_id = game.user_data().game_player_id();
-        if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == player_id)
-        {
+        if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == player_id) {
             println!("not your turn");
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             continue;
@@ -188,13 +193,16 @@ pub fn handle_make_turn(
     }
 }
 
-pub fn update_game(
+/// Read grpc call result event, unpause timer and update game
+pub fn handle_get_game(
     mut get_game_result: EventReader<RpcResultReady<proto::GetGameReply>>,
     mut game: ResMut<CurrentGame>,
+    mut timer: ResMut<RefreshGameTimer>,
     mut cell_updated: EventWriter<CellUpdated>,
     mut state_updated: EventWriter<StateUpdated>,
 ) {
     for event in get_game_result.read() {
+        timer.unpause();
         match event.deref() {
             Ok(response) => {
                 let Some(info) = &response.get_ref().game_info else {

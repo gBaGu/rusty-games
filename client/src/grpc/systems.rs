@@ -3,12 +3,12 @@ use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
 use tonic::transport;
 
-use super::components::{CallTask, ConnectClient, ReceiveUpdate};
+use super::components::{CallTask, ConnectClientTask, ReceiveUpdateTask};
 use super::events::RpcResultReady;
 use super::resources::{ConnectTimer, ConnectionStatusWatcher};
+use super::task_entity::TaskEntity;
 use super::{
-    Connected, Disconnected, GameClient, GrpcClient, HealthClient, TaskEntity,
-    DEFAULT_GRPC_SERVER_ADDRESS,
+    Connected, Disconnected, GameClient, GrpcClient, HealthClient, DEFAULT_GRPC_SERVER_ADDRESS,
 };
 
 pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
@@ -20,13 +20,13 @@ pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Re
                 .compat()
                 .await
         });
-        commands.spawn(ConnectClient(task));
+        commands.spawn(ConnectClientTask(task));
     }
 }
 
 pub fn handle_connect(
     mut commands: Commands,
-    mut connect_task: Query<(Entity, &mut ConnectClient)>,
+    mut connect_task: Query<(Entity, &mut ConnectClientTask)>,
     mut connected: EventWriter<Connected>,
     client: Option<Res<GrpcClient>>,
 ) {
@@ -59,7 +59,7 @@ pub fn receive_status(mut commands: Commands, watcher: Res<ConnectionStatusWatch
     let receiver = watcher.update_receiver();
     if !receiver.is_closed() {
         let task = IoTaskPool::get().spawn(async move { receiver.recv().await });
-        commands.spawn(ReceiveUpdate(task));
+        commands.spawn(ReceiveUpdateTask(task));
     } else {
         println!("ConnectStatusWatcher is finished");
         commands.remove_resource::<ConnectionStatusWatcher>();
@@ -68,7 +68,7 @@ pub fn receive_status(mut commands: Commands, watcher: Res<ConnectionStatusWatch
 
 pub fn handle_receive_status(
     mut commands: Commands,
-    mut receive_update_task: Query<(Entity, &mut ReceiveUpdate)>,
+    mut receive_update_task: Query<(Entity, &mut ReceiveUpdateTask)>,
     mut connected: EventWriter<Connected>,
     mut disconnected: EventWriter<Disconnected>,
     client: Option<ResMut<GrpcClient>>,

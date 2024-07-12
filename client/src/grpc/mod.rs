@@ -12,9 +12,8 @@ use tonic_health::pb::health_client;
 pub use components::CallTask;
 pub use events::{Connected, Disconnected, RpcResultReady};
 pub use resources::GrpcClient;
-pub use task_entity::TaskEntity;
 
-use components::{ConnectClient, ReceiveUpdate};
+use components::{ConnectClientTask, ReceiveUpdateTask};
 use resources::{ConnectTimer, ConnectionStatusWatcher};
 use systems::*;
 
@@ -50,14 +49,14 @@ impl Plugin for GrpcPlugin {
                 (
                     connect.run_if(
                         not(resource_exists::<GrpcClient>)
-                            .and_then(not(any_with_component::<ConnectClient>)),
+                            .and_then(not(any_with_component::<ConnectClientTask>)),
                     ),
-                    handle_connect.run_if(any_with_component::<ConnectClient>),
+                    handle_connect.run_if(any_with_component::<ConnectClientTask>),
                     receive_status.run_if(
                         resource_exists::<ConnectionStatusWatcher>
-                            .and_then(not(any_with_component::<ReceiveUpdate>)),
+                            .and_then(not(any_with_component::<ReceiveUpdateTask>)),
                     ),
-                    handle_receive_status.run_if(any_with_component::<ReceiveUpdate>),
+                    handle_receive_status.run_if(any_with_component::<ReceiveUpdateTask>),
                     handle_response::<proto::CreateGameReply>
                         .run_if(any_with_component::<CallTask<proto::CreateGameReply>>),
                     handle_response::<proto::MakeTurnReply>
