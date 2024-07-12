@@ -133,10 +133,11 @@ pub fn join_game(
             }
         };
         commands.insert_resource(game);
-        if let Some(task) = grpc_client.get_game(join.id) {
-            commands.spawn(task);
-        } else {
-            println!("unable to join game: grpc server is down");
+        match grpc_client.get_game(proto::GameType::TicTacToe, join.id) {
+            Ok(task) => {
+                commands.spawn(task);
+            }
+            Err(err) => println!("get_game call failed: {}", err),
         }
         println!("state transition: join game");
         next_app_state.set(AppState::Game);
@@ -180,9 +181,12 @@ pub fn create_game(
     let mut create = |input: &str| {
         if let Ok(opponent_id) = input.parse::<u64>() {
             if let Some(user_id) = settings.user_id() {
-                if let Some(task) = grpc_client.create_game(user_id, opponent_id) {
-                    commands.spawn(task);
-                    return;
+                match grpc_client.create_game(proto::GameType::TicTacToe, user_id, opponent_id) {
+                    Ok(task) => {
+                        commands.spawn(task);
+                        return;
+                    }
+                    Err(err) => println!("create_game call failed: {}", err),
                 }
             }
         }
@@ -340,10 +344,14 @@ pub fn setup_play_over_network_menu(
     if let Some(id) = settings.user_id() {
         match grpc_client {
             Some(client) if client.connected() => {
-                if let Some(task) = client.get_player_games(id) {
-                    commands.spawn(task);
-                } else {
-                    game_list.list = GameList::Message("Server is down".into());
+                match client.get_player_games(proto::GameType::TicTacToe, id) {
+                    Ok(task) => {
+                        commands.spawn(task);
+                    }
+                    Err(err) => {
+                        println!("get_player_games call failed: {}", err);
+                        game_list.list = GameList::Message("Server is down".into());
+                    }
                 }
             }
             _ => game_list.list = GameList::Message("Server is down".into()),
@@ -498,12 +506,16 @@ pub fn send_get_player_games(
             *list = GameList::Message("No user id provided".into());
             return;
         };
-        if let Some(task) = client.get_player_games(id) {
-            commands.spawn(task);
-            timer.reset();
-            timer.pause();
-        } else {
-            *list = GameList::Message("Server is down".into());
+        match client.get_player_games(proto::GameType::TicTacToe, id) {
+            Ok(task) => {
+                commands.spawn(task);
+                timer.reset();
+                timer.pause();
+            }
+            Err(err) => {
+                println!("get_player_games call failed: {}", err);
+                *list = GameList::Message("Server is down".into());
+            }
         }
     }
 }

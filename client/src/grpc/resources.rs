@@ -1,9 +1,10 @@
 use std::time::Duration;
 
+use crate::grpc::error::GrpcError;
 use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
+use game_server::game::encoding::ToProtobuf;
 use game_server::proto;
-use prost::Message;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Code, Request};
 use tonic_health::pb::{health_check_response::ServingStatus, HealthCheckRequest};
@@ -34,79 +35,88 @@ impl GrpcClient {
 
     pub fn create_game(
         &self,
+        game_type: proto::GameType,
         player_id: u64,
         opponent_id: u64,
-    ) -> Option<CallTask<proto::CreateGameReply>> {
+    ) -> Result<CallTask<proto::CreateGameReply>, GrpcError> {
         if !self.connected {
-            return None;
+            return Err(GrpcError::NotConnected);
         }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
                 .create_game(Request::new(proto::CreateGameRequest {
-                    game_type: proto::GameType::TicTacToe.into(),
+                    game_type: game_type.into(),
                     player_ids: vec![player_id, opponent_id],
                 }))
                 .await
         });
-        Some(CallTask::new(task))
+        Ok(CallTask::new(task))
     }
 
     pub fn make_turn(
         &self,
+        game_type: proto::GameType,
         game_id: u64,
         player_id: u64,
-        row: u32,
-        col: u32,
-    ) -> Option<CallTask<proto::MakeTurnReply>> {
+        move_data: impl ToProtobuf,
+    ) -> Result<CallTask<proto::MakeTurnReply>, GrpcError> {
         if !self.connected {
-            return None;
+            return Err(GrpcError::NotConnected);
         }
+        let move_data = move_data.to_protobuf()?;
         let mut client = self.game.clone();
-        let position = proto::Position { row, col };
         let task = IoTaskPool::get().spawn(async move {
             client
                 .make_turn(Request::new(proto::MakeTurnRequest {
-                    game_type: proto::GameType::TicTacToe.into(),
+                    game_type: game_type.into(),
                     game_id,
                     player_id,
-                    turn_data: position.encode_to_vec(),
+                    turn_data: move_data,
                 }))
                 .await
         });
-        Some(CallTask::new(task))
+        Ok(CallTask::new(task))
     }
 
-    pub fn get_game(&self, game_id: u64) -> Option<CallTask<proto::GetGameReply>> {
+    pub fn get_game(
+        &self,
+        game_type: proto::GameType,
+        game_id: u64,
+    ) -> Result<CallTask<proto::GetGameReply>, GrpcError> {
         if !self.connected {
-            return None;
+            return Err(GrpcError::NotConnected);
         }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
                 .get_game(Request::new(proto::GetGameRequest {
-                    game_type: proto::GameType::TicTacToe.into(),
+                    game_type: game_type.into(),
                     game_id,
                 }))
                 .await
         });
-        Some(CallTask::new(task))
+        Ok(CallTask::new(task))
     }
 
-    pub fn get_player_games(&self, player_id: u64) -> Option<CallTask<proto::GetPlayerGamesReply>> {
+    pub fn get_player_games(
+        &self,
+        game_type: proto::GameType,
+        player_id: u64,
+    ) -> Result<CallTask<proto::GetPlayerGamesReply>, GrpcError> {
         if !self.connected {
-            return None;
+            return Err(GrpcError::NotConnected);
         }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
                 .get_player_games(Request::new(proto::GetPlayerGamesRequest {
-                    game_type: proto::GameType::TicTacToe.into(),
+                    game_type: game_type.into(),
                     player_id,
                 }))
                 .await
         });
-        Some(CallTask::new(task))
+        Ok(CallTask::new(task))
     }
 }
 

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use game_server::game::grid::GridIndex;
 use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{BoardCell, Game, GameState, PlayerId as GamePlayerId};
 use game_server::proto;
@@ -46,10 +47,13 @@ pub fn send_get_game(
 ) {
     if timer.tick(time.delta()).just_finished() {
         if let GameType::Network(id) = game.game_type() {
-            if let Some(task) = client.get_game(id) {
-                commands.spawn(task);
-                timer.reset();
-                timer.pause();
+            match client.get_game(proto::GameType::TicTacToe, id) {
+                Ok(task) => {
+                    commands.spawn(task);
+                    timer.reset();
+                    timer.pause();
+                }
+                Err(err) => println!("get_game call failed: {}", err),
             }
         }
     }
@@ -74,15 +78,21 @@ pub fn make_turn_network(
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             continue;
         };
-        if let Some(task) =
-            client.make_turn(event.game_id, user_id, event.pos.row(), event.pos.col())
-        {
-            game.set_pending_move(event.pos);
-            commands.spawn(task);
-        } else {
-            println!("grpc server is down");
-            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-        }
+        match client.make_turn(
+            proto::GameType::TicTacToe,
+            event.game_id,
+            user_id,
+            GridIndex::new(event.pos.row() as usize, event.pos.col() as usize),
+        ) {
+            Ok(task) => {
+                game.set_pending_move(event.pos);
+                commands.spawn(task);
+            }
+            Err(err) => {
+                println!("make_turn call failed: {}", err);
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            }
+        };
     }
 }
 

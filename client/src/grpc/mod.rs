@@ -3,6 +3,7 @@ mod events;
 mod resources;
 mod systems;
 mod task_entity;
+mod error;
 
 use bevy::prelude::*;
 use game_server::proto;
