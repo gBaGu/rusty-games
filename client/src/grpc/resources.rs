@@ -8,7 +8,7 @@ use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Code, Request};
 use tonic_health::pb::{health_check_response::ServingStatus, HealthCheckRequest};
 
-use super::{GameClient, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC, CallTask};
+use super::{CallTask, GameClient, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC};
 
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
@@ -37,6 +37,9 @@ impl GrpcClient {
         player_id: u64,
         opponent_id: u64,
     ) -> Option<CallTask<proto::CreateGameReply>> {
+        if !self.connected {
+            return None;
+        }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
@@ -56,6 +59,9 @@ impl GrpcClient {
         row: u32,
         col: u32,
     ) -> Option<CallTask<proto::MakeTurnReply>> {
+        if !self.connected {
+            return None;
+        }
         let mut client = self.game.clone();
         let position = proto::Position { row, col };
         let task = IoTaskPool::get().spawn(async move {
@@ -71,7 +77,10 @@ impl GrpcClient {
         Some(CallTask::new(task))
     }
 
-    pub fn load_game(&self, game_id: u64) -> Option<CallTask<proto::GetGameReply>> {
+    pub fn get_game(&self, game_id: u64) -> Option<CallTask<proto::GetGameReply>> {
+        if !self.connected {
+            return None;
+        }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client
@@ -84,10 +93,10 @@ impl GrpcClient {
         Some(CallTask::new(task))
     }
 
-    pub fn load_player_games(
-        &self,
-        player_id: u64,
-    ) -> Option<CallTask<proto::GetPlayerGamesReply>> {
+    pub fn get_player_games(&self, player_id: u64) -> Option<CallTask<proto::GetPlayerGamesReply>> {
+        if !self.connected {
+            return None;
+        }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
             client

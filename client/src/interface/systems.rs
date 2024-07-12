@@ -133,10 +133,10 @@ pub fn join_game(
             }
         };
         commands.insert_resource(game);
-        if let Some(task) = grpc_client.load_game(join.id) {
+        if let Some(task) = grpc_client.get_game(join.id) {
             commands.spawn(task);
         } else {
-            println!("load_game failed");
+            println!("unable to join game: grpc server is down");
         }
         println!("state transition: join game");
         next_app_state.set(AppState::Game);
@@ -340,7 +340,7 @@ pub fn setup_play_over_network_menu(
     if let Some(id) = settings.user_id() {
         match grpc_client {
             Some(client) if client.connected() => {
-                if let Some(task) = client.load_player_games(id) {
+                if let Some(task) = client.get_player_games(id) {
                     commands.spawn(task);
                 } else {
                     game_list.list = GameList::Message("Server is down".into());
@@ -498,7 +498,7 @@ pub fn send_get_player_games(
             *list = GameList::Message("No user id provided".into());
             return;
         };
-        if let Some(task) = client.load_player_games(id) {
+        if let Some(task) = client.get_player_games(id) {
             commands.spawn(task);
             timer.reset();
             timer.pause();

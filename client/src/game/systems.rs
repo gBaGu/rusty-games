@@ -46,7 +46,7 @@ pub fn send_get_game(
 ) {
     if timer.tick(time.delta()).just_finished() {
         if let GameType::Network(id) = game.game_type() {
-            if let Some(task) = client.load_game(id) {
+            if let Some(task) = client.get_game(id) {
                 commands.spawn(task);
                 timer.reset();
                 timer.pause();
