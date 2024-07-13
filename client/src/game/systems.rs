@@ -1,9 +1,10 @@
+use std::ops::Deref;
+
 use bevy::prelude::*;
 use game_server::game::grid::GridIndex;
 use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{BoardCell, Game, GameState, PlayerId as GamePlayerId};
 use game_server::proto;
-use std::ops::Deref;
 
 use super::resources::{LocalGame, RefreshGameTimer};
 use super::{

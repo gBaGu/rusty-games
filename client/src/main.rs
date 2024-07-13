@@ -12,7 +12,7 @@ use bevy::prelude::*;
 
 pub use resources::Settings;
 
-use crate::app_state::AppState;
+use app_state::AppState;
 use board::BoardPlugin;
 use bot::BotPlugin;
 use game::GamePlugin;

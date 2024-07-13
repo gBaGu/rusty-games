@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::tasks::Task;
-use tonic::transport;
 use game_server::rpc_server::rpc::RpcResult;
+use tonic::transport;
 
 /// Task component for connecting to grpc server
 #[derive(Component, Deref, DerefMut)]

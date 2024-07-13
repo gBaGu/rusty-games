@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crate::grpc::error::GrpcError;
 use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
 use game_server::game::encoding::ToProtobuf;
@@ -10,6 +9,7 @@ use tonic::{Code, Request};
 use tonic_health::pb::{health_check_response::ServingStatus, HealthCheckRequest};
 
 use super::{CallTask, GameClient, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC};
+use crate::grpc::error::GrpcError;
 
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
