@@ -16,7 +16,7 @@ pub use events::{
 pub use game_info::{FullGameInfo, GameInfo};
 pub use resources::{Authority, CurrentGame, GameType, LocalGame};
 
-use crate::grpc::{CallGetGame, NetworkSystems};
+use crate::grpc::NetworkSystems;
 use resources::RefreshGameTimer;
 use systems::*;
 
@@ -117,15 +117,14 @@ impl Plugin for GamePlugin {
                 Update,
                 (
                     (
-                        refresh_game.run_if(not(any_with_component::<CallGetGame>)),
-                        make_turn_network,
+                        handle_get_game,
+                        handle_make_turn,
+                        (send_get_game, make_turn_network).in_set(NetworkSystems),
                     )
-                        .in_set(GameTypeSystems::Network)
-                        .in_set(NetworkSystems),
+                        .in_set(GameTypeSystems::Network),
                     make_turn_local.in_set(GameTypeSystems::Local),
                 )
                     .in_set(GameStateSystems::InProgress),
-            )
-            .add_systems(Update, (update_game, handle_make_turn)); // grpc call handlers
+            );
     }
 }

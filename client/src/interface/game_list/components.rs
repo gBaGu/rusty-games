@@ -11,7 +11,7 @@ pub enum GameList {
 
 impl Default for GameList {
     fn default() -> Self {
-        Self::Games(vec![])
+        Self::Message("Loading...".into())
     }
 }
 

@@ -12,12 +12,12 @@ use bevy::prelude::*;
 
 pub use resources::Settings;
 
-use crate::app_state::AppState;
-use crate::board::BoardPlugin;
-use crate::bot::BotPlugin;
-use crate::game::GamePlugin;
-use crate::grpc::{GrpcClient, NetworkSystems, ReconnectTimer};
-use crate::interface::InterfacePlugin;
+use app_state::AppState;
+use board::BoardPlugin;
+use bot::BotPlugin;
+use game::GamePlugin;
+use grpc::GrpcPlugin;
+use interface::InterfacePlugin;
 
 #[derive(Component)]
 pub struct Background;
@@ -25,19 +25,16 @@ pub struct Background;
 fn main() {
     App::new()
         .init_state::<AppState>()
-        .init_resource::<ReconnectTimer>()
         .init_resource::<Settings>()
-        .init_resource::<GrpcClient>()
-        .configure_sets(Update, NetworkSystems.run_if(grpc::is_client_connected))
         .add_plugins((
             DefaultPlugins,
             BoardPlugin,
             BotPlugin,
             GamePlugin,
+            GrpcPlugin,
             InterfacePlugin,
         ))
         .add_systems(Startup, systems::init_app)
         .add_systems(Update, systems::on_resize)
-        .add_systems(Update, (grpc::reconnect, grpc::handle_reconnect))
         .run();
 }

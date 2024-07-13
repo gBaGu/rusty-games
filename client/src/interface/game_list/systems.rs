@@ -4,6 +4,7 @@ use game_server::game::{FinishedState, GameState};
 use super::components::GameList;
 use super::HORIZONTAL_MARGIN;
 use crate::commands::EntityCommandsExt;
+use crate::grpc::{Connected, Disconnected};
 use crate::interface::common::{menu_item_style, menu_text_style, row_node_bundle};
 use crate::interface::components::JoinGameButtonBundle;
 
@@ -77,6 +78,25 @@ pub fn update(
                         }
                     });
             }
+        }
+    }
+}
+
+pub fn on_connect(mut game_list: Query<&mut GameList>, mut connected: EventReader<Connected>) {
+    if connected.read().next().is_some() {
+        for mut list in game_list.iter_mut() {
+            *list = GameList::Message("Loading".into());
+        }
+    }
+}
+
+pub fn on_disconnect(
+    mut game_list: Query<&mut GameList>,
+    mut disconnected: EventReader<Disconnected>,
+) {
+    if disconnected.read().next().is_some() {
+        for mut list in game_list.iter_mut() {
+            *list = GameList::Message("Server is down".into());
         }
     }
 }

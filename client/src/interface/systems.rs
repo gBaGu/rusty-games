@@ -20,6 +20,7 @@ use bevy::utils::default;
 use bevy::window::{PrimaryWindow, Window};
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
 use game_server::game::{FinishedState, Game, GameState};
+use game_server::proto;
 use tic_tac_toe_ai::Agent;
 
 use super::components::{
@@ -38,7 +39,7 @@ use crate::game::{
     Authority, CellUpdated, CurrentGame, GameExit, GameInfo, LocalGame, LocalGameTurn,
     NetworkGameTurn, StateUpdated, SuccessfulTurn,
 };
-use crate::grpc::{CallCreateGame, CallGetGame, CallGetPlayerGames, GrpcClient, TaskEntity};
+use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::common::{
     column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
     CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, TURN_SOUND_PATH,
@@ -132,10 +133,11 @@ pub fn join_game(
             }
         };
         commands.insert_resource(game);
-        if let Some(task) = grpc_client.load_game(join.id) {
-            commands.spawn(CallGetGame(task));
-        } else {
-            println!("load_game failed");
+        match grpc_client.get_game(proto::GameType::TicTacToe, join.id) {
+            Ok(task) => {
+                commands.spawn(task);
+            }
+            Err(err) => println!("get_game call failed: {}", err),
         }
         println!("state transition: join game");
         next_app_state.set(AppState::Game);
@@ -179,9 +181,12 @@ pub fn create_game(
     let mut create = |input: &str| {
         if let Ok(opponent_id) = input.parse::<u64>() {
             if let Some(user_id) = settings.user_id() {
-                if let Some(task) = grpc_client.create_game(user_id, opponent_id) {
-                    commands.spawn(CallCreateGame(task));
-                    return;
+                match grpc_client.create_game(proto::GameType::TicTacToe, user_id, opponent_id) {
+                    Ok(task) => {
+                        commands.spawn(task);
+                        return;
+                    }
+                    Err(err) => println!("create_game call failed: {}", err),
                 }
             }
         }
@@ -330,18 +335,27 @@ pub fn setup_play_over_network_menu(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     settings: Res<Settings>,
-    grpc_client: Res<GrpcClient>,
+    grpc_client: Option<Res<GrpcClient>>,
 ) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
     let mut game_list = GameListBundle::default();
     if let Some(id) = settings.user_id() {
-        if let Some(task) = grpc_client.load_player_games(id) {
-            commands.spawn(CallGetPlayerGames(task));
-        } else {
-            game_list.list = GameList::Message("Server is down".into());
-        }
+        match grpc_client {
+            Some(client) if client.connected() => {
+                match client.get_player_games(proto::GameType::TicTacToe, id) {
+                    Ok(task) => {
+                        commands.spawn(task);
+                    }
+                    Err(err) => {
+                        println!("get_player_games call failed: {}", err);
+                        game_list.list = GameList::Message("Server is down".into());
+                    }
+                }
+            }
+            _ => game_list.list = GameList::Message("Server is down".into()),
+        };
     } else {
         game_list.list = GameList::Message("No user id provided".into());
     }
@@ -475,7 +489,7 @@ pub fn make_turn(
     }
 }
 
-pub fn refresh_player_games(
+pub fn send_get_player_games(
     mut game_list: Query<&mut GameList>,
     mut commands: Commands,
     mut timer: ResMut<RefreshGamesTimer>,
@@ -492,100 +506,99 @@ pub fn refresh_player_games(
             *list = GameList::Message("No user id provided".into());
             return;
         };
-        if let Some(task) = client.load_player_games(id) {
-            commands.spawn(CallGetPlayerGames(task));
-        } else {
-            *list = GameList::Message("Server is down".into());
+        match client.get_player_games(proto::GameType::TicTacToe, id) {
+            Ok(task) => {
+                commands.spawn(task);
+                timer.reset();
+                timer.pause();
+            }
+            Err(err) => {
+                println!("get_player_games call failed: {}", err);
+                *list = GameList::Message("Server is down".into());
+            }
         }
     }
 }
 
-pub fn handle_player_games_task(
-    mut get_games: Query<(Entity, &mut CallGetPlayerGames)>,
-    mut commands: Commands,
+pub fn handle_get_player_games(
+    mut get_games_result: EventReader<RpcResultReady<proto::GetPlayerGamesReply>>,
+    mut timer: ResMut<RefreshGamesTimer>,
     mut games_ready: EventWriter<PlayerGamesReady>,
 ) {
-    for (entity, mut task) in get_games.iter_mut() {
-        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
-        if let Some(res) = task.poll_once() {
-            match res {
-                Ok(response) => {
-                    let games: Result<Vec<GameInfo>, _> = response
-                        .into_inner()
-                        .games
-                        .into_iter()
-                        .map(|game| game.try_into())
-                        .collect();
-                    match games {
-                        Ok(games) => {
-                            games_ready.send(PlayerGamesReady { games: Ok(games) });
-                        }
-                        Err(err) => {
-                            games_ready.send(PlayerGamesReady {
-                                games: Err(format!("GetPlayerGames invalid response: {}", err)),
-                            });
-                        }
+    for event in get_games_result.read() {
+        timer.unpause();
+        match event.deref() {
+            Ok(response) => {
+                let games: Result<Vec<GameInfo>, _> = response
+                    .get_ref()
+                    .games
+                    .iter()
+                    .map(|game| game.clone().try_into())
+                    .collect();
+                match games {
+                    Ok(games) => {
+                        games_ready.send(PlayerGamesReady { games: Ok(games) });
+                    }
+                    Err(err) => {
+                        games_ready.send(PlayerGamesReady {
+                            games: Err(format!("GetPlayerGames invalid response: {}", err)),
+                        });
                     }
                 }
-                Err(err) => {
-                    games_ready.send(PlayerGamesReady {
-                        games: Err(format!("GetPlayerGames server error: {}", err)),
-                    });
-                }
+            }
+            Err(err) => {
+                games_ready.send(PlayerGamesReady {
+                    games: Err(format!("GetPlayerGames server error: {}", err)),
+                });
             }
         }
     }
 }
 
 pub fn handle_create_game_task(
-    mut create_game: Query<(Entity, &mut CallCreateGame)>,
+    mut create_game_result: EventReader<RpcResultReady<proto::CreateGameReply>>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
     settings: Res<Settings>,
     asset_server: Res<AssetServer>,
 ) {
-    for (entity, mut task) in create_game.iter_mut() {
-        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task.0);
-        if let Some(res) = task.poll_once() {
-            let Some(user_id) = settings.user_id() else {
-                println!("unable to join game without user id");
-                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                return;
-            };
-            match res {
-                Ok(response) => {
-                    let Some(game_info) = response.into_inner().game_info else {
-                        println!("received empty CreateGame reply from server");
+    let Some(user_id) = settings.user_id() else {
+        return;
+    };
+    for event in create_game_result.read() {
+        match event.deref() {
+            Ok(response) => {
+                let Some(game_info) = &response.get_ref().game_info else {
+                    println!("received empty CreateGame reply from server");
+                    commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                    return;
+                };
+                let info = match GameInfo::try_from(game_info.clone()) {
+                    Ok(info) => info,
+                    Err(err) => {
+                        println!("failed to decode game info: {}", err);
+                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+                        continue;
+                    }
+                };
+                println!("starting created game: {}", info.id);
+                let game = match CurrentGame::new_over_network(user_id, info, &asset_server) {
+                    Ok(game) => game,
+                    Err(err) => {
+                        println!("unable to join game: {}", err);
                         commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                         return;
-                    };
-                    let info = match GameInfo::try_from(game_info) {
-                        Ok(info) => info,
-                        Err(err) => {
-                            println!("failed to decode game info: {}", err);
-                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                            continue;
-                        }
-                    };
-                    println!("starting created game: {}", info.id);
-                    let game = match CurrentGame::new_over_network(user_id, info, &asset_server) {
-                        Ok(game) => game,
-                        Err(err) => {
-                            println!("unable to join game: {}", err);
-                            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                            return;
-                        }
-                    };
-                    commands.insert_resource(game);
-                    next_app_state.set(AppState::Game);
-                    commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
-                }
-                Err(err) => {
-                    println!("CreateGame request failed: {}", err);
-                    commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                }
-            };
-        }
+                    }
+                };
+                commands.insert_resource(game);
+                next_app_state.set(AppState::Game);
+                commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
+            }
+            Err(err) => {
+                println!("CreateGame request failed: {}", err);
+                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            }
+        };
     }
 }
 
