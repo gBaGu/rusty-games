@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game_server::game::PlayerId as GamePlayerId;
+use game_server::game::PlayerId as PlayerPosition;
 
 use super::ITEM_HEIGHT;
 use crate::game::Authority;
@@ -7,10 +7,10 @@ use crate::game::Authority;
 #[derive(Component)]
 pub struct InGameUI {
     pub player: Authority,
-    pub player_id: GamePlayerId,
+    pub player_position: PlayerPosition,
     pub player_image: Handle<Image>,
     pub enemy: Authority,
-    pub enemy_id: GamePlayerId,
+    pub enemy_position: PlayerPosition,
     pub enemy_image: Handle<Image>,
 }
 
@@ -20,7 +20,7 @@ pub struct NextPlayer;
 /// Contains player id
 #[derive(Debug, Component)]
 pub struct PlayerInfo {
-    pub id: GamePlayerId,
+    pub position: PlayerPosition,
     pub color: Color,
     pub image: Handle<Image>,
 }
@@ -55,10 +55,10 @@ pub struct InGameUIBundle {
 impl InGameUIBundle {
     pub fn new(
         player_auth: Authority,
-        player_id: GamePlayerId,
+        player_position: PlayerPosition,
         player_image: Handle<Image>,
         enemy_auth: Authority,
-        enemy_id: GamePlayerId,
+        enemy_position: PlayerPosition,
         enemy_image: Handle<Image>,
     ) -> Self {
         Self {
@@ -75,10 +75,10 @@ impl InGameUIBundle {
             },
             in_game_ui: InGameUI {
                 player: player_auth,
-                player_id,
+                player_position,
                 player_image,
                 enemy: enemy_auth,
-                enemy_id,
+                enemy_position,
                 enemy_image,
             },
         }
@@ -92,7 +92,7 @@ pub struct PlayerInfoContainerBundle {
 }
 
 impl PlayerInfoContainerBundle {
-    pub fn new(id: GamePlayerId, color: Color, image: Handle<Image>) -> Self {
+    pub fn new(position: PlayerPosition, color: Color, image: Handle<Image>) -> Self {
         Self {
             node: NodeBundle {
                 style: Style {
@@ -106,7 +106,11 @@ impl PlayerInfoContainerBundle {
                 },
                 ..default()
             },
-            info: PlayerInfo { id, color, image },
+            info: PlayerInfo {
+                position,
+                color,
+                image,
+            },
         }
     }
 }

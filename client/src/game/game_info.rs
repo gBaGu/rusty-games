@@ -1,9 +1,9 @@
 use bevy::prelude::Component;
 use game_server::game::encoding::{FromProtobuf, ProtobufError};
-use game_server::game::{BoardCell, GameState, PlayerId as GamePlayerId};
+use game_server::game::{BoardCell, GameState, PlayerId as PlayerPosition};
 use game_server::proto;
 
-use crate::game::{BOARD_PROTO_SIZE, BOARD_SIZE, PLAYERS_SIZE};
+use crate::game::{TTTBoard, BOARD_PROTO_SIZE, BOARD_SIZE, PLAYERS_SIZE};
 
 #[derive(Clone, Component, Debug)]
 pub struct GameInfo {
@@ -13,7 +13,7 @@ pub struct GameInfo {
 }
 
 impl GameInfo {
-    pub fn get_user_id(&self, game_player_id: GamePlayerId) -> Option<u64> {
+    pub fn get_user_id(&self, game_player_id: PlayerPosition) -> Option<u64> {
         self.players.get(game_player_id as usize).cloned()
     }
 }
@@ -22,11 +22,9 @@ impl TryFrom<proto::GameInfo> for GameInfo {
     type Error = ProtobufError;
 
     fn try_from(value: proto::GameInfo) -> Result<Self, Self::Error> {
-        let state = value
-            .game_state
-            .ok_or(ProtobufError::MessageDataMissing {
-                missing_field: "game_state".to_string(),
-            })?;
+        let state = value.game_state.ok_or(ProtobufError::MessageDataMissing {
+            missing_field: "game_state".to_string(),
+        })?;
         let players_len = value.players.len();
         let players =
             value
@@ -47,7 +45,7 @@ impl TryFrom<proto::GameInfo> for GameInfo {
 #[derive(Debug)]
 pub struct FullGameInfo {
     pub info: GameInfo,
-    pub board: [[BoardCell<GamePlayerId>; BOARD_SIZE]; BOARD_SIZE],
+    pub board: TTTBoard,
 }
 
 impl TryFrom<proto::GameInfo> for FullGameInfo {
@@ -72,7 +70,7 @@ impl TryFrom<proto::GameInfo> for FullGameInfo {
         for (i, row) in value.board.chunks(BOARD_SIZE).enumerate() {
             for (j, val) in row.iter().enumerate() {
                 let cell = BoardCell::from_protobuf(&val)?;
-                full_info.board[i][j] = cell;
+                full_info.board[(i, j).into()] = cell;
             }
         }
         Ok(full_info)

@@ -10,20 +10,21 @@ pub use components::{Board, BoardBundle};
 pub use events::{TileFilled, TilePressed};
 
 use crate::board::components::WinAnimationBundle;
-use crate::game::{GameStateSystems, GameSystems};
+use crate::game::{GameStateSystems, GameSystems, Position};
 use systems::{create, handle_game_over, handle_input, set_tile_image, win_animation};
 
 pub const BORDER_WIDTH: f32 = 1.0;
 pub const WIN_ANIMATION_PATH: &str = "sprites/win_animation.png";
 pub const WIN_ANIMATION_SPRITE_COUNT: usize = 20;
+pub const WIN_ANIMATION_TRANSITION_INTERVAL: u64 = 50;
 pub const WIN_ANIMATION_SPRITE_SIZE: Vec2 = Vec2::new(51.0, 150.0);
 
 /// Returns center coordinates for a board tile with given `pos`.
-pub fn calculate_tile_center(board_size: Vec2, tile_size: Vec2, tile_pos: (u32, u32)) -> Vec2 {
-    let tile_x =
-        (tile_size.x + BORDER_WIDTH) * tile_pos.1 as f32 + tile_size.x / 2.0 - board_size.x / 2.0;
-    let tile_y =
-        (tile_size.y + BORDER_WIDTH) * (2 - tile_pos.0) as f32 + tile_size.y / 2.0 - board_size.y / 2.0;
+pub fn calculate_tile_center(board_size: Vec2, tile_size: Vec2, tile_pos: Position) -> Vec2 {
+    let tile_x = (tile_size.x + BORDER_WIDTH) * tile_pos.col() as f32 + tile_size.x / 2.0
+        - board_size.x / 2.0;
+    let tile_y = (tile_size.y + BORDER_WIDTH) * (2 - tile_pos.row()) as f32 + tile_size.y / 2.0
+        - board_size.y / 2.0;
     Vec2::new(tile_x, tile_y)
 }
 
@@ -39,8 +40,8 @@ pub fn create_win_animation(
     asset_server: &AssetServer,
     texture_atlas_layouts: &mut Assets<TextureAtlasLayout>,
     board_size: Vec2,
-    from: (u32, u32),
-    to: (u32, u32),
+    from: Position,
+    to: Position,
 ) -> WinAnimationBundle {
     let texture = asset_server.load(WIN_ANIMATION_PATH);
     let layout = TextureAtlasLayout::from_grid(
@@ -67,7 +68,7 @@ pub fn create_win_animation(
 
     WinAnimationBundle::new(
         WIN_ANIMATION_SPRITE_COUNT - 1,
-        Duration::from_millis(100),
+        Duration::from_millis(WIN_ANIMATION_TRANSITION_INTERVAL),
         texture,
         texture_atlas_layout,
         transform,
@@ -99,39 +100,39 @@ mod test {
     #[test]
     fn test_calculate_tile_center() {
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 0)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 0).into()),
             Vec2::new(-35.0, 27.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 1)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 1).into()),
             Vec2::new(-4.0, 27.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 2)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (0, 2).into()),
             Vec2::new(27.0, 27.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 0)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 0).into()),
             Vec2::new(-35.0, -4.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 1)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 1).into()),
             Vec2::new(-4.0, -4.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 2)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (1, 2).into()),
             Vec2::new(27.0, -4.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 0)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 0).into()),
             Vec2::new(-35.0, -35.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 1)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 1).into()),
             Vec2::new(-4.0, -35.0)
         );
         assert_eq!(
-            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 2)),
+            calculate_tile_center(Vec2::splat(100.0), Vec2::splat(30.0), (2, 2).into()),
             Vec2::new(27.0, -35.0)
         );
     }
@@ -139,7 +140,13 @@ mod test {
     #[test]
     fn test_calculate_tile_size() {
         assert_eq!(calculate_tile_size(Vec2::splat(302.0)), Vec2::splat(100.0));
-        assert_eq!(calculate_tile_size(Vec2::new(62.0, 32.0)), Vec2::new(20.0, 10.0));
-        assert_eq!(calculate_tile_size(Vec2::new(50.0, 53.0)), Vec2::new(16.0, 17.0));
+        assert_eq!(
+            calculate_tile_size(Vec2::new(62.0, 32.0)),
+            Vec2::new(20.0, 10.0)
+        );
+        assert_eq!(
+            calculate_tile_size(Vec2::new(50.0, 53.0)),
+            Vec2::new(16.0, 17.0)
+        );
     }
 }

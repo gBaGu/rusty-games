@@ -6,8 +6,8 @@ use bevy::prelude::*;
 pub use components::InGameUIBundle;
 
 use super::common::PRIMARY_COLOR;
-use crate::game::GameSystems;
-use systems::{create, handle_state_update};
+use crate::app_state::AppState;
+use systems::*;
 
 pub const FONT_SIZE: f32 = 40.0;
 pub const ITEM_HEIGHT: f32 = 80.0;
@@ -22,7 +22,9 @@ impl Plugin for InGameUIPlugin {
             Update,
             (
                 create,
-                handle_state_update.in_set(GameSystems).after(create),
+                handle_state_update.after(create),
+                handle_end_turn
+                    .run_if(in_state(AppState::Game).or_else(in_state(AppState::Paused))),
             ),
         );
     }

@@ -1,25 +1,24 @@
-use bevy::prelude::Component;
+use bevy::prelude::*;
+use game_server::game::grid::GridIndex;
 
 /// Component that stores a position inside the board.
-#[derive(Clone, Copy, Debug, PartialEq, Component)]
-pub struct Position {
-    row: u32,
-    col: u32,
-}
+#[derive(Clone, Copy, Debug, PartialEq, Component, Deref, DerefMut)]
+pub struct Position(GridIndex);
 
 impl Position {
-    /// Creates [`Position`] from row and col
-    pub fn new(row: u32, col: u32) -> Self {
-        Self { row, col }
+    pub fn new(row: usize, col: usize) -> Self {
+        Self(GridIndex::new(row, col))
     }
+}
 
-    /// Getter for `self.row`
-    pub fn row(&self) -> u32 {
-        self.row
+impl From<GridIndex> for Position {
+    fn from(value: GridIndex) -> Self {
+        Self(value)
     }
+}
 
-    /// Getter for `self.col`
-    pub fn col(&self) -> u32 {
-        self.col
+impl From<Position> for GridIndex {
+    fn from(value: Position) -> Self {
+        value.0
     }
 }

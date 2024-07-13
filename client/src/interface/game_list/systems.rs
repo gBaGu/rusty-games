@@ -1,8 +1,7 @@
 use bevy::prelude::*;
 use game_server::game::{FinishedState, GameState};
 
-use super::components::GameList;
-use super::HORIZONTAL_MARGIN;
+use super::{HORIZONTAL_MARGIN, GameList};
 use crate::commands::EntityCommandsExt;
 use crate::grpc::{Connected, Disconnected};
 use crate::interface::common::{menu_item_style, menu_text_style, row_node_bundle};

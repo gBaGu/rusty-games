@@ -6,8 +6,9 @@ use super::components::{
     PlayerImageBundle, PlayerInfo, PlayerInfoContainerBundle,
 };
 use super::{ENEMY_TURN_COLOR, FONT_SIZE, PLAYER_TURN_COLOR};
-use crate::game::StateUpdated;
-use crate::interface::common::{FONT_PATH, SECONDARY_COLOR};
+use crate::commands::CommandsExt;
+use crate::game::{StateUpdated, SuccessfulTurn};
+use crate::interface::common::{FONT_PATH, SECONDARY_COLOR, TURN_SOUND_PATH};
 
 pub fn create(
     mut commands: Commands,
@@ -24,7 +25,7 @@ pub fn create(
             commands.entity(entity).with_children(|builder| {
                 builder
                     .spawn(PlayerInfoContainerBundle::new(
-                        data.player_id,
+                        data.player_position,
                         PLAYER_TURN_COLOR,
                         data.player_image.clone(),
                     ))
@@ -43,7 +44,7 @@ pub fn create(
                     });
                 builder
                     .spawn(PlayerInfoContainerBundle::new(
-                        data.enemy_id,
+                        data.enemy_position,
                         ENEMY_TURN_COLOR,
                         data.enemy_image.clone(),
                     ))
@@ -69,7 +70,7 @@ pub fn handle_state_update(
     for event in state_updated.read() {
         if let GameState::Turn(id) = event.0 {
             for (mut border, info) in player_info.iter_mut() {
-                if info.id == id {
+                if info.position == id {
                     *border = info.color.into();
                     if let Ok(mut next_player_image) = next_player.get_single_mut() {
                         *next_player_image = UiImage::new(info.image.clone());
@@ -84,5 +85,15 @@ pub fn handle_state_update(
             };
             commands.entity(state_container).despawn_descendants();
         }
+    }
+}
+
+pub fn handle_end_turn(
+    mut commands: Commands,
+    mut successful_turn: EventReader<SuccessfulTurn>,
+    asset_server: Res<AssetServer>,
+) {
+    for _event in successful_turn.read() {
+        commands.play_sound(&asset_server, TURN_SOUND_PATH);
     }
 }

@@ -2,24 +2,10 @@ use std::ops::Deref;
 
 use bevy::app::AppExit;
 use bevy::asset::io::file::FileAssetReader;
-use bevy::asset::AssetServer;
-use bevy::ecs::change_detection::{Res, ResMut};
-use bevy::ecs::entity::Entity;
-use bevy::ecs::event::{EventReader, EventWriter};
-use bevy::ecs::query::{Changed, With};
-use bevy::ecs::schedule::{NextState, State};
-use bevy::ecs::system::{Commands, Query};
-use bevy::hierarchy::{BuildChildren, DespawnRecursiveExt};
-use bevy::input::{keyboard::KeyCode, mouse::MouseButton, ButtonInput};
-use bevy::math::{Vec2, Vec3};
-use bevy::time::Time;
-use bevy::ui::node_bundles::TextBundle;
-use bevy::ui::widget::Button;
-use bevy::ui::{Interaction, Style, UiRect, Val};
-use bevy::utils::default;
-use bevy::window::{PrimaryWindow, Window};
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
-use game_server::game::{FinishedState, Game, GameState};
+use game_server::game::Game;
 use game_server::proto;
 use tic_tac_toe_ai::Agent;
 
@@ -32,17 +18,14 @@ use super::game_list::{GameList, GameListBundle};
 use super::ingame::InGameUIBundle;
 use super::resources::RefreshGamesTimer;
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::board::{BoardBundle, TileFilled, TilePressed};
+use crate::board::BoardBundle;
 use crate::bot::{Bot, MoveStrategy, AGENT_PATH};
 use crate::commands::{CommandsExt, EntityCommandsExt};
-use crate::game::{
-    Authority, CellUpdated, CurrentGame, GameExit, GameInfo, LocalGame, LocalGameTurn,
-    NetworkGameTurn, StateUpdated, SuccessfulTurn,
-};
+use crate::game::{Authority, CurrentGame, GameInfo, GameOver, LocalGame, StateUpdated};
 use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::common::{
     column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
-    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, TURN_SOUND_PATH,
+    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH,
 };
 use crate::interface::events::{PlayerGamesReady, SubmitPressed};
 use crate::Settings;
@@ -239,7 +222,7 @@ pub fn submit_setting(
     }
 }
 
-pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<bevy::ui::Node>>) {
+pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<Node>>) {
     for entity in ui_nodes.iter() {
         commands.entity(entity).despawn();
     }
@@ -407,7 +390,7 @@ pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 pub fn exit_pause(
     mut commands: Commands,
-    ui_nodes: Query<(Entity, Option<&Overlay>), With<bevy::ui::Node>>,
+    ui_nodes: Query<(Entity, Option<&Overlay>), With<Node>>,
     state: Res<State<AppState>>,
 ) {
     if *state.get() == AppState::Game {
@@ -438,10 +421,10 @@ pub fn setup_game(
         let enemy = game.enemy_data();
         builder.spawn(InGameUIBundle::new(
             player.auth(),
-            player.game_player_id(),
+            player.player_position(),
             player.image().clone(),
             enemy.auth(),
-            enemy.game_player_id(),
+            enemy.player_position(),
             enemy.image().clone(),
         ));
     });
@@ -453,40 +436,6 @@ pub fn setup_game(
         .id();
     game.set_board(board);
     state_updated.send(StateUpdated(game.state()));
-}
-
-/// Tracks ButtonPressed event from board and transforms it into NetworkGameTurn/LocalGameTurn event
-pub fn make_turn(
-    mut commands: Commands,
-    mut board_button_pressed: EventReader<TilePressed>,
-    mut network_turn_data: EventWriter<NetworkGameTurn>,
-    mut local_turn_data: EventWriter<LocalGameTurn>,
-    game: Res<CurrentGame>,
-    settings: Res<Settings>,
-    asset_server: Res<AssetServer>,
-) {
-    let Some(user_id) = settings.user_id() else {
-        println!("user id is not set");
-        return;
-    };
-    for event in board_button_pressed.read() {
-        if game.board()[(event.pos().row() as usize, event.pos().col() as usize).into()].is_some() {
-            println!("cell is occupied");
-            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-            continue;
-        }
-        if matches!(game.state(), GameState::Finished(_)) {
-            println!("cannot make turn in finished game");
-            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-            continue;
-        }
-        game.trigger_turn(
-            &mut network_turn_data,
-            &mut local_turn_data,
-            Authority::Player(user_id),
-            event.pos(),
-        );
-    }
 }
 
 pub fn send_get_player_games(
@@ -618,50 +567,21 @@ pub fn handle_player_games(
     };
 }
 
-pub fn handle_cell_updated(
-    mut cell_updated: EventReader<CellUpdated>,
-    mut tile_filled: EventWriter<TileFilled>,
-    game: Res<CurrentGame>,
-) {
-    for event in cell_updated.read() {
-        let Some(img) = game.get_player_image(event.player_id()) else {
-            println!("failed to get player image, dropping event");
-            continue;
-        };
-        let Some(board) = game.board_entity() else {
-            println!("ui board is not set for this game, dropping event");
-            continue;
-        };
-        tile_filled.send(TileFilled::new(*board, event.pos(), img.clone()));
-    }
-}
-
-pub fn handle_successful_turn(
-    mut commands: Commands,
-    mut successful_turn: EventReader<SuccessfulTurn>,
-    asset_server: Res<AssetServer>,
-) {
-    for _event in successful_turn.read() {
-        commands.play_sound(&asset_server, TURN_SOUND_PATH);
-    }
-}
-
 pub fn create_game_over_overlay(
     mut commands: Commands,
-    mut game_exit: EventReader<GameExit>,
-    game: Res<CurrentGame>,
+    mut game_over: EventReader<GameOver>,
+    settings: Res<Settings>,
     asset_server: Res<AssetServer>,
 ) {
-    if game_exit.read().next().is_some() {
-        let GameState::Finished(state) = game.state() else {
-            return;
-        };
+    if let Some(event) = game_over.read().next() {
         let text_style = menu_text_style(&asset_server);
         let style = menu_item_style();
-        let text = match state {
-            FinishedState::Win(id) if id == game.user_data().game_player_id() => "You win!",
-            FinishedState::Win(_) => "You lose!",
-            FinishedState::Draw => "It's a draw!",
+        let text = match event.winner() {
+            Some(Authority::Player(winner)) if matches!(settings.user_id(), Some(user) if user == winner) => {
+                "You win!"
+            }
+            Some(_) => "You lose!",
+            _ => "It's a draw!",
         };
         commands
             .spawn(OverlayNodeBundle::default())

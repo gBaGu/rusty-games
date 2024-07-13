@@ -11,7 +11,7 @@ use game_server::game::{Game, GameState};
 
 pub use components::Position;
 pub use events::{
-    CellUpdated, GameExit, GameOver, LocalGameTurn, NetworkGameTurn, StateUpdated, SuccessfulTurn,
+    CellUpdated, GameOver, LocalGameTurn, NetworkGameTurn, PlayerWon, StateUpdated, SuccessfulTurn,
 };
 pub use game_info::{FullGameInfo, GameInfo};
 pub use resources::{Authority, CurrentGame, GameType, LocalGame};
@@ -87,8 +87,8 @@ impl Plugin for GamePlugin {
             .add_event::<NetworkGameTurn>()
             .add_event::<LocalGameTurn>()
             .add_event::<SuccessfulTurn>()
+            .add_event::<PlayerWon>()
             .add_event::<GameOver>()
-            .add_event::<GameExit>()
             .init_resource::<RefreshGameTimer>()
             .configure_sets(Update, GameSystems.run_if(resource_exists::<CurrentGame>))
             .configure_sets(
@@ -110,6 +110,7 @@ impl Plugin for GamePlugin {
                 (
                     game_initialized.run_if(resource_added::<CurrentGame>),
                     handle_state_updated,
+                    handle_cell_updated,
                 )
                     .in_set(GameSystems),
             )
@@ -123,6 +124,7 @@ impl Plugin for GamePlugin {
                     )
                         .in_set(GameTypeSystems::Network),
                     make_turn_local.in_set(GameTypeSystems::Local),
+                    make_turn,
                 )
                     .in_set(GameStateSystems::InProgress),
             );

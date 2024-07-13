@@ -2,13 +2,13 @@ use bevy::input::mouse::MouseButtonInput;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use game_server::game::{FinishedState, GameState};
 use game_server::game::tic_tac_toe::winning_combinations;
-use game_server::game::FinishedState;
 
 use super::components::{Board, OneTimeAnimation, TileBundle, WinAnimation};
 use super::events::{TileFilled, TilePressed};
 use super::{calculate_tile_center, calculate_tile_size, create_win_animation, BORDER_WIDTH};
-use crate::game::{CurrentGame, GameExit, GameOver, Position};
+use crate::game::{CurrentGame, GameOver, PlayerWon, Position};
 
 fn border_bundle(color: Color, size: Vec2, x: f32, y: f32) -> SpriteBundle {
     SpriteBundle {
@@ -32,8 +32,8 @@ pub fn create(mut commands: Commands, new_board: Query<(Entity, &Sprite), Added<
         commands.entity(entity).with_children(|builder| {
             for row in 0..3 {
                 for col in 0..3 {
-                    let tile_center = calculate_tile_center(board_size, tile_size, (row, col));
                     let pos = Position::new(row, col);
+                    let tile_center = calculate_tile_center(board_size, tile_size, pos);
                     builder.spawn(TileBundle::new(tile_size, tile_center.extend(1.0), pos));
                 }
             }
@@ -115,46 +115,41 @@ pub fn handle_input(
 pub fn handle_game_over(
     mut commands: Commands,
     board: Query<&Sprite, With<Board>>,
-    mut game_over: EventReader<GameOver>,
-    mut game_exit: EventWriter<GameExit>,
+    mut player_won: EventReader<PlayerWon>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     game: Res<CurrentGame>,
     asset_server: Res<AssetServer>,
 ) {
-    if let Some(event) = game_over.read().last() {
-        if matches!(event, GameOver(FinishedState::Win(_))) {
-            let Ok(Some(board_size)) = board.get_single().map(|sprite| sprite.custom_size) else {
-                return;
-            };
-            let Some(board) = game.board_entity() else {
-                return;
-            };
-            let Some((index1, _, index3)) =
-                winning_combinations().into_iter().find(|(id1, id2, id3)| {
-                    let cell1 = game.board()[*id1];
-                    let cell2 = game.board()[*id2];
-                    let cell3 = game.board()[*id3];
-                    if cell1 == cell2 && cell2 == cell3 {
-                        return cell1.is_some();
-                    }
-                    false
-                })
-            else {
-                return;
-            };
-            let animation = commands
-                .spawn(create_win_animation(
-                    &asset_server,
-                    &mut texture_atlas_layouts,
-                    board_size,
-                    (index1.row() as u32, index1.col() as u32),
-                    (index3.row() as u32, index3.col() as u32),
-                ))
-                .id();
-            commands.entity(*board).add_child(animation);
-        } else {
-            game_exit.send(GameExit);
-        }
+    if let Some(_) = player_won.read().last() {
+        let Ok(Some(board_size)) = board.get_single().map(|sprite| sprite.custom_size) else {
+            return;
+        };
+        let Some(board) = game.board_entity() else {
+            return;
+        };
+        let Some((index1, _, index3)) =
+            winning_combinations().into_iter().find(|(id1, id2, id3)| {
+                let cell1 = game.board()[*id1];
+                let cell2 = game.board()[*id2];
+                let cell3 = game.board()[*id3];
+                if cell1 == cell2 && cell2 == cell3 {
+                    return cell1.is_some();
+                }
+                false
+            })
+        else {
+            return;
+        };
+        let animation = commands
+            .spawn(create_win_animation(
+                &asset_server,
+                &mut texture_atlas_layouts,
+                board_size,
+                index1.into(),
+                index3.into(),
+            ))
+            .id();
+        commands.entity(*board).add_child(animation);
     }
 }
 
@@ -180,7 +175,7 @@ pub fn set_tile_image(
 pub fn win_animation(
     mut commands: Commands,
     mut animation: Query<(Entity, &mut OneTimeAnimation, &mut TextureAtlas), With<WinAnimation>>,
-    mut game_exit: EventWriter<GameExit>,
+    mut game_over: EventWriter<GameOver>,
     game: Res<CurrentGame>,
     time: Res<Time>,
 ) {
@@ -193,7 +188,15 @@ pub fn win_animation(
                     commands.entity(*board).remove_children(&[entity]);
                     commands.entity(entity).despawn();
                 }
-                game_exit.send(GameExit);
+                let GameState::Finished(FinishedState::Win(player)) = game.state() else {
+                    println!("game state is corrupted: {:?}", game.state());
+                    continue;
+                };
+                if let Some(data) = game.get_player_data(player) {
+                    game_over.send(GameOver::new(Some(data.auth())));
+                } else {
+                    println!("couldn't get winner ({}) data", player);
+                }
             }
         }
     }

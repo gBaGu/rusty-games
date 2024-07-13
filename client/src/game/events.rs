@@ -1,5 +1,5 @@
 use bevy::prelude::{Deref, Event};
-use game_server::game::{FinishedState, GameState, PlayerId as GamePlayerId};
+use game_server::game::{GameState, PlayerId as PlayerPosition};
 
 use super::{Authority, Position};
 
@@ -9,16 +9,16 @@ pub struct StateUpdated(pub GameState);
 #[derive(Debug, Event)]
 pub struct CellUpdated {
     pos: Position,
-    player_id: GamePlayerId,
+    player_position: PlayerPosition,
 }
 
 impl CellUpdated {
-    pub fn new(pos: Position, player_id: GamePlayerId) -> Self {
-        Self { pos, player_id }
+    pub fn new(pos: Position, player_position: PlayerPosition) -> Self {
+        Self { pos, player_position }
     }
 
-    pub fn player_id(&self) -> GamePlayerId {
-        self.player_id
+    pub fn player_position(&self) -> PlayerPosition {
+        self.player_position
     }
 
     pub fn pos(&self) -> Position {
@@ -41,30 +41,38 @@ pub struct LocalGameTurn {
     pub pos: Position,
 }
 
+/// General game event
+/// Indicates that player finished its turn
 #[derive(Debug, Event)]
 pub struct SuccessfulTurn {
-    pos: Position,
-    player_id: GamePlayerId,
+    player: PlayerPosition,
 }
 
 impl SuccessfulTurn {
-    pub fn new(pos: Position, player_id: GamePlayerId) -> Self {
-        Self { pos, player_id }
+    pub fn new(player: PlayerPosition) -> Self {
+        Self { player }
     }
 
     #[allow(dead_code)]
-    pub fn player_id(&self) -> GamePlayerId {
-        self.player_id
-    }
-
-    #[allow(dead_code)]
-    pub fn pos(&self) -> Position {
-        self.pos
+    pub fn player(&self) -> PlayerPosition {
+        self.player
     }
 }
 
 #[derive(Debug, Deref, Event)]
-pub struct GameOver(pub FinishedState);
+pub struct PlayerWon(pub Authority);
 
-#[derive(Event)]
-pub struct GameExit;
+#[derive(Debug, Event)]
+pub struct GameOver {
+    winner: Option<Authority>,
+}
+
+impl GameOver {
+    pub fn new(winner: Option<Authority>) -> Self {
+        Self { winner }
+    }
+
+    pub fn winner(&self) -> Option<Authority> {
+        self.winner
+    }
+}

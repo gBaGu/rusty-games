@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::{GameState, PlayerId as GamePlayerId};
+use game_server::game::{GameState, PlayerId as PlayerPosition};
 
 use super::error::GameError;
 use super::{
@@ -35,23 +35,23 @@ pub enum Authority {
 #[derive(Clone, Debug)]
 pub struct PlayerData {
     auth: Authority,
-    game_player_id: GamePlayerId,
+    player_position: PlayerPosition,
     image: Handle<Image>,
 }
 
 impl PlayerData {
-    pub fn new_player(id: u64, game_player_id: GamePlayerId, image: Handle<Image>) -> Self {
+    pub fn new_player(id: u64, player_position: PlayerPosition, image: Handle<Image>) -> Self {
         Self {
             auth: Authority::Player(id),
-            game_player_id,
+            player_position,
             image,
         }
     }
 
-    pub fn new_bot(id: u64, game_player_id: GamePlayerId, image: Handle<Image>) -> Self {
+    pub fn new_bot(id: u64, player_position: PlayerPosition, image: Handle<Image>) -> Self {
         Self {
             auth: Authority::Bot(id),
-            game_player_id,
+            player_position,
             image,
         }
     }
@@ -60,8 +60,8 @@ impl PlayerData {
         self.auth
     }
 
-    pub fn game_player_id(&self) -> GamePlayerId {
-        self.game_player_id
+    pub fn player_position(&self) -> PlayerPosition {
+        self.player_position
     }
 
     pub fn image(&self) -> &Handle<Image> {
@@ -181,19 +181,29 @@ impl CurrentGame {
 
     pub fn get_next_player(&self) -> Option<&PlayerData> {
         if let GameState::Turn(id) = self.state {
-            if self.user_data.game_player_id == id {
+            if self.user_data.player_position == id {
                 return Some(&self.user_data);
-            } else if self.enemy_data.game_player_id == id {
+            } else if self.enemy_data.player_position == id {
                 return Some(&self.enemy_data);
             }
         }
         None
     }
 
-    pub fn get_player_image(&self, id: GamePlayerId) -> Option<&Handle<Image>> {
-        if self.user_data.game_player_id == id {
+    pub fn get_player_data(&self, id: PlayerPosition) -> Option<&PlayerData> {
+        if self.user_data.player_position == id {
+            return Some(&self.user_data);
+        } else if self.enemy_data.player_position == id {
+            return Some(&self.enemy_data);
+        } else {
+            None
+        }
+    }
+
+    pub fn get_player_image(&self, id: PlayerPosition) -> Option<&Handle<Image>> {
+        if self.user_data.player_position == id {
             return Some(&self.user_data.image);
-        } else if self.enemy_data.game_player_id == id {
+        } else if self.enemy_data.player_position == id {
             return Some(&self.enemy_data.image);
         } else {
             None
@@ -204,7 +214,7 @@ impl CurrentGame {
         self.board_entity = Some(board);
     }
 
-    pub fn set_cell(&mut self, pos: (usize, usize), player_id: GamePlayerId) {
+    pub fn set_cell(&mut self, pos: Position, player_id: PlayerPosition) {
         self.board[pos.into()] = player_id.into()
     }
 

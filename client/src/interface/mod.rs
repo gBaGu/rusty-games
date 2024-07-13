@@ -12,7 +12,7 @@ use bevy_simple_text_input::TextInputPlugin;
 
 use crate::app_state::{AppState, MenuState};
 use crate::board::Board;
-use crate::game::{GameStateSystems, GameSystems};
+use crate::game::GameStateSystems;
 use crate::grpc::NetworkSystems;
 use events::{PlayerGamesReady, SubmitPressed};
 use ingame::InGameUIPlugin;
@@ -80,9 +80,7 @@ impl Plugin for InterfacePlugin {
                     )
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     handle_create_game_task, // grpc call handler
-                    make_turn.in_set(GameStateSystems::InProgress),
                     create_game_over_overlay.in_set(GameStateSystems::Finished),
-                    (handle_cell_updated, handle_successful_turn).in_set(GameSystems),
                 ),
             );
     }

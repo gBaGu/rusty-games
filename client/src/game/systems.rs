@@ -3,14 +3,15 @@ use std::ops::Deref;
 use bevy::prelude::*;
 use game_server::game::grid::GridIndex;
 use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::{BoardCell, Game, GameState, PlayerId as GamePlayerId};
+use game_server::game::{BoardCell, FinishedState, Game, GameState, PlayerId as PlayerPosition};
 use game_server::proto;
 
 use super::resources::{LocalGame, RefreshGameTimer};
 use super::{
-    CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, LocalGameTurn, NetworkGameTurn,
-    Position, StateUpdated, SuccessfulTurn,
+    Authority, CellUpdated, CurrentGame, FullGameInfo, GameOver, GameType, LocalGameTurn,
+    NetworkGameTurn, PlayerWon, Position, StateUpdated, SuccessfulTurn,
 };
+use crate::board::{TileFilled, TilePressed};
 use crate::commands::CommandsExt;
 use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::common::ERROR_SOUND_PATH;
@@ -21,16 +22,16 @@ fn update_state_on_turn(
     state_updated: &mut EventWriter<StateUpdated>,
     successful_turn: &mut EventWriter<SuccessfulTurn>,
     game: &mut CurrentGame,
-    player_id: GamePlayerId,
+    player_position: PlayerPosition,
     state: GameState,
     pos: Position,
 ) {
-    game.set_cell((pos.row() as usize, pos.col() as usize), player_id);
+    game.set_cell(pos, player_position);
     game.set_state(state);
     game.clear_pending_move();
-    cell_updated.send(CellUpdated::new(pos, player_id));
+    cell_updated.send(CellUpdated::new(pos, player_position));
     state_updated.send(StateUpdated(state));
-    successful_turn.send(SuccessfulTurn::new(pos, player_id));
+    successful_turn.send(SuccessfulTurn::new(player_position));
 }
 
 /// Emit StateUpdated once the game is initialized
@@ -60,6 +61,40 @@ pub fn send_get_game(
     }
 }
 
+/// Tracks ButtonPressed event from board and transforms it into NetworkGameTurn/LocalGameTurn event
+pub fn make_turn(
+    mut commands: Commands,
+    mut board_button_pressed: EventReader<TilePressed>,
+    mut network_turn_data: EventWriter<NetworkGameTurn>,
+    mut local_turn_data: EventWriter<LocalGameTurn>,
+    game: Res<CurrentGame>,
+    settings: Res<Settings>,
+    asset_server: Res<AssetServer>,
+) {
+    let Some(user_id) = settings.user_id() else {
+        println!("user id is not set");
+        return;
+    };
+    for event in board_button_pressed.read() {
+        if game.board()[event.pos().into()].is_some() {
+            println!("cell is occupied");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        }
+        if matches!(game.state(), GameState::Finished(_)) {
+            println!("cannot make turn in finished game");
+            commands.play_sound(&asset_server, ERROR_SOUND_PATH);
+            continue;
+        }
+        game.trigger_turn(
+            &mut network_turn_data,
+            &mut local_turn_data,
+            Authority::Player(user_id),
+            event.pos(),
+        );
+    }
+}
+
 pub fn make_turn_network(
     mut commands: Commands,
     mut turn_data: EventReader<NetworkGameTurn>,
@@ -83,7 +118,7 @@ pub fn make_turn_network(
             proto::GameType::TicTacToe,
             event.game_id,
             user_id,
-            GridIndex::new(event.pos.row() as usize, event.pos.col() as usize),
+            GridIndex::from(event.pos),
         ) {
             Ok(task) => {
                 game.set_pending_move(event.pos);
@@ -118,7 +153,7 @@ pub fn make_turn_local(
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             continue;
         }
-        let player_id = next_player.game_player_id();
+        let player_id = next_player.player_position();
         let Ok(row) = (event.pos.row() as usize).try_into() else {
             println!("invalid row index: {}", event.pos.row());
             return;
@@ -166,8 +201,9 @@ pub fn handle_make_turn(
             println!("no pending move, dropping MakeTurn response");
             continue;
         };
-        let player_id = game.user_data().game_player_id();
-        if !matches!(game.get_next_player(), Some(player) if player.game_player_id() == player_id) {
+        let player_id = game.user_data().player_position();
+        if !matches!(game.get_next_player(), Some(player) if player.player_position() == player_id)
+        {
             println!("not your turn");
             commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             continue;
@@ -238,10 +274,10 @@ pub fn handle_get_game(
                 for (i, row) in full_info.board.iter().enumerate() {
                     for (j, cell) in row.iter().enumerate() {
                         if let BoardCell(Some(player)) = cell {
-                            let local_cell = game.board()[(i, j).into()];
+                            let pos = Position::new(i, j);
+                            let local_cell = game.board()[pos.into()];
                             if local_cell.is_none() {
-                                game.set_cell((i, j), *player);
-                                let pos = Position::new(i as u32, j as u32);
+                                game.set_cell(pos, *player);
                                 cell_updated.send(CellUpdated::new(pos, *player));
                             }
                         }
@@ -261,15 +297,44 @@ pub fn handle_get_game(
 
 pub fn handle_state_updated(
     mut state_updated: EventReader<StateUpdated>,
+    mut player_won: EventWriter<PlayerWon>,
     mut game_over: EventWriter<GameOver>,
+    game: Res<CurrentGame>,
 ) {
     if let Some(event) = state_updated.read().last() {
         println!("received StateUpdated: {:?}", event);
         match event.0 {
             GameState::Turn(_) => {}
-            GameState::Finished(f) => {
-                game_over.send(GameOver(f));
-            }
+            GameState::Finished(f) => match f {
+                FinishedState::Win(player) => {
+                    if let Some(data) = game.get_player_data(player) {
+                        player_won.send(PlayerWon(data.auth()));
+                    } else {
+                        println!("couldn't get winner ({}) data", player);
+                    }
+                }
+                FinishedState::Draw => {
+                    game_over.send(GameOver::new(None));
+                }
+            },
         };
+    }
+}
+
+pub fn handle_cell_updated(
+    mut cell_updated: EventReader<CellUpdated>,
+    mut tile_filled: EventWriter<TileFilled>,
+    game: Res<CurrentGame>,
+) {
+    for event in cell_updated.read() {
+        let Some(img) = game.get_player_image(event.player_position()) else {
+            println!("failed to get player image, dropping event");
+            continue;
+        };
+        let Some(board) = game.board_entity() else {
+            println!("ui board is not set for this game, dropping event");
+            continue;
+        };
+        tile_filled.send(TileFilled::new(*board, event.pos(), img.clone()));
     }
 }
