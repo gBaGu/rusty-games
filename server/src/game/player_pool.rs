@@ -31,7 +31,7 @@ pub trait PlayerQueue {
 }
 
 /// Queue that stores only player ids
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PlayerIdQueue<T: Clone> {
     players: SmallVec<[T; 8]>,
     players_queue: Peekable<Cycle<IntoIter<[T; 8]>>>,
@@ -65,7 +65,7 @@ impl<T: Clone + Player<Id = T> + PartialEq> PlayerQueue for PlayerIdQueue<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PlayerDataQueue<T: Clone, ID> {
     players: SmallVec<[T; 8]>,
     players_queue: Peekable<Cycle<IntoIter<[T; 8]>>>,

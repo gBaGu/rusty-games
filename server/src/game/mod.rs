@@ -118,6 +118,8 @@ pub trait Game: Sized {
     fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState>;
 
     fn board(&self) -> &Self::Board;
+    fn board_mut(&mut self) -> &mut Self::Board;
+    fn set_board(&mut self, board: Self::Board);
 
     fn players(&self) -> &Self::Players;
     fn players_mut(&mut self) -> &mut Self::Players;
