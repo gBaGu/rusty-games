@@ -2,8 +2,26 @@ use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
 use crate::app_state::{AppState, AppStateTransition};
-use crate::game::GameInfo;
+use crate::game::{GameInfo, GameLink};
 use crate::interface::common::{OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
+
+#[derive(Debug, Component)]
+pub struct Playground;
+
+#[derive(Clone, Copy, Debug, Deref, DerefMut, Component)]
+pub struct PlayerColor(Color);
+
+impl From<Color> for PlayerColor {
+    fn from(value: Color) -> Self {
+        Self(value)
+    }
+}
+
+impl PlayerColor {
+    pub fn new(color: Color) -> Self {
+        Self(color)
+    }
+}
 
 #[derive(Clone, Debug, Deref, Component)]
 pub struct JoinGame(pub GameInfo);
@@ -27,6 +45,13 @@ pub struct CreateGame;
 pub struct Overlay;
 
 // Bundles
+
+#[derive(Debug, Bundle)]
+pub struct PlaygroundBundle {
+    pub node: NodeBundle,
+    pub game_link: GameLink,
+    pub playground: Playground,
+}
 
 #[derive(Bundle)]
 pub struct MenuNavigationButtonBundle {

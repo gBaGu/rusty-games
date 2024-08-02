@@ -1,78 +1,181 @@
-use bevy::prelude::{Deref, Event};
-use game_server::game::{GameState, PlayerId as PlayerPosition};
-
-use super::{Authority, Position};
-
-#[derive(Debug, Deref, Event)]
-pub struct StateUpdated(pub GameState);
+use bevy::prelude::*;
+use game_server::game::{GameState, PlayerId};
 
 #[derive(Debug, Event)]
-pub struct CellUpdated {
-    pos: Position,
-    player_position: PlayerPosition,
+pub struct CreateGame<T> {
+    id: Option<u64>,
+    context: T,
 }
 
-impl CellUpdated {
-    pub fn new(pos: Position, player_position: PlayerPosition) -> Self {
-        Self { pos, player_position }
+impl<T> CreateGame<T> {
+    pub fn new(id: Option<u64>, ctx: T) -> Self {
+        Self { id, context: ctx }
     }
 
-    pub fn player_position(&self) -> PlayerPosition {
-        self.player_position
+    pub fn new_over_network(id: u64, ctx: T) -> Self {
+        Self::new(Some(id), ctx)
     }
 
-    pub fn pos(&self) -> Position {
-        self.pos
+    pub fn new_local(ctx: T) -> Self {
+        Self::new(None, ctx)
+    }
+
+    pub fn id(&self) -> Option<u64> {
+        self.id
+    }
+
+    pub fn context(&self) -> &T {
+        &self.context
     }
 }
 
-/// Triggers network game update
+#[derive(Clone, Copy, Debug, Deref, DerefMut, Event)]
+pub struct BotReady(Entity);
+
+impl BotReady {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Event)]
+pub struct PlayerActionInitialized<T> {
+    game: Entity,
+    player: PlayerId,
+    action: T,
+}
+
+impl<T: Clone + Copy> PlayerActionInitialized<T> {
+    pub fn new(game: Entity, player: PlayerId, action: T) -> Self {
+        Self {
+            game,
+            player,
+            action,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
+        self.player
+    }
+
+    pub fn action(&self) -> T {
+        self.action
+    }
+}
+
+#[derive(Clone, Copy, Debug, Event)]
+pub struct PlayerActionApplied<T> {
+    game: Entity,
+    player: PlayerId,
+    action: T,
+}
+
+impl<T: Clone + Copy> PlayerActionApplied<T> {
+    pub fn new(game: Entity, player: PlayerId, action: T) -> Self {
+        Self {
+            game,
+            player,
+            action,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
+        self.player
+    }
+
+    pub fn action(&self) -> T {
+        self.action
+    }
+}
+
 #[derive(Debug, Event)]
-pub struct NetworkGameTurn {
-    pub game_id: u64,
-    pub auth: Authority,
-    pub pos: Position,
+pub struct TurnStart {
+    game: Entity,
+    player: PlayerId,
 }
 
-/// Triggers local game update
-#[derive(Debug, Event)]
-pub struct LocalGameTurn {
-    pub auth: Authority,
-    pub pos: Position,
-}
-
-/// General game event
-/// Indicates that player finished its turn
-#[derive(Debug, Event)]
-pub struct SuccessfulTurn {
-    player: PlayerPosition,
-}
-
-impl SuccessfulTurn {
-    pub fn new(player: PlayerPosition) -> Self {
-        Self { player }
+impl TurnStart {
+    pub fn new(game: Entity, player: PlayerId) -> Self {
+        Self {
+            game,
+            player,
+        }
     }
 
-    #[allow(dead_code)]
-    pub fn player(&self) -> PlayerPosition {
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
         self.player
     }
 }
 
-#[derive(Debug, Deref, Event)]
-pub struct PlayerWon(pub Authority);
-
 #[derive(Debug, Event)]
-pub struct GameOver {
-    winner: Option<Authority>,
+pub struct StateUpdated {
+    game: Entity,
+    state: GameState,
 }
 
-impl GameOver {
-    pub fn new(winner: Option<Authority>) -> Self {
-        Self { winner }
+impl StateUpdated {
+    pub fn new(game: Entity, state: GameState) -> Self {
+        Self {
+            game,
+            state,
+        }
     }
 
-    pub fn winner(&self) -> Option<Authority> {
-        self.winner
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn state(&self) -> GameState {
+        self.state
+    }
+}
+
+#[derive(Debug, Event)]
+pub struct Draw {
+    game: Entity,
+}
+
+impl Draw {
+    pub fn new(game: Entity) -> Self {
+        Self { game }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+}
+
+#[derive(Debug, Event)]
+pub struct PlayerWon {
+    game: Entity,
+    player: PlayerId,
+}
+
+impl PlayerWon {
+    pub fn new(game: Entity, player: PlayerId) -> Self {
+        Self {
+            game,
+            player,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
+        self.player
     }
 }

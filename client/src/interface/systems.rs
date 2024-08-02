@@ -1,83 +1,74 @@
 use std::ops::Deref;
 
 use bevy::app::AppExit;
-use bevy::asset::io::file::FileAssetReader;
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
-use game_server::game::Game;
 use game_server::proto;
-use tic_tac_toe_ai::Agent;
 
 use super::components::{
     CreateGame, JoinGame, MenuNavigationButtonBundle, NetworkGameTextInputBundle, Overlay,
-    OverlayNodeBundle, Setting, SettingTextInputBundle, SubmitButton, SubmitButtonBundle,
-    UiImageBundle,
+    OverlayNodeBundle, Playground, PlaygroundBundle, Setting, SettingTextInputBundle, SubmitButton,
+    SubmitButtonBundle, UiImageBundle,
 };
 use super::game_list::{GameList, GameListBundle};
-use super::ingame::InGameUIBundle;
 use super::resources::RefreshGamesTimer;
+use super::{GameReady, GameReadyToExit};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::board::BoardBundle;
-use crate::bot::{Bot, MoveStrategy, AGENT_PATH};
 use crate::commands::{CommandsExt, EntityCommandsExt};
-use crate::game::{Authority, CurrentGame, GameInfo, GameOver, LocalGame, StateUpdated};
+use crate::game::{
+    ActiveGame, Board, BotDifficulty, BotStrategy, CreateTicTacToeGame, CreateTicTacToeGameContext,
+    CurrentUser, EnemyType, GameInfo, GameLink, NetworkGame, PendingExistingGameBundle,
+    PendingNewGameBundle, TTTBotQLearningStrategy, TTTBotStrategy, Winner,
+};
 use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::common::{
     column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
     CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH,
 };
-use crate::interface::events::{PlayerGamesReady, SubmitPressed};
+use crate::interface::events::{GameExit, PlayerGamesReady, SubmitPressed};
 use crate::Settings;
+
+pub fn toggle_pause(
+    mut next_app_state: ResMut<NextState<AppState>>,
+    app_state: Res<State<AppState>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        if *app_state.get() == AppState::Game {
+            next_app_state.set(AppState::Paused);
+        } else if *app_state.get() == AppState::Paused {
+            next_app_state.set(AppState::Game);
+        }
+    }
+}
 
 pub fn state_transition(
     menu_items: Query<(&Interaction, &AppStateTransition), (With<Button>, Changed<Interaction>)>,
     mut commands: Commands,
     mut next_app_state: ResMut<NextState<AppState>>,
+    mut create_game: EventWriter<CreateTicTacToeGame>,
     mut exit: EventWriter<AppExit>,
     app_state: Res<State<AppState>>,
     settings: Res<Settings>,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
     asset_server: Res<AssetServer>,
 ) {
-    if keyboard_input.just_pressed(KeyCode::Escape) {
-        if *app_state.get() == AppState::Game {
-            next_app_state.set(AppState::Paused);
-            return;
-        } else if *app_state.get() == AppState::Paused {
-            next_app_state.set(AppState::Game);
-            return;
-        }
-    }
     for (interaction, state_transition) in menu_items.iter() {
         if *interaction == Interaction::Pressed {
             if let Some(new_state) = state_transition.0 {
                 if *app_state.get() == AppState::Menu(MenuState::PlayWithBot)
                     && new_state == AppState::Game
                 {
-                    if let Some(user_id) = settings.user_id() {
-                        let local_game = LocalGame::default();
-                        let state = local_game.state();
-                        commands.insert_resource(local_game);
-                        let bot_id = 0;
-                        let game = CurrentGame::new_with_bot(
-                            user_id,
-                            bot_id,
-                            true,
-                            state,
-                            Default::default(),
-                            &asset_server,
-                        );
-                        commands.insert_resource(game);
-                        if let Ok(agent) =
-                            Agent::load(FileAssetReader::get_base_path().join(AGENT_PATH))
-                        {
-                            commands.spawn(Bot::new(bot_id, MoveStrategy::QLearningModel(agent)));
-                        } else {
-                            println!("failed to load agent");
-                        }
-                        println!("state transition: {:?}", new_state);
-                        next_app_state.set(new_state);
+                    if let Some(user) = settings.user_id() {
+                        create_game.send(CreateTicTacToeGame::new_local(
+                            CreateTicTacToeGameContext::new(
+                                user,
+                                EnemyType::Bot(BotStrategy::new(TTTBotStrategy::QLearning(
+                                    TTTBotQLearningStrategy::new(BotDifficulty::Hard),
+                                ))),
+                                true,
+                                None,
+                            ),
+                        ));
                     } else {
                         commands.play_sound(&asset_server, ERROR_SOUND_PATH);
                     }
@@ -95,37 +86,26 @@ pub fn state_transition(
 }
 
 pub fn join_game(
-    join_button: Query<(&Interaction, &JoinGame), (With<Button>, Changed<Interaction>)>,
     mut commands: Commands,
-    mut next_app_state: ResMut<NextState<AppState>>,
-    settings: Res<Settings>,
-    grpc_client: Res<GrpcClient>,
-    asset_server: Res<AssetServer>,
+    game: Query<(Entity, &NetworkGame)>,
+    join_button: Query<(&Interaction, &JoinGame), (With<Button>, Changed<Interaction>)>,
+    mut game_ready: EventWriter<GameReady>,
+    client: Res<GrpcClient>,
 ) {
-    let Some(user_id) = settings.user_id() else {
+    let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) else {
         return;
     };
-    if let Some((_, join)) = join_button.iter().find(|(&i, _)| i == Interaction::Pressed) {
-        let game = match CurrentGame::new_over_network(user_id, join.deref().clone(), &asset_server)
-        {
-            Ok(game) => game,
-            Err(err) => {
-                println!("unable to join game: {}", err);
-                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                return;
-            }
-        };
-        commands.insert_resource(game);
-        match grpc_client.get_game(proto::GameType::TicTacToe, join.id) {
-            Ok(task) => {
-                commands.spawn(task);
-            }
-            Err(err) => println!("get_game call failed: {}", err),
-        }
-        println!("state transition: join game");
-        next_app_state.set(AppState::Game);
-        commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
+    if let Some((game_entity, _)) = game.iter().find(|(_, &game)| *game == join.id) {
+        game_ready.send(GameReady::new(game_entity));
+        return;
     }
+    match client.get_game(proto::GameType::TicTacToe, join.id) {
+        Ok(task) => {
+            commands.spawn(task);
+            commands.spawn(PendingExistingGameBundle::new(join.id));
+        }
+        Err(err) => println!("get_game call failed: {}", err),
+    };
 }
 
 pub fn text_input_focus(
@@ -158,15 +138,16 @@ pub fn create_game(
     mut submit_pressed: EventReader<SubmitPressed>,
     mut text_input_submit: EventReader<TextInputSubmitEvent>,
     settings: Res<Settings>,
-    grpc_client: Res<GrpcClient>,
+    client: Res<GrpcClient>,
     asset_server: Res<AssetServer>,
 ) {
     let mut create = |input: &str| {
         if let Ok(opponent_id) = input.parse::<u64>() {
             if let Some(user_id) = settings.user_id() {
-                match grpc_client.create_game(proto::GameType::TicTacToe, user_id, opponent_id) {
+                match client.create_game(proto::GameType::TicTacToe, user_id, opponent_id) {
                     Ok(task) => {
                         commands.spawn(task);
+                        commands.spawn(PendingNewGameBundle::new());
                         return;
                     }
                     Err(err) => println!("create_game call failed: {}", err),
@@ -225,12 +206,6 @@ pub fn submit_setting(
 pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<Node>>) {
     for entity in ui_nodes.iter() {
         commands.entity(entity).despawn();
-    }
-}
-
-pub fn despawn_board(mut commands: Commands, game: Res<CurrentGame>) {
-    if let Some(entity) = game.board_entity() {
-        commands.entity(*entity).despawn_recursive();
     }
 }
 
@@ -318,14 +293,14 @@ pub fn setup_play_over_network_menu(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     settings: Res<Settings>,
-    grpc_client: Option<Res<GrpcClient>>,
+    client: Option<Res<GrpcClient>>,
 ) {
     let text_style = menu_text_style(&asset_server);
     let style = menu_item_style();
 
     let mut game_list = GameListBundle::default();
     if let Some(id) = settings.user_id() {
-        match grpc_client {
+        match client {
             Some(client) if client.connected() => {
                 match client.get_player_games(proto::GameType::TicTacToe, id) {
                     Ok(task) => {
@@ -388,54 +363,34 @@ pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-pub fn exit_pause(
-    mut commands: Commands,
-    ui_nodes: Query<(Entity, Option<&Overlay>), With<Node>>,
-    state: Res<State<AppState>>,
-) {
-    if *state.get() == AppState::Game {
-        if let Some((entity, _)) = ui_nodes.iter().find(|(_, overlay)| overlay.is_some()) {
-            commands.entity(entity).despawn_recursive();
-        }
-    } else {
-        for (entity, _) in ui_nodes.iter() {
-            commands.entity(entity).despawn();
-        }
+pub fn clear_pause_overlay(mut commands: Commands, overlay: Query<Entity, With<Overlay>>) {
+    for overlay in overlay.iter() {
+        commands.entity(overlay).despawn_recursive();
     }
 }
 
-pub fn setup_game(
+pub fn setup_game(mut commands: Commands, game: Query<Entity, With<ActiveGame>>) {
+    if let Ok(game_entity) = game.get_single() {
+        commands.spawn(PlaygroundBundle {
+            node: root_node_bundle(),
+            game_link: GameLink::new(game_entity),
+            playground: Playground,
+        });
+    }
+}
+
+pub fn start_game(
     mut commands: Commands,
-    window: Query<&Window, With<PrimaryWindow>>,
-    mut game: ResMut<CurrentGame>,
-    mut state_updated: EventWriter<StateUpdated>,
+    mut game_ready: EventReader<GameReady>,
+    mut next_app_state: ResMut<NextState<AppState>>,
+    asset_server: Res<AssetServer>,
 ) {
-    let Ok(window) = window.get_single() else {
-        println!("failed to get single window");
-        return;
-    };
-    let interface_height = window.height() * 0.2;
-    let board_area_height = window.height() - interface_height;
-    commands.spawn(root_node_bundle()).with_children(|builder| {
-        let player = game.user_data();
-        let enemy = game.enemy_data();
-        builder.spawn(InGameUIBundle::new(
-            player.auth(),
-            player.player_position(),
-            player.image().clone(),
-            enemy.auth(),
-            enemy.player_position(),
-            enemy.image().clone(),
-        ));
-    });
-    let board_size = window.width().min(board_area_height) * 0.8;
-    let board_size = Vec2::new(board_size, board_size);
-    let board_translation = Vec3::new(0.0, -interface_height / 2.0, 0.0);
-    let board = commands
-        .spawn(BoardBundle::new(board_size, board_translation))
-        .id();
-    game.set_board(board);
-    state_updated.send(StateUpdated(game.state()));
+    for event in game_ready.read() {
+        println!("starting game: {:?}", event.get());
+        next_app_state.set(AppState::Game);
+        commands.entity(event.get()).insert(ActiveGame);
+        commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
+    }
 }
 
 pub fn send_get_player_games(
@@ -504,53 +459,6 @@ pub fn handle_get_player_games(
     }
 }
 
-pub fn handle_create_game_task(
-    mut create_game_result: EventReader<RpcResultReady<proto::CreateGameReply>>,
-    mut commands: Commands,
-    mut next_app_state: ResMut<NextState<AppState>>,
-    settings: Res<Settings>,
-    asset_server: Res<AssetServer>,
-) {
-    let Some(user_id) = settings.user_id() else {
-        return;
-    };
-    for event in create_game_result.read() {
-        match event.deref() {
-            Ok(response) => {
-                let Some(game_info) = &response.get_ref().game_info else {
-                    println!("received empty CreateGame reply from server");
-                    commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                    return;
-                };
-                let info = match GameInfo::try_from(game_info.clone()) {
-                    Ok(info) => info,
-                    Err(err) => {
-                        println!("failed to decode game info: {}", err);
-                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                        continue;
-                    }
-                };
-                println!("starting created game: {}", info.id);
-                let game = match CurrentGame::new_over_network(user_id, info, &asset_server) {
-                    Ok(game) => game,
-                    Err(err) => {
-                        println!("unable to join game: {}", err);
-                        commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-                        return;
-                    }
-                };
-                commands.insert_resource(game);
-                next_app_state.set(AppState::Game);
-                commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
-            }
-            Err(err) => {
-                println!("CreateGame request failed: {}", err);
-                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-            }
-        };
-    }
-}
-
 pub fn handle_player_games(
     mut game_list: Query<&mut GameList>,
     mut games_ready: EventReader<PlayerGamesReady>,
@@ -569,19 +477,20 @@ pub fn handle_player_games(
 
 pub fn create_game_over_overlay(
     mut commands: Commands,
-    mut game_over: EventReader<GameOver>,
-    settings: Res<Settings>,
+    winner: Query<(Option<&CurrentUser>, &Parent), With<Winner>>,
+    mut ready_to_exit: EventReader<GameReadyToExit>,
     asset_server: Res<AssetServer>,
 ) {
-    if let Some(event) = game_over.read().next() {
+    for event in ready_to_exit.read() {
         let text_style = menu_text_style(&asset_server);
         let style = menu_item_style();
-        let text = match event.winner() {
-            Some(Authority::Player(winner)) if matches!(settings.user_id(), Some(user) if user == winner) => {
-                "You win!"
-            }
-            Some(_) => "You lose!",
-            _ => "It's a draw!",
+        let winner = winner
+            .iter()
+            .find(|(_, parent)| parent.get() == event.get());
+        let text = match winner.map(|val| val.0) {
+            Some(Some(_)) => "You win!",
+            Some(None) => "You lose!",
+            None => "It's a draw!",
         };
         commands
             .spawn(OverlayNodeBundle::default())
@@ -601,5 +510,26 @@ pub fn create_game_over_overlay(
                             .with_child(TextBundle::from_section("Main menu", text_style));
                     });
             });
+    }
+}
+
+pub fn exit_game(
+    mut commands: Commands,
+    playground: Query<(Entity, &GameLink), With<Playground>>,
+    board: Query<Entity, With<Board>>,
+    mut game_exit: EventWriter<GameExit>,
+) {
+    for (playground, game_link) in playground.iter() {
+        commands.entity(playground).despawn_recursive();
+        game_exit.send(GameExit::new(game_link.get()));
+    }
+    for board in board.iter() {
+        commands.entity(board).despawn_recursive();
+    }
+}
+
+pub fn handle_game_exit(mut commands: Commands, mut game_exit: EventReader<GameExit>) {
+    for event in game_exit.read() {
+        commands.entity(event.get()).remove::<ActiveGame>();
     }
 }
