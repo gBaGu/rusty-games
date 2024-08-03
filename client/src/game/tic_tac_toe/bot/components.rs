@@ -29,38 +29,20 @@ impl Delay {
 
 #[derive(Clone, Copy, Debug, Component)]
 pub enum Strategy {
-    Random(RandomStrategy),
-    QLearning(QLearningStrategy),
-}
-
-#[derive(Clone, Copy, Debug, Component)]
-pub struct RandomStrategy;
-
-#[derive(Clone, Copy, Debug, Component)]
-pub struct QLearningStrategy {
-    difficulty: BotDifficulty,
-}
-
-impl QLearningStrategy {
-    pub fn new(difficulty: BotDifficulty) -> Self {
-        Self { difficulty }
-    }
-
-    pub fn difficulty(&self) -> BotDifficulty {
-        self.difficulty
-    }
+    Random,
+    QLearning(BotDifficulty),
 }
 
 #[derive(Debug, Bundle)]
-pub struct BotBundle<T: Component + Send + Sync + 'static> {
+pub struct BotBundle {
     player: PlayerPosition,
     auth: BotAuthority,
-    strategy: T,
+    strategy: Strategy,
     delay: Delay,
 }
 
-impl<T: Component + Send + Sync + 'static> BotBundle<T> {
-    pub fn new(id: u64, player_position: PlayerId, strategy: T) -> Self {
+impl BotBundle {
+    pub fn new(id: u64, player_position: PlayerId, strategy: Strategy) -> Self {
         Self {
             player: PlayerPosition::new(player_position),
             auth: BotAuthority::new(id),

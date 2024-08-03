@@ -16,9 +16,9 @@ use super::{GameReady, GameReadyToExit};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
-    ActiveGame, Board, BotDifficulty, BotStrategy, CreateTicTacToeGame, CreateTicTacToeGameContext,
-    CurrentUser, EnemyType, GameInfo, GameLink, NetworkGame, PendingExistingGameBundle,
-    PendingNewGameBundle, TTTBotQLearningStrategy, TTTBotStrategy, Winner,
+    ActiveGame, Board, BotDifficulty, CreateTicTacToeGame, CreateTicTacToeGameContext, CurrentUser,
+    EnemyType, GameInfo, GameLink, NetworkGame, PendingExistingGameBundle, PendingNewGameBundle,
+    TTTBotStrategy, Winner,
 };
 use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::common::{
@@ -62,9 +62,7 @@ pub fn state_transition(
                         create_game.send(CreateTicTacToeGame::new_local(
                             CreateTicTacToeGameContext::new(
                                 user,
-                                EnemyType::Bot(BotStrategy::new(TTTBotStrategy::QLearning(
-                                    TTTBotQLearningStrategy::new(BotDifficulty::Hard),
-                                ))),
+                                EnemyType::Bot(TTTBotStrategy::QLearning(BotDifficulty::Hard)),
                                 true,
                                 None,
                             ),

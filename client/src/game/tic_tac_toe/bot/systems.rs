@@ -1,17 +1,28 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
+use game_server::game::grid::GridIndex;
 use game_server::game::Game;
 use rand::{thread_rng, Rng};
 
-use super::{
-    Delay, LocalGame, PendingAction, PlayerActionInitialized, QLearningModel, QLearningStrategy,
-    RandomStrategy,
-};
-use crate::game::{BotAuthority, BotReady, CurrentPlayer, PlayerPosition};
+use super::{Delay, LocalGame, PendingAction, PlayerActionInitialized, QLearningModel, Strategy};
+use crate::game::{BotAuthority, BotReady, CurrentPlayer, PlayerPosition, TTTBoard};
 
 const MIN_ACTION_DELAY: u64 = 500;
 const MAX_ACTION_DELAY: u64 = 1500;
+
+fn get_random_action(board: &TTTBoard) -> Option<GridIndex> {
+    let empty_cells: Vec<_> = board
+        .all_indexed()
+        .filter_map(|(index, cell)| if cell.is_none() { Some(index) } else { None })
+        .collect();
+    if empty_cells.is_empty() {
+        return None;
+    }
+    let mut rng = thread_rng();
+    let index = rng.gen_range(0..empty_cells.len());
+    Some(empty_cells[index])
+}
 
 pub fn start_delay(mut bot: Query<&mut Delay, (With<BotAuthority>, Added<CurrentPlayer>)>) {
     let mut rng = thread_rng();
@@ -45,37 +56,9 @@ pub fn delay(
     }
 }
 
-/// Listen for [`BotReady`] event and choose random action from currently available
-pub fn random_bot(
+pub fn initialize_action(
     game: Query<(Entity, &LocalGame), Without<PendingAction>>,
-    mut bot_ready: EventReader<BotReady>,
-    mut action_initialized: EventWriter<PlayerActionInitialized>,
-) {
-    for event in bot_ready.read() {
-        let Ok((game_entity, game)) = game.get(event.game()) else {
-            continue;
-        };
-        let mut rng = thread_rng();
-        let empty_cells: Vec<_> = game
-            .board()
-            .all_indexed()
-            .filter_map(|(index, cell)| if cell.is_none() { Some(index) } else { None })
-            .collect();
-        let index = rng.gen_range(0..empty_cells.len());
-        let action = empty_cells[index];
-        println!("action initialized by a random bot: {}", action);
-        action_initialized.send(PlayerActionInitialized::new(
-            game_entity,
-            event.player_position(),
-            action,
-        ));
-    }
-}
-
-/// Listen for [`BotReady`] event and get action from [`QLearningModel`].
-pub fn q_learning_bot(
-    game: Query<(Entity, &LocalGame), Without<PendingAction>>,
-    bot: Query<&QLearningStrategy, With<BotAuthority>>,
+    bot: Query<&Strategy, With<BotAuthority>>,
     mut bot_ready: EventReader<BotReady>,
     mut action_initialized: EventWriter<PlayerActionInitialized>,
     model: Res<QLearningModel>,
@@ -87,8 +70,12 @@ pub fn q_learning_bot(
         let Ok((game_entity, game)) = game.get(event.game()) else {
             continue;
         };
-        let Some(action) = model.get_move(strategy.difficulty(), game.board()) else {
-            println!("unable to get action from q-learning model");
+        let action = match strategy {
+            Strategy::Random => get_random_action(game.board()),
+            Strategy::QLearning(difficulty) => model.get_move(*difficulty, game.board()),
+        };
+        let Some(action) = action else {
+            println!("unable to get action from bot strategy");
             continue;
         };
         println!("action initialized by a q-learning bot: {}", action);

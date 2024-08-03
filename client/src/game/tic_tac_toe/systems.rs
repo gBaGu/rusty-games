@@ -4,7 +4,7 @@ use game_server::game::{BoardCell, FinishedState, Game, GameState};
 use game_server::proto;
 use std::ops::Deref;
 
-use super::bot::{BotBundle, Strategy as BotStrategy};
+use super::bot::BotBundle;
 use super::{
     CreateGame, CreateGameContext, Images, LocalGame, LocalGameBundle, NetworkGameBundle,
     PendingAction, PendingActionBundle, PlayerActionApplied, PlayerActionInitialized,
@@ -222,14 +222,7 @@ pub fn create(
             EnemyType::User(id) => commands.spawn(NetworkPlayerBundle::new(id, enemy_position)),
             EnemyType::Bot(strategy) => {
                 let bot_id = 0; // TODO: manage bot ids in case of multiple bots
-                match *strategy {
-                    BotStrategy::Random(s) => {
-                        commands.spawn(BotBundle::new(bot_id, enemy_position, s))
-                    }
-                    BotStrategy::QLearning(s) => {
-                        commands.spawn(BotBundle::new(bot_id, enemy_position, s))
-                    }
-                }
+                commands.spawn(BotBundle::new(bot_id, enemy_position, strategy))
             }
         }
         .id();

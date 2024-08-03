@@ -4,7 +4,7 @@ mod systems;
 
 use bevy::prelude::*;
 
-pub use components::{BotBundle, QLearningStrategy, RandomStrategy, Strategy};
+pub use components::{BotBundle, Strategy};
 
 use super::{LocalGame, PendingAction, PlayerActionInitialized, TTTBoard};
 use components::Delay;
@@ -16,6 +16,6 @@ pub struct BotPlugin;
 impl Plugin for BotPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(QLearningModel::load())
-            .add_systems(Update, (start_delay, delay, random_bot, q_learning_bot));
+            .add_systems(Update, (start_delay, delay, initialize_action));
     }
 }

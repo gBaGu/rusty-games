@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use game_server::game;
 use game_server::game::tic_tac_toe::TicTacToe;
 
-pub use common::{BotDifficulty, BotStrategy, EnemyType};
+pub use common::{BotDifficulty, EnemyType};
 pub use components::{
     ActiveGame, Board, CurrentPlayer, CurrentUser, GameLink, LocalGame, LocalGameBundle,
     NetworkGame, NetworkGameBundle, PendingExistingGameBundle, PendingNewGameBundle,
@@ -19,9 +19,7 @@ pub use components::{
 };
 pub use events::{BotReady, CreateGame, Draw, PlayerWon, StateUpdated, TurnStart};
 pub use game_info::{FullGameInfo, GameInfo};
-pub use tic_tac_toe::bot::{
-    QLearningStrategy as TTTBotQLearningStrategy, Strategy as TTTBotStrategy,
-};
+pub use tic_tac_toe::bot::Strategy as TTTBotStrategy;
 
 use components::{
     BotAuthority, CurrentUserPlayerBundle, NetworkPlayerBundle, PendingAction, PendingActionBundle,
