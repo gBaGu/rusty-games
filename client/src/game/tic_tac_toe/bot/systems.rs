@@ -26,18 +26,21 @@ pub fn start_delay(mut bot: Query<&mut Delay, (With<BotAuthority>, Added<Current
 /// Spend some time (between `MIN_ACTION_DELAY` and `MAX_ACTION_DELAY`) and emit [`BotReady`].
 /// For bot entities that doesn't have [`Delay`] component emit [`BotReady`] immediately.
 pub fn delay(
-    mut bot: Query<(Entity, Option<&mut Delay>), (With<BotAuthority>, With<CurrentPlayer>)>,
+    mut bot: Query<
+        (Entity, Option<&mut Delay>, &Parent, &PlayerPosition),
+        (With<BotAuthority>, With<CurrentPlayer>),
+    >,
     mut bot_ready: EventWriter<BotReady>,
     time: Res<Time>,
 ) {
-    for (bot_entity, delay) in bot.iter_mut() {
+    for (bot_entity, delay, parent, &position) in bot.iter_mut() {
         let Some(mut delay) = delay else {
-            bot_ready.send(BotReady::new(bot_entity));
+            bot_ready.send(BotReady::new(bot_entity, parent.get(), *position));
             continue;
         };
         if delay.tick(time.delta()).just_finished() {
             println!("bot is ready to make a move");
-            bot_ready.send(BotReady::new(bot_entity));
+            bot_ready.send(BotReady::new(bot_entity, parent.get(), *position));
         }
     }
 }
@@ -45,15 +48,11 @@ pub fn delay(
 /// Listen for [`BotReady`] event and choose random action from currently available
 pub fn random_bot(
     game: Query<(Entity, &LocalGame), Without<PendingAction>>,
-    bot: Query<(&PlayerPosition, &Parent), With<RandomStrategy>>, // TODO: remove this query, pass position and game entity in BotReady
     mut bot_ready: EventReader<BotReady>,
     mut action_initialized: EventWriter<PlayerActionInitialized>,
 ) {
-    for &event in bot_ready.read() {
-        let Ok((&player, parent)) = bot.get(*event) else {
-            continue;
-        };
-        let Ok((game_entity, game)) = game.get(parent.get()) else {
+    for event in bot_ready.read() {
+        let Ok((game_entity, game)) = game.get(event.game()) else {
             continue;
         };
         let mut rng = thread_rng();
@@ -65,23 +64,27 @@ pub fn random_bot(
         let index = rng.gen_range(0..empty_cells.len());
         let action = empty_cells[index];
         println!("action initialized by a random bot: {}", action);
-        action_initialized.send(PlayerActionInitialized::new(game_entity, *player, action));
+        action_initialized.send(PlayerActionInitialized::new(
+            game_entity,
+            event.player_position(),
+            action,
+        ));
     }
 }
 
 /// Listen for [`BotReady`] event and get action from [`QLearningModel`].
 pub fn q_learning_bot(
     game: Query<(Entity, &LocalGame), Without<PendingAction>>,
-    bot: Query<(&PlayerPosition, &Parent, &QLearningStrategy)>,
+    bot: Query<&QLearningStrategy, With<BotAuthority>>,
     mut bot_ready: EventReader<BotReady>,
     mut action_initialized: EventWriter<PlayerActionInitialized>,
     model: Res<QLearningModel>,
 ) {
-    for &event in bot_ready.read() {
-        let Ok((&player, parent, strategy)) = bot.get(*event) else {
+    for event in bot_ready.read() {
+        let Ok(strategy) = bot.get(event.bot()) else {
             continue;
         };
-        let Ok((game_entity, game)) = game.get(parent.get()) else {
+        let Ok((game_entity, game)) = game.get(event.game()) else {
             continue;
         };
         let Some(action) = model.get_move(strategy.difficulty(), game.board()) else {
@@ -89,6 +92,10 @@ pub fn q_learning_bot(
             continue;
         };
         println!("action initialized by a q-learning bot: {}", action);
-        action_initialized.send(PlayerActionInitialized::new(game_entity, *player, action));
+        action_initialized.send(PlayerActionInitialized::new(
+            game_entity,
+            event.player_position(),
+            action,
+        ));
     }
 }

@@ -29,12 +29,32 @@ impl<T> CreateGame<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deref, DerefMut, Event)]
-pub struct BotReady(Entity);
+#[derive(Clone, Copy, Debug, Event)]
+pub struct BotReady {
+    bot: Entity,
+    game: Entity,
+    player_position: PlayerId,
+}
 
 impl BotReady {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
+    pub fn new(bot: Entity, game: Entity, player_position: PlayerId) -> Self {
+        Self {
+            bot,
+            game,
+            player_position,
+        }
+    }
+
+    pub fn bot(&self) -> Entity {
+        self.bot
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player_position(&self) -> PlayerId {
+        self.player_position
     }
 }
 
