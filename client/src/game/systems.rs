@@ -1,8 +1,53 @@
+use crate::game::components::PendingActionStatus;
+use crate::grpc::RpcResultReady;
+use crate::interface::GameReadyToExit;
 use bevy::prelude::*;
 use game_server::game::{FinishedState, GameState};
-use crate::interface::GameReadyToExit;
+use game_server::proto;
+use std::ops::Deref;
 
-use super::{CurrentPlayer, Draw, PlayerPosition, PlayerWon, StateUpdated, TurnStart, Winner};
+use super::{
+    ActiveGame, CurrentPlayer, Draw, NetworkGame, PlayerPosition, PlayerWon, StateUpdated,
+    TurnStart, Winner,
+};
+
+/// Receive reply for MakeTurn rpc and if it's successful update [`PendingActionStatus`] component.
+/// Does not depend on specific game type
+pub fn handle_make_turn(
+    mut game: Query<&mut PendingActionStatus, (With<NetworkGame>, With<ActiveGame>)>,
+    mut make_turn_reply: EventReader<RpcResultReady<proto::MakeTurnReply>>,
+) {
+    let Ok(mut status) = game.get_single_mut() else {
+        return;
+    };
+    for event in make_turn_reply.read() {
+        if status.is_confirmed() {
+            return;
+        }
+        *status = PendingActionStatus::NotConfirmed;
+        let _ = match event.deref() {
+            Ok(response) => {
+                if let Some(new_state) = &response.get_ref().game_state {
+                    match GameState::try_from(new_state.clone()) {
+                        Ok(state) => state,
+                        Err(err) => {
+                            println!("failed to convert game state: {}", err);
+                            continue;
+                        }
+                    }
+                } else {
+                    println!("MakeTurn returned empty response");
+                    continue;
+                }
+            }
+            Err(err) => {
+                println!("MakeTurn request failed: {}", err);
+                continue;
+            }
+        };
+        *status = PendingActionStatus::Confirmed;
+    }
+}
 
 pub fn handle_state_updated(
     mut state_updated: EventReader<StateUpdated>,
@@ -49,10 +94,7 @@ pub fn update_current_player(
     }
 }
 
-pub fn handle_draw(
-    mut draw: EventReader<Draw>,
-    mut ready_to_exit: EventWriter<GameReadyToExit>,
-) {
+pub fn handle_draw(mut draw: EventReader<Draw>, mut ready_to_exit: EventWriter<GameReadyToExit>) {
     for event in draw.read() {
         ready_to_exit.send(GameReadyToExit::new(event.game()));
     }
@@ -64,12 +106,15 @@ pub fn handle_win(
     mut player_won: EventReader<PlayerWon>,
 ) {
     for event in player_won.read() {
-        player.iter().filter(|(.., p)| p.get() == event.game()).for_each(|(player, &pos, _)| {
-            let mut player_cmds = commands.entity(player);
-            player_cmds.remove::<CurrentPlayer>();
-            if event.player() == *pos {
-                player_cmds.insert(Winner);
-            }
-        })
+        player
+            .iter()
+            .filter(|(.., p)| p.get() == event.game())
+            .for_each(|(player, &pos, _)| {
+                let mut player_cmds = commands.entity(player);
+                player_cmds.remove::<CurrentPlayer>();
+                if event.player() == *pos {
+                    player_cmds.insert(Winner);
+                }
+            })
     }
 }

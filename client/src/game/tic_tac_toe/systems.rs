@@ -173,43 +173,6 @@ pub fn handle_get_game(
     }
 }
 
-// TODO: move to outer game plugin because this is common for avery game
-pub fn handle_make_turn(
-    mut game: Query<&mut PendingActionStatus, (With<NetworkGame>, With<ActiveGame>)>,
-    mut make_turn_reply: EventReader<RpcResultReady<proto::MakeTurnReply>>,
-) {
-    let Ok(mut status) = game.get_single_mut() else {
-        return;
-    };
-    for event in make_turn_reply.read() {
-        if status.is_confirmed() {
-            return;
-        }
-        *status = PendingActionStatus::NotConfirmed;
-        let _ = match event.deref() {
-            Ok(response) => {
-                if let Some(new_state) = &response.get_ref().game_state {
-                    match GameState::try_from(new_state.clone()) {
-                        Ok(state) => state,
-                        Err(err) => {
-                            println!("failed to convert game state: {}", err);
-                            continue;
-                        }
-                    }
-                } else {
-                    println!("MakeTurn returned empty response");
-                    continue;
-                }
-            }
-            Err(err) => {
-                println!("MakeTurn request failed: {}", err);
-                continue;
-            }
-        };
-        *status = PendingActionStatus::Confirmed;
-    }
-}
-
 /// Receive CreateGame event and spawn game bundle as well as players.
 pub fn create(
     mut commands: Commands,

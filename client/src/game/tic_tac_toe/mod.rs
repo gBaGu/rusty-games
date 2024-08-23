@@ -42,7 +42,6 @@ impl Plugin for TicTacToePlugin {
                     handle_create_game_reply,
                     handle_get_game_reply_on_join,
                     handle_get_game,
-                    handle_make_turn,
                     create,
                     create_pending_action,
                     apply_action,

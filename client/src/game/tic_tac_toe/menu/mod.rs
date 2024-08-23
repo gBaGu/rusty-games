@@ -2,8 +2,10 @@ mod components;
 mod systems;
 
 use bevy::prelude::*;
+use game_server::game::tic_tac_toe::TicTacToe;
 
 use crate::app_state::{AppState, MenuState};
+use crate::game::GameMenuContext;
 use crate::grpc::NetworkSystems;
 use systems::*;
 
@@ -26,7 +28,8 @@ impl Plugin for GameMenuPlugin {
                 create_network_game_pressed,
                 save_opponent_pressed,
                 join_pressed,
-            ), // TODO: run_if GameMenuContext<TicTacToe> is present
+            )
+                .run_if(resource_exists::<GameMenuContext<TicTacToe>>),
         );
     }
 }

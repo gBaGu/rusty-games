@@ -51,6 +51,7 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
+                    handle_make_turn,
                     handle_state_updated,
                     update_current_player,
                     handle_draw,
