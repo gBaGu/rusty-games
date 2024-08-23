@@ -1,6 +1,9 @@
+use std::marker::PhantomData;
+
 use bevy::prelude::*;
 use game_server::game::grid::GridIndex;
-use game_server::game::PlayerId;
+use game_server::game::{Game, PlayerId};
+
 use crate::interface::common::{PRIMARY_COLOR, SECONDARY_COLOR};
 use crate::interface::GameSettingsLink;
 
@@ -79,21 +82,24 @@ impl GameLink {
 }
 
 #[derive(Debug, Component)]
-pub struct Game;
-
-#[derive(Debug, Component)]
-pub struct PendingGame; // TODO: consider making this generic over Game type
-
-#[derive(Debug, Component)]
 pub struct ActiveGame;
 
 #[derive(Clone, Copy, Debug, Component, Deref, DerefMut)]
 pub struct NetworkGame(u64);
 
+#[derive(Debug, Component)]
+pub struct PendingGame<T>(PhantomData<T>);
+
+impl<T> Default for PendingGame<T> {
+    fn default() -> Self {
+        Self(PhantomData::default())
+    }
+}
+
 #[derive(Debug, Default, Component, Deref, DerefMut)]
 pub struct LocalGame<T>(T);
 
-impl<T> From<T> for LocalGame<T> {
+impl<T: Game> From<T> for LocalGame<T> {
     fn from(value: T) -> Self {
         Self(value)
     }
@@ -186,28 +192,28 @@ impl BotDifficultyButtonBundle {
 }
 
 #[derive(Debug, Bundle)]
-pub struct PendingNewGameBundle {
-    pending_game: PendingGame,
+pub struct PendingNewGameBundle<T: Send + Sync + 'static> {
+    pending_game: PendingGame<T>,
 }
 
-impl PendingNewGameBundle {
+impl<T: Send + Sync + 'static> PendingNewGameBundle<T> {
     pub fn new() -> Self {
         Self {
-            pending_game: PendingGame,
+            pending_game: PendingGame::default(),
         }
     }
 }
 
 #[derive(Debug, Bundle)]
-pub struct PendingExistingGameBundle {
-    pending_game: PendingGame,
+pub struct PendingExistingGameBundle<T: Send + Sync + 'static> {
+    pending_game: PendingGame<T>,
     network_game: NetworkGame,
 }
 
-impl PendingExistingGameBundle {
+impl<T: Send + Sync + 'static> PendingExistingGameBundle<T> {
     pub fn new(id: u64) -> Self {
         Self {
-            pending_game: PendingGame,
+            pending_game: PendingGame::default(),
             network_game: NetworkGame(id),
         }
     }
@@ -216,23 +222,20 @@ impl PendingExistingGameBundle {
 #[derive(Debug, Bundle)]
 pub struct LocalGameBundle<T: Send + Sync + 'static> {
     pub local_game: LocalGame<T>,
-    pub game: Game,
 }
 
 impl<T: Default + Send + Sync + 'static> Default for LocalGameBundle<T> {
     fn default() -> Self {
         Self {
             local_game: LocalGame(T::default()),
-            game: Game,
         }
     }
 }
 
-impl<T: Send + Sync + 'static> From<T> for LocalGameBundle<T> {
+impl<T: Game + Send + Sync + 'static> From<T> for LocalGameBundle<T> {
     fn from(value: T) -> Self {
         Self {
             local_game: LocalGame::from(value),
-            game: Game,
         }
     }
 }
@@ -241,7 +244,6 @@ impl<T: Send + Sync + 'static> From<T> for LocalGameBundle<T> {
 pub struct NetworkGameBundle<T: Send + Sync + 'static> {
     pub id: NetworkGame,
     pub local_game: LocalGame<T>,
-    pub game: Game,
 }
 
 impl<T: Send + Sync + 'static> NetworkGameBundle<T> {
@@ -249,7 +251,6 @@ impl<T: Send + Sync + 'static> NetworkGameBundle<T> {
         Self {
             id: NetworkGame(id),
             local_game: LocalGame(game),
-            game: Game,
         }
     }
 }

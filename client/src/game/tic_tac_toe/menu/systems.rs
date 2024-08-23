@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::utils::petgraph::matrix_graph::Nullable;
 use bevy_simple_text_input::{TextInputSubmitEvent, TextInputValue};
+use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::proto;
 
 use crate::commands::EntityCommandsExt;
@@ -301,7 +302,7 @@ pub fn create_network_game_pressed(
             match client.create_game(proto::GameType::TicTacToe, user, opponent) {
                 Ok(task) => {
                     commands.spawn(task);
-                    commands.spawn(PendingNewGameBundle::new());
+                    commands.spawn(PendingNewGameBundle::<TicTacToe>::new());
                     return;
                 }
                 Err(err) => println!("create_game call failed: {}", err),
@@ -357,7 +358,7 @@ pub fn join_pressed(
             match client.get_game(proto::GameType::TicTacToe, event.game_id()) {
                 Ok(task) => {
                     commands.spawn(task);
-                    commands.spawn(PendingExistingGameBundle::new(event.game_id()));
+                    commands.spawn(PendingExistingGameBundle::<TicTacToe>::new(event.game_id()));
                 }
                 Err(err) => println!("get_game call failed: {}", err),
             };

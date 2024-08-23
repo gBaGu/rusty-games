@@ -3,6 +3,7 @@ use game_server::game::grid::GridIndex;
 use game_server::game::{BoardCell, FinishedState, Game, GameState};
 use game_server::proto;
 use std::ops::Deref;
+use game_server::game::tic_tac_toe::TicTacToe;
 
 use super::bot::{BotBundle, NoDifficultyBotBundle};
 use super::{
@@ -28,7 +29,7 @@ pub fn init(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 pub fn handle_create_game_reply(
     mut commands: Commands,
-    pending_game: Query<Entity, With<PendingGame>>, // FIXME: how do we know that this is TTT game?
+    pending_game: Query<Entity, With<PendingGame<TicTacToe>>>,
     mut create_game_reply: EventReader<RpcResultReady<proto::CreateGameReply>>,
     mut create_game: EventWriter<CreateGame>,
     settings: Res<Settings>,
@@ -69,7 +70,7 @@ pub fn handle_create_game_reply(
 
 pub fn handle_get_game_reply_on_join(
     mut commands: Commands,
-    pending_game: Query<(Entity, &NetworkGame), With<PendingGame>>, // FIXME: how do we know that this is TTT game?
+    pending_game: Query<(Entity, &NetworkGame), With<PendingGame<TicTacToe>>>,
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
     mut create_game: EventWriter<CreateGame>,
     settings: Res<Settings>,
