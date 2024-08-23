@@ -1,5 +1,4 @@
 mod components;
-mod error;
 mod events;
 mod game_info;
 mod resources;

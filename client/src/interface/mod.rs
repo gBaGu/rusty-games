@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
 pub use components::{
-    ActiveSetting, CreateGame, GamePage, GameSettings, GameSettingsLink, PlayerColor, Playground,
+    CreateGame, GamePage, GameSettings, GameSettingsLink, PlayerColor, Playground,
     SubmitButtonBundle, UserIdInput, UserIdTextInputBundle,
 };
 pub use events::{GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed};

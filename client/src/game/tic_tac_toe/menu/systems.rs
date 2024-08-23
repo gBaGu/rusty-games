@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy::utils::petgraph::matrix_graph::Nullable;
 use bevy_simple_text_input::{TextInputSubmitEvent, TextInputValue};
 use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::proto;
@@ -317,7 +316,7 @@ pub fn save_opponent_pressed(
     mut submit_pressed: EventReader<interface::SubmitPressed>,
     mut text_input_submit: EventReader<TextInputSubmitEvent>,
 ) {
-    let mut submit = |input: &str, settings: &mut NetworkGameSettings| {
+    let submit = |input: &str, settings: &mut NetworkGameSettings| {
         if let Ok(val) = input.parse::<u64>() {
             settings.set_opponent(val);
         }

@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 use std::marker::PhantomData;
 
-use crate::app_state::{AppState, AppStateTransition, MenuState};
+use crate::app_state::{AppState, AppStateTransition};
 use crate::game::{GameInfo, GameLink};
 use crate::interface::common::{column_node_bundle, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
 
@@ -11,9 +11,6 @@ pub struct Playground;
 
 #[derive(Debug, Component)]
 pub struct GameSettings;
-
-#[derive(Debug, Component)]
-pub struct ActiveSetting;
 
 #[derive(Debug, Component)]
 pub struct GamePage<T>(PhantomData<T>);
@@ -43,12 +40,6 @@ pub struct PlayerColor(Color);
 impl From<Color> for PlayerColor {
     fn from(value: Color) -> Self {
         Self(value)
-    }
-}
-
-impl PlayerColor {
-    pub fn new(color: Color) -> Self {
-        Self(color)
     }
 }
 

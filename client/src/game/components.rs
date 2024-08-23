@@ -264,23 +264,17 @@ pub struct PendingActionBundle<T: Send + Sync + 'static> {
 impl<T: Clone + Copy + Send + Sync + 'static> PendingActionBundle<T> {
     pub fn new(player: PlayerId, action: T, status: PendingActionStatus) -> Self {
         Self {
-            action: PendingAction { player, action },
+            action: PendingAction::new(player, action),
             status,
         }
     }
 
     pub fn new_confirmed(player: PlayerId, action: T) -> Self {
-        Self {
-            action: PendingAction::new(player, action),
-            status: PendingActionStatus::Confirmed,
-        }
+        Self::new(player, action, PendingActionStatus::Confirmed)
     }
 
     pub fn new_unconfirmed(player: PlayerId, action: T) -> Self {
-        Self {
-            action: PendingAction::new(player, action),
-            status: PendingActionStatus::NotConfirmed,
-        }
+        Self::new(player, action, PendingActionStatus::NotConfirmed)
     }
 }
 
@@ -295,7 +289,7 @@ impl CurrentUserPlayerBundle {
     pub fn new(id: u64, player_position: PlayerId) -> Self {
         Self {
             player: PlayerPosition(player_position),
-            auth: UserAuthority(id),
+            auth: UserAuthority::new(id),
             current_user: CurrentUser,
         }
     }
@@ -311,7 +305,7 @@ impl NetworkPlayerBundle {
     pub fn new(id: u64, player_position: PlayerId) -> Self {
         Self {
             player: PlayerPosition(player_position),
-            auth: UserAuthority(id),
+            auth: UserAuthority::new(id),
         }
     }
 }

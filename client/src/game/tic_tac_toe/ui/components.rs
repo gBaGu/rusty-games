@@ -119,6 +119,7 @@ impl NextPlayerImageBundle {
         }
     }
 
+    #[allow(dead_code)]
     pub fn empty(game: Entity) -> Self {
         Self::new(game, Handle::default())
     }

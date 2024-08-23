@@ -18,10 +18,9 @@ use super::{GamePage, GameReady, GameReadyToExit, GameSettingsLink, JoinPressed}
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
-    ActiveGame, Board, BotDifficulty, CurrentUser, GameInfo, GameLink, GameMenuContext,
-    NetworkGame, PendingExistingGameBundle, Winner,
+    ActiveGame, Board, BotDifficulty, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner,
 };
-use crate::grpc::{GrpcClient, RpcResultReady};
+use crate::grpc::RpcResultReady;
 use crate::interface::common::{
     column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
     CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, MENU_LIST_MIN_HEIGHT,
