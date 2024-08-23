@@ -1,12 +1,41 @@
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
+use std::marker::PhantomData;
 
-use crate::app_state::{AppState, AppStateTransition};
+use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::game::{GameInfo, GameLink};
-use crate::interface::common::{OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
+use crate::interface::common::{column_node_bundle, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
 
 #[derive(Debug, Component)]
 pub struct Playground;
+
+#[derive(Debug, Component)]
+pub struct GameSettings;
+
+#[derive(Debug, Component)]
+pub struct ActiveSetting;
+
+#[derive(Debug, Component)]
+pub struct GamePage<T>(PhantomData<T>);
+
+impl<T> Default for GamePage<T> {
+    fn default() -> Self {
+        Self(PhantomData::default())
+    }
+}
+
+#[derive(Debug, Component)]
+pub struct GameSettingsLink(Entity);
+
+impl GameSettingsLink {
+    pub fn new(settings: Entity) -> Self {
+        Self(settings)
+    }
+
+    pub fn get(&self) -> Entity {
+        self.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, Deref, DerefMut, Component)]
 pub struct PlayerColor(Color);
@@ -37,8 +66,11 @@ pub enum Setting {
     UserId,
 }
 
-/// Tag type to mark input components that they are used to create game
 #[derive(Component)]
+pub struct UserIdInput;
+
+/// Tag type to mark input components that they are used to create game
+#[derive(Debug, Component)]
 pub struct CreateGame;
 
 #[derive(Component)]
@@ -51,6 +83,61 @@ pub struct PlaygroundBundle {
     pub node: NodeBundle,
     pub game_link: GameLink,
     pub playground: Playground,
+}
+
+#[derive(Debug, Bundle)]
+pub struct GameSettingsBundle {
+    pub node: NodeBundle,
+    pub game_settings: GameSettings,
+}
+
+impl GameSettingsBundle {
+    pub fn new() -> Self {
+        Self {
+            node: column_node_bundle(),
+            game_settings: GameSettings,
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct GamePageButtonBundle<T: Send + Sync + 'static> {
+    pub button: ButtonBundle,
+    pub game_page: GamePage<T>,
+}
+
+impl<T: Send + Sync + 'static> GamePageButtonBundle<T> {
+    pub fn new(style: Style) -> Self {
+        Self {
+            button: ButtonBundle {
+                style,
+                background_color: PRIMARY_COLOR.into(),
+                ..default()
+            },
+            game_page: GamePage::default(),
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct CreateGameButtonBundle {
+    pub button: ButtonBundle,
+    pub game_settings_link: GameSettingsLink,
+    pub create_game: CreateGame,
+}
+
+impl CreateGameButtonBundle {
+    pub fn new(style: Style, settings: Entity) -> Self {
+        Self {
+            button: ButtonBundle {
+                style,
+                background_color: PRIMARY_COLOR.into(),
+                ..default()
+            },
+            game_settings_link: GameSettingsLink(settings),
+            create_game: CreateGame,
+        }
+    }
 }
 
 #[derive(Bundle)]
@@ -168,13 +255,13 @@ impl SettingTextInputBundle {
 }
 
 #[derive(Bundle)]
-pub struct NetworkGameTextInputBundle {
+pub struct UserIdTextInputBundle {
     pub node: NodeBundle,
     pub text_input: TextInputBundle,
-    pub tag: CreateGame,
+    pub user_id_input: UserIdInput,
 }
 
-impl NetworkGameTextInputBundle {
+impl UserIdTextInputBundle {
     pub fn new(style: Style, text_style: TextStyle) -> Self {
         Self {
             node: NodeBundle { style, ..default() },
@@ -182,7 +269,7 @@ impl NetworkGameTextInputBundle {
                 text_style: TextInputTextStyle(text_style),
                 ..default()
             },
-            tag: CreateGame,
+            user_id_input: UserIdInput,
         }
     }
 }

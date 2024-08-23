@@ -30,24 +30,53 @@ impl Delay {
 #[derive(Clone, Copy, Debug, Component)]
 pub enum Strategy {
     Random,
-    QLearning(BotDifficulty),
+    QLearning,
+}
+
+impl Strategy {
+    pub fn has_difficulty(&self) -> bool {
+        match self {
+            Self::Random => false,
+            Self::QLearning => true,
+        }
+    }
 }
 
 #[derive(Debug, Bundle)]
-pub struct BotBundle {
+pub struct NoDifficultyBotBundle {
     player: PlayerPosition,
     auth: BotAuthority,
     strategy: Strategy,
     delay: Delay,
 }
 
-impl BotBundle {
+impl NoDifficultyBotBundle {
     pub fn new(id: u64, player_position: PlayerId, strategy: Strategy) -> Self {
         Self {
             player: PlayerPosition::new(player_position),
             auth: BotAuthority::new(id),
             strategy,
             delay: Delay::default(),
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct BotBundle {
+    inner: NoDifficultyBotBundle,
+    difficulty: BotDifficulty,
+}
+
+impl BotBundle {
+    pub fn new(
+        id: u64,
+        player_position: PlayerId,
+        strategy: Strategy,
+        difficulty: BotDifficulty,
+    ) -> Self {
+        Self {
+            inner: NoDifficultyBotBundle::new(id, player_position, strategy),
+            difficulty,
         }
     }
 }

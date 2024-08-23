@@ -6,7 +6,7 @@ use game_server::game::Game;
 use rand::{thread_rng, Rng};
 
 use super::{Delay, LocalGame, PendingAction, PlayerActionInitialized, QLearningModel, Strategy};
-use crate::game::{BotAuthority, BotReady, CurrentPlayer, PlayerPosition, TTTBoard};
+use crate::game::{BotAuthority, BotDifficulty, BotReady, CurrentPlayer, PlayerPosition, TTTBoard};
 
 const MIN_ACTION_DELAY: u64 = 500;
 const MAX_ACTION_DELAY: u64 = 1500;
@@ -58,13 +58,13 @@ pub fn delay(
 
 pub fn initialize_action(
     game: Query<(Entity, &LocalGame), Without<PendingAction>>,
-    bot: Query<&Strategy, With<BotAuthority>>,
+    bot: Query<(&Strategy, Option<&BotDifficulty>), With<BotAuthority>>,
     mut bot_ready: EventReader<BotReady>,
     mut action_initialized: EventWriter<PlayerActionInitialized>,
     model: Res<QLearningModel>,
 ) {
     for event in bot_ready.read() {
-        let Ok(strategy) = bot.get(event.bot()) else {
+        let Ok((strategy, difficulty)) = bot.get(event.bot()) else {
             continue;
         };
         let Ok((game_entity, game)) = game.get(event.game()) else {
@@ -72,7 +72,14 @@ pub fn initialize_action(
         };
         let action = match strategy {
             Strategy::Random => get_random_action(game.board()),
-            Strategy::QLearning(difficulty) => model.get_move(*difficulty, game.board()),
+            Strategy::QLearning => {
+                if let Some(difficulty) = difficulty {
+                    model.get_move(*difficulty, game.board())
+                } else {
+                    println!("unable to get bot difficulty");
+                    None
+                }
+            },
         };
         let Some(action) = action else {
             println!("unable to get action from bot strategy");

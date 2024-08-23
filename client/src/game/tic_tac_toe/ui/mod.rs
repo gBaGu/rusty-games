@@ -2,9 +2,12 @@ mod components;
 mod systems;
 
 use bevy::prelude::*;
+use game_server::game::tic_tac_toe::TicTacToe;
 
 use super::PlayerActionApplied;
+use crate::app_state::{AppState, MenuState};
 use crate::interface::common::PRIMARY_COLOR;
+use crate::interface::{enter_game_page, remove_game_page_context};
 use components::{
     GameStateBox, GameStateInfoBundle, NextPlayer, NextPlayerImageBundle, PlayerImageBundle,
     PlayerInfoBundle,
@@ -21,6 +24,18 @@ pub struct InGameUIPlugin;
 impl Plugin for InGameUIPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
+            OnExit(AppState::Menu(MenuState::Game)),
+            remove_game_page_context::<TicTacToe>,
+        )
+        .add_systems(
+            OnExit(AppState::Menu(MenuState::PlayAgainstBot)),
+            remove_game_page_context::<TicTacToe>,
+        )
+        .add_systems(
+            OnExit(AppState::Menu(MenuState::PlayOverNetwork)),
+            remove_game_page_context::<TicTacToe>,
+        )
+        .add_systems(
             Update,
             (
                 create,
@@ -29,6 +44,7 @@ impl Plugin for InGameUIPlugin {
                 set_winner,
                 set_draw,
                 action_sound,
+                enter_game_page::<TicTacToe>,
             ),
         );
     }

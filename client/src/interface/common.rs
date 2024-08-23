@@ -66,7 +66,6 @@ pub fn column_node_bundle() -> NodeBundle {
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
-            min_height: Val::Px(MENU_LIST_MIN_HEIGHT),
             ..default()
         },
         ..default()

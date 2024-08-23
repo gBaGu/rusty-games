@@ -4,18 +4,17 @@ use game_server::game::{BoardCell, FinishedState, Game, GameState};
 use game_server::proto;
 use std::ops::Deref;
 
-use super::bot::BotBundle;
+use super::bot::{BotBundle, NoDifficultyBotBundle};
 use super::{
-    CreateGame, CreateGameContext, Images, LocalGame, LocalGameBundle, NetworkGameBundle,
-    PendingAction, PendingActionBundle, PlayerActionApplied, PlayerActionInitialized,
-    O_SPRITE_PATH, X_SPRITE_PATH,
+    Images, LocalGame, LocalGameBundle, NetworkGameBundle, PendingAction, PendingActionBundle,
+    PlayerActionApplied, PlayerActionInitialized, O_SPRITE_PATH, X_SPRITE_PATH,
 };
-use crate::game::common::EnemyType;
 use crate::game::components::{PendingActionStatus, PendingGame};
 use crate::game::resources::RefreshGameTimer;
+use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
 use crate::game::{
-    ActiveGame, CreateTicTacToeGame, CurrentPlayer, CurrentUserPlayerBundle, FullGameInfo,
-    GameInfo, NetworkGame, NetworkPlayerBundle, StateUpdated, Winner,
+    ActiveGame, CreateGame, CurrentPlayer, CurrentUserPlayerBundle, FullGameInfo, GameInfo,
+    NetworkGame, NetworkPlayerBundle, StateUpdated, Winner,
 };
 use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::GameReady;
@@ -29,16 +28,16 @@ pub fn init(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 pub fn handle_create_game_reply(
     mut commands: Commands,
-    ctx: Query<Entity, With<PendingGame>>,
+    pending_game: Query<Entity, With<PendingGame>>, // FIXME: how do we know that this is TTT game?
     mut create_game_reply: EventReader<RpcResultReady<proto::CreateGameReply>>,
-    mut create_game: EventWriter<CreateTicTacToeGame>,
+    mut create_game: EventWriter<CreateGame>,
     settings: Res<Settings>,
 ) {
     let Some(user) = settings.user_id() else {
         return;
     };
     for event in create_game_reply.read() {
-        let Ok(pending_game_entity) = ctx.get_single() else {
+        let Ok(pending_game_entity) = pending_game.get_single() else {
             continue;
         };
         commands.entity(pending_game_entity).despawn();
@@ -57,7 +56,8 @@ pub fn handle_create_game_reply(
                 };
                 let game_id = info.id;
                 if let Some(ctx) = CreateGameContext::new_from_game_info(user, info) {
-                    create_game.send(CreateTicTacToeGame::new_over_network(game_id, ctx));
+                    let context_entity = commands.spawn(ctx).id();
+                    create_game.send(CreateGame::new_over_network(game_id, user, context_entity));
                 }
             }
             Err(err) => {
@@ -69,9 +69,9 @@ pub fn handle_create_game_reply(
 
 pub fn handle_get_game_reply_on_join(
     mut commands: Commands,
-    pending_game: Query<(Entity, &NetworkGame), With<PendingGame>>,
+    pending_game: Query<(Entity, &NetworkGame), With<PendingGame>>, // FIXME: how do we know that this is TTT game?
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
-    mut create_game: EventWriter<CreateTicTacToeGame>,
+    mut create_game: EventWriter<CreateGame>,
     settings: Res<Settings>,
 ) {
     let Some(user) = settings.user_id() else {
@@ -97,7 +97,12 @@ pub fn handle_get_game_reply_on_join(
                 };
                 if info.info.id == *network_game {
                     if let Some(ctx) = CreateGameContext::new_from_full_game_info(user, info) {
-                        create_game.send(CreateTicTacToeGame::new_over_network(*network_game, ctx));
+                        let context_entity = commands.spawn(ctx).id();
+                        create_game.send(CreateGame::new_over_network(
+                            *network_game,
+                            user,
+                            context_entity,
+                        ));
                     }
                 }
             }
@@ -167,6 +172,7 @@ pub fn handle_get_game(
     }
 }
 
+// TODO: move to outer game plugin because this is common for avery game
 pub fn handle_make_turn(
     mut game: Query<&mut PendingActionStatus, (With<NetworkGame>, With<ActiveGame>)>,
     mut make_turn_reply: EventReader<RpcResultReady<proto::MakeTurnReply>>,
@@ -206,23 +212,34 @@ pub fn handle_make_turn(
 /// Receive CreateGame event and spawn game bundle as well as players.
 pub fn create(
     mut commands: Commands,
+    context: Query<(Entity, &CreateGameContext)>,
     mut create_game: EventReader<CreateGame>,
     mut game_ready: EventWriter<GameReady>,
 ) {
     for event in create_game.read() {
-        let ctx = event.context();
-        let game = ctx.game.clone().unwrap_or_default();
+        let Ok((ctx_entity, ctx)) = context.get(event.context()) else {
+            continue;
+        };
+        commands.entity(ctx_entity).despawn();
+        let game = ctx.game().cloned().unwrap_or_default();
         let state = game.state();
 
         let [user_position, enemy_position] = if ctx.user_first() { [0, 1] } else { [1, 0] };
         let user_id = commands
-            .spawn(CurrentUserPlayerBundle::new(ctx.user(), user_position))
+            .spawn(CurrentUserPlayerBundle::new(event.current_user(), user_position))
             .id();
         let enemy_id = match ctx.enemy() {
             EnemyType::User(id) => commands.spawn(NetworkPlayerBundle::new(id, enemy_position)),
-            EnemyType::Bot(strategy) => {
+            EnemyType::Bot {
+                strategy,
+                difficulty,
+            } => {
                 let bot_id = 0; // TODO: manage bot ids in case of multiple bots
-                commands.spawn(BotBundle::new(bot_id, enemy_position, strategy))
+                if let Some(difficulty) = difficulty {
+                    commands.spawn(BotBundle::new(bot_id, enemy_position, strategy, difficulty))
+                } else {
+                    commands.spawn(NoDifficultyBotBundle::new(bot_id, enemy_position, strategy))
+                }
             }
         }
         .id();
@@ -250,6 +267,7 @@ pub fn create(
         };
         let game_entity = game_cmds.id();
         game_cmds.insert_children(0, &[user_id, enemy_id]);
+        println!("game created: {:?}", game_entity);
         game_ready.send(GameReady::new(game_entity));
     }
 }
@@ -341,7 +359,7 @@ pub fn send_pending_action(
 /// Update timer and if it's finished stop it and create a grpc call task
 pub fn send_get_game(
     mut commands: Commands,
-    game: Query<&NetworkGame, With<ActiveGame>>,
+    game: Query<&NetworkGame, (With<ActiveGame>, With<LocalGame>)>,
     mut timer: ResMut<RefreshGameTimer>,
     client: Res<GrpcClient>,
     time: Res<Time>,

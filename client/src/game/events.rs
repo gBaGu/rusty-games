@@ -2,30 +2,35 @@ use bevy::prelude::*;
 use game_server::game::{GameState, PlayerId};
 
 #[derive(Debug, Event)]
-pub struct CreateGame<T> {
+pub struct CreateGame {
     id: Option<u64>,
-    context: T,
+    current_user: u64,
+    context: Entity,
 }
 
-impl<T> CreateGame<T> {
-    pub fn new(id: Option<u64>, ctx: T) -> Self {
-        Self { id, context: ctx }
+impl CreateGame {
+    pub fn new(id: Option<u64>, current_user: u64, ctx: Entity) -> Self {
+        Self { id, current_user, context: ctx }
     }
 
-    pub fn new_over_network(id: u64, ctx: T) -> Self {
-        Self::new(Some(id), ctx)
+    pub fn new_over_network(id: u64, current_user: u64, ctx: Entity) -> Self {
+        Self::new(Some(id), current_user, ctx)
     }
 
-    pub fn new_local(ctx: T) -> Self {
-        Self::new(None, ctx)
+    pub fn new_local(current_user: u64, ctx: Entity) -> Self {
+        Self::new(None, current_user, ctx)
     }
 
     pub fn id(&self) -> Option<u64> {
         self.id
     }
 
-    pub fn context(&self) -> &T {
-        &self.context
+    pub fn context(&self) -> Entity {
+        self.context
+    }
+
+    pub fn current_user(&self) -> u64 {
+        self.current_user
     }
 }
 

@@ -1,11 +1,29 @@
 use bevy::prelude::*;
 use game_server::game::grid::GridIndex;
 use game_server::game::PlayerId;
-use crate::interface::common::SECONDARY_COLOR;
+use crate::interface::common::{PRIMARY_COLOR, SECONDARY_COLOR};
+use crate::interface::GameSettingsLink;
 
 /// Empty component to indicate that an entity is a board.
 #[derive(Component)]
 pub struct Board;
+
+#[derive(Clone, Copy, Debug, Component)]
+pub enum BotDifficulty {
+    Easy,
+    Medium,
+    Hard,
+}
+
+impl BotDifficulty {
+    pub fn filename(&self) -> String {
+        match self {
+            Self::Easy => "easy".to_string(),
+            Self::Medium => "medium".to_string(),
+            Self::Hard => "hard".to_string(),
+        }
+    }
+}
 
 #[derive(Debug, Component)]
 pub struct PendingAction<T> {
@@ -64,7 +82,7 @@ impl GameLink {
 pub struct Game;
 
 #[derive(Debug, Component)]
-pub struct PendingGame;
+pub struct PendingGame; // TODO: consider making this generic over Game type
 
 #[derive(Debug, Component)]
 pub struct ActiveGame;
@@ -142,6 +160,27 @@ impl BoardBundle {
                 ..default()
             },
             board: Board,
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct BotDifficultyButtonBundle {
+    pub button: ButtonBundle,
+    pub difficulty: BotDifficulty,
+    pub settings_link: GameSettingsLink,
+}
+
+impl BotDifficultyButtonBundle {
+    pub fn new(style: Style, difficulty: BotDifficulty, settings: Entity) -> Self {
+        Self {
+            button: ButtonBundle {
+                style,
+                background_color: PRIMARY_COLOR.into(),
+                ..default()
+            },
+            difficulty,
+            settings_link: GameSettingsLink::new(settings),
         }
     }
 }

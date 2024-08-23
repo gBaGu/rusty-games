@@ -4,7 +4,8 @@ use bevy::prelude::{Component, States};
 pub enum MenuState {
     #[default]
     Main,
-    PlayWithBot,
+    Game,
+    PlayAgainstBot,
     PlayOverNetwork,
     Settings,
 }
@@ -22,5 +23,5 @@ impl Default for AppState {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct AppStateTransition(pub Option<AppState>);

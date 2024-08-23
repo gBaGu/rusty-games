@@ -9,15 +9,19 @@ mod systems;
 use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
-pub use components::{PlayerColor, Playground};
-pub use events::{GameReady, GameReadyToExit};
+pub use components::{
+    ActiveSetting, CreateGame, GamePage, GameSettings, GameSettingsLink, PlayerColor, Playground,
+    SubmitButtonBundle, UserIdInput, UserIdTextInputBundle,
+};
+pub use events::{GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed};
+pub use game_list::GameList;
+pub use resources::RefreshGamesTimer;
+pub use systems::{enter_game_page, remove_game_page_context};
 
 use crate::app_state::{AppState, MenuState};
 use crate::grpc::NetworkSystems;
-use events::{PlayerGamesReady, SubmitPressed};
-use resources::RefreshGamesTimer;
+use events::{GameExit, PlayerGamesReady};
 use systems::*;
-use crate::interface::events::GameExit;
 
 pub struct InterfacePlugin;
 
@@ -29,19 +33,26 @@ impl Plugin for InterfacePlugin {
             .add_event::<GameReadyToExit>()
             .add_event::<GameExit>()
             .add_event::<SubmitPressed>()
+            .add_event::<SettingOptionPressed>()
+            .add_event::<JoinPressed>()
             .add_event::<PlayerGamesReady>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
             .add_systems(OnExit(AppState::Menu(MenuState::Main)), cleanup_ui)
+            .add_systems(OnEnter(AppState::Menu(MenuState::Game)), setup_game_menu)
+            .add_systems(OnExit(AppState::Menu(MenuState::Game)), cleanup_ui)
             .add_systems(
                 OnEnter(AppState::Menu(MenuState::Settings)),
                 setup_settings_menu,
             )
             .add_systems(OnExit(AppState::Menu(MenuState::Settings)), cleanup_ui)
             .add_systems(
-                OnEnter(AppState::Menu(MenuState::PlayWithBot)),
-                setup_play_with_bot_menu,
+                OnEnter(AppState::Menu(MenuState::PlayAgainstBot)),
+                setup_play_against_bot_menu,
             )
-            .add_systems(OnExit(AppState::Menu(MenuState::PlayWithBot)), cleanup_ui)
+            .add_systems(
+                OnExit(AppState::Menu(MenuState::PlayAgainstBot)),
+                cleanup_ui,
+            )
             .add_systems(
                 OnEnter(AppState::Menu(MenuState::PlayOverNetwork)),
                 setup_play_over_network_menu,
@@ -76,10 +87,12 @@ impl Plugin for InterfacePlugin {
                     toggle_pause,
                     state_transition,
                     submit_press,
+                    setting_press,
+                    update_difficulty_button_border,
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (
-                        (send_get_player_games, create_game, join_game).in_set(NetworkSystems),
+                        join_press.in_set(NetworkSystems),
                         handle_get_player_games,
                         handle_player_games,
                     )
