@@ -4,9 +4,16 @@ use bevy::prelude::{Component, States};
 pub enum MenuState {
     #[default]
     Main,
-    PlayWithBot,
+    Game,
+    PlayAgainstBot,
     PlayOverNetwork,
     Settings,
+}
+
+impl MenuState {
+    pub fn is_game_menu(&self) -> bool {
+        *self == Self::Game || *self == Self::PlayOverNetwork || *self == Self::PlayAgainstBot
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, States)]
@@ -22,5 +29,5 @@ impl Default for AppState {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct AppStateTransition(pub Option<AppState>);

@@ -1,70 +1,214 @@
-use bevy::prelude::{Deref, Event};
-use game_server::game::{FinishedState, GameState, PlayerId as GamePlayerId};
+use bevy::prelude::*;
+use game_server::game::{GameState, PlayerId};
 
-use super::{Authority, Position};
-
-#[derive(Debug, Deref, Event)]
-pub struct StateUpdated(pub GameState);
-
+/// Event that signals that all data required to create a game entity is ready.
 #[derive(Debug, Event)]
-pub struct CellUpdated {
-    pos: Position,
-    player_id: GamePlayerId,
+pub struct GameDataReady {
+    id: Option<u64>,
+    current_user: u64,
+    context: Entity,
 }
 
-impl CellUpdated {
-    pub fn new(pos: Position, player_id: GamePlayerId) -> Self {
-        Self { pos, player_id }
+impl GameDataReady {
+    pub fn new(id: Option<u64>, current_user: u64, ctx: Entity) -> Self {
+        Self { id, current_user, context: ctx }
     }
 
-    pub fn player_id(&self) -> GamePlayerId {
-        self.player_id
+    pub fn new_over_network(id: u64, current_user: u64, ctx: Entity) -> Self {
+        Self::new(Some(id), current_user, ctx)
     }
 
-    pub fn pos(&self) -> Position {
-        self.pos
+    pub fn new_local(current_user: u64, ctx: Entity) -> Self {
+        Self::new(None, current_user, ctx)
+    }
+
+    pub fn id(&self) -> Option<u64> {
+        self.id
+    }
+
+    pub fn context(&self) -> Entity {
+        self.context
+    }
+
+    pub fn current_user(&self) -> u64 {
+        self.current_user
     }
 }
 
-/// Triggers network game update
+/// Event that signals that particular bot is ready to make some action in a game.
+#[derive(Clone, Copy, Debug, Event)]
+pub struct BotReady {
+    bot: Entity,
+    game: Entity,
+    player_position: PlayerId,
+}
+
+impl BotReady {
+    pub fn new(bot: Entity, game: Entity, player_position: PlayerId) -> Self {
+        Self {
+            bot,
+            game,
+            player_position,
+        }
+    }
+
+    pub fn bot(&self) -> Entity {
+        self.bot
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player_position(&self) -> PlayerId {
+        self.player_position
+    }
+}
+
+/// Event that signals that `player` wants to make game action.
+#[derive(Clone, Copy, Debug, Event)]
+pub struct PlayerActionInitialized<T> {
+    game: Entity,
+    player: PlayerId,
+    action: T,
+}
+
+impl<T: Clone + Copy> PlayerActionInitialized<T> {
+    pub fn new(game: Entity, player: PlayerId, action: T) -> Self {
+        Self {
+            game,
+            player,
+            action,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
+        self.player
+    }
+
+    pub fn action(&self) -> T {
+        self.action
+    }
+}
+
+/// Event that signals that `action` created by `player` is applied.
+#[derive(Clone, Copy, Debug, Event)]
+pub struct PlayerActionApplied<T> {
+    game: Entity,
+    player: PlayerId,
+    action: T,
+}
+
+impl<T: Clone + Copy> PlayerActionApplied<T> {
+    pub fn new(game: Entity, player: PlayerId, action: T) -> Self {
+        Self {
+            game,
+            player,
+            action,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
+        self.player
+    }
+
+    pub fn action(&self) -> T {
+        self.action
+    }
+}
+
+/// Event that signals that `player` is now authorized to make actions in tha game.
 #[derive(Debug, Event)]
-pub struct NetworkGameTurn {
-    pub game_id: u64,
-    pub auth: Authority,
-    pub pos: Position,
+pub struct TurnStart {
+    game: Entity,
+    player: PlayerId,
 }
 
-/// Triggers local game update
+impl TurnStart {
+    pub fn new(game: Entity, player: PlayerId) -> Self {
+        Self {
+            game,
+            player,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
+        self.player
+    }
+}
+
+/// Event that signals that the game state is updated.
 #[derive(Debug, Event)]
-pub struct LocalGameTurn {
-    pub auth: Authority,
-    pub pos: Position,
+pub struct StateUpdated {
+    game: Entity,
+    state: GameState,
 }
 
+impl StateUpdated {
+    pub fn new(game: Entity, state: GameState) -> Self {
+        Self {
+            game,
+            state,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn state(&self) -> GameState {
+        self.state
+    }
+}
+
+/// Event that signals that the game is finished with a draw.
 #[derive(Debug, Event)]
-pub struct SuccessfulTurn {
-    pos: Position,
-    player_id: GamePlayerId,
+pub struct Draw {
+    game: Entity,
 }
 
-impl SuccessfulTurn {
-    pub fn new(pos: Position, player_id: GamePlayerId) -> Self {
-        Self { pos, player_id }
+impl Draw {
+    pub fn new(game: Entity) -> Self {
+        Self { game }
     }
 
-    #[allow(dead_code)]
-    pub fn player_id(&self) -> GamePlayerId {
-        self.player_id
-    }
-
-    #[allow(dead_code)]
-    pub fn pos(&self) -> Position {
-        self.pos
+    pub fn game(&self) -> Entity {
+        self.game
     }
 }
 
-#[derive(Debug, Deref, Event)]
-pub struct GameOver(pub FinishedState);
+/// Event that signals that the game is finished with a win of `player`.
+#[derive(Debug, Event)]
+pub struct PlayerWon {
+    game: Entity,
+    player: PlayerId,
+}
 
-#[derive(Event)]
-pub struct GameExit;
+impl PlayerWon {
+    pub fn new(game: Entity, player: PlayerId) -> Self {
+        Self {
+            game,
+            player,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> PlayerId {
+        self.player
+    }
+}

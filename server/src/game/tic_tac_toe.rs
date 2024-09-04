@@ -20,7 +20,7 @@ pub fn winning_combinations() -> [(GridIndex, GridIndex, GridIndex); 8] {
 
 type Cell = BoardCell<PlayerId>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TicTacToe {
     players: PlayerIdQueue<PlayerId>,
     state: GameState,
@@ -73,6 +73,10 @@ impl Game for TicTacToe {
         &self.field
     }
 
+    fn board_mut(&mut self) -> &mut Self::Board {
+        &mut self.field
+    }
+
     fn players(&self) -> &Self::Players {
         &self.players
     }
@@ -87,6 +91,10 @@ impl Game for TicTacToe {
 
     fn set_state(&mut self, state: GameState) {
         self.state = state;
+    }
+
+    fn set_board(&mut self, board: Self::Board) {
+        self.field = board;
     }
 }
 

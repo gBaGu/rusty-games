@@ -1,6 +1,4 @@
 mod app_state;
-mod board;
-mod bot;
 mod commands;
 mod game;
 mod grpc;
@@ -13,8 +11,6 @@ use bevy::prelude::*;
 pub use resources::Settings;
 
 use app_state::AppState;
-use board::BoardPlugin;
-use bot::BotPlugin;
 use game::GamePlugin;
 use grpc::GrpcPlugin;
 use interface::InterfacePlugin;
@@ -28,8 +24,6 @@ fn main() {
         .init_resource::<Settings>()
         .add_plugins((
             DefaultPlugins,
-            BoardPlugin,
-            BotPlugin,
             GamePlugin,
             GrpcPlugin,
             InterfacePlugin,

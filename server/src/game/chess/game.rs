@@ -93,7 +93,7 @@ impl Default for CastleOptions {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct AdditionalState {
     castle_options: CastleOptions,
     check: Vec<GridIndex>,
@@ -109,7 +109,7 @@ impl AdditionalState {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Chess {
     players: PlayerDataQueue<PlayerData, PlayerId>,
     state: GameState,
@@ -209,6 +209,10 @@ impl Game for Chess {
         &self.board
     }
 
+    fn board_mut(&mut self) -> &mut Self::Board {
+        &mut self.board
+    }
+
     fn players(&self) -> &Self::Players {
         &self.players
     }
@@ -223,6 +227,10 @@ impl Game for Chess {
 
     fn set_state(&mut self, state: GameState) {
         self.state = state;
+    }
+
+    fn set_board(&mut self, board: Self::Board) {
+        self.board = board;
     }
 }
 
