@@ -14,6 +14,6 @@ pub use rpc::GameId;
 pub fn spec_service() -> Result<ServerReflectionServer<impl ServerReflection>, Error> {
     let spec = Builder::configure()
         .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
-        .build()?;
+        .build_v1()?;
     Ok(spec)
 }
