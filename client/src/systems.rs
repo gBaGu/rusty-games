@@ -3,7 +3,7 @@ use bevy::window::WindowResized;
 
 use super::Background;
 
-pub const BACKGROUND_COLOR: Color = Color::rgb(0.38, 0.5, 0.38);
+pub const BACKGROUND_COLOR: Color = Color::srgb(0.38, 0.5, 0.38);
 
 pub fn init_app(mut commands: Commands, window: Query<&Window>) {
     commands.spawn(Camera2dBundle::default());

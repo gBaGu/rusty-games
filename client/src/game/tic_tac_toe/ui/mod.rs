@@ -17,7 +17,7 @@ use systems::*;
 pub const FONT_SIZE: f32 = 40.0;
 pub const ITEM_HEIGHT: f32 = 80.0;
 pub const FRIENDLY_COLOR: Color = PRIMARY_COLOR;
-pub const ENEMY_COLOR: Color = Color::rgb(0.94, 0.64, 0.64);
+pub const ENEMY_COLOR: Color = Color::srgb(0.94, 0.64, 0.64);
 
 pub struct InGameUIPlugin;
 

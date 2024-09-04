@@ -101,7 +101,8 @@ impl TileBundle {
 #[derive(Bundle)]
 pub struct WinAnimationBundle {
     pub animation: WinAnimation,
-    pub sprite_sheet: SpriteSheetBundle,
+    pub sprite: SpriteBundle,
+    pub atlas: TextureAtlas,
 }
 
 impl WinAnimationBundle {
@@ -114,12 +115,12 @@ impl WinAnimationBundle {
     ) -> Self {
         Self {
             animation: WinAnimation::new(last_sprite_index, transition_duration),
-            sprite_sheet: SpriteSheetBundle {
+            sprite: SpriteBundle {
                 texture,
-                atlas: TextureAtlas { layout, index: 0 },
                 transform,
                 ..default()
             },
+            atlas: TextureAtlas { layout, index: 0 },
         }
     }
 }

@@ -237,8 +237,8 @@ pub fn create_win_animation(
         println!("create win animation from {} to {}", index1, index3);
         let texture = asset_server.load(WIN_ANIMATION_PATH);
         let layout = TextureAtlasLayout::from_grid(
-            WIN_ANIMATION_SPRITE_SIZE,
-            WIN_ANIMATION_SPRITE_COUNT,
+            WIN_ANIMATION_SPRITE_SIZE.as_uvec2(),
+            WIN_ANIMATION_SPRITE_COUNT as u32,
             1,
             None,
             None,

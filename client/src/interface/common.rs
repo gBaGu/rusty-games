@@ -1,9 +1,4 @@
-use bevy::asset::AssetServer;
-use bevy::render::color::Color;
-use bevy::text::TextStyle;
-use bevy::ui::node_bundles::NodeBundle;
-use bevy::ui::{AlignItems, FlexDirection, JustifyContent, Style, UiRect, Val};
-use bevy::utils::default;
+use bevy::prelude::*;
 
 pub const CONFIRMATION_SOUND_PATH: &str = "audio/confirmation.ogg";
 pub const ERROR_SOUND_PATH: &str = "audio/error.ogg";
@@ -19,9 +14,9 @@ pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
 pub const FONT_SIZE: f32 = 30.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
-pub const OVERLAY_BACKGROUND_COLOR: Color = Color::rgba(0.25, 0.25, 0.25, 0.95);
-pub const PRIMARY_COLOR: Color = Color::rgb(0.29, 0.40, 0.29);
-pub const SECONDARY_COLOR: Color = Color::rgb(0.88, 1.0, 0.88);
+pub const OVERLAY_BACKGROUND_COLOR: Color = Color::srgba(0.25, 0.25, 0.25, 0.95);
+pub const PRIMARY_COLOR: Color = Color::srgb(0.29, 0.40, 0.29);
+pub const SECONDARY_COLOR: Color = Color::srgb(0.88, 1.0, 0.88);
 
 // Styles
 

@@ -28,7 +28,6 @@ fn image_node_bundle() -> NodeBundle {
             margin: UiRect::all(Val::Px(10.0)),
             ..default()
         },
-        background_color: Color::WHITE.into(),
         ..default()
     }
 }

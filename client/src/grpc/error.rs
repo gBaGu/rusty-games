@@ -1,4 +1,3 @@
-use bevy::utils::thiserror;
 use game_server::game::encoding::ProtobufError;
 
 #[derive(thiserror::Error, Debug, PartialEq)]

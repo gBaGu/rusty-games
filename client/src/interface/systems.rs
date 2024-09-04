@@ -97,7 +97,7 @@ pub fn state_transition(
                 next_app_state.set(new_state);
             } else {
                 println!("exit");
-                exit.send(AppExit);
+                exit.send(AppExit::Success);
             }
         }
     }
