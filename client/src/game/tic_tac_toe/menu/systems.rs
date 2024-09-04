@@ -11,12 +11,16 @@ use crate::game::tic_tac_toe::menu::components::{
     BotGameSettings, BotGameSettingsBundle, BotStrategyButtonBundle, CommonGameSettings,
     NetworkGameSettings, NetworkGameSettingsBundle,
 };
-use crate::game::{BotDifficulty, CreateGame, NetworkGame, PendingExistingGameBundle, PendingNewGameBundle};
+use crate::game::{
+    BotDifficulty, GameDataReady, NetworkGame, PendingExistingGameBundle, PendingNewGameBundle,
+};
 use crate::grpc::GrpcClient;
 use crate::interface;
-use crate::interface::{GameReady, JoinPressed};
 use crate::Settings;
 
+/// Whenever [`interface::GameSettings`] is added to a page layout fill it
+/// with bot game settings interface.
+/// Should be called only from state `AppState::Menu(MenuState::PlayAgainstBot)`
 pub fn init_bot_settings_menu(
     mut commands: Commands,
     node: Query<Entity, Added<interface::GameSettings>>,
@@ -78,6 +82,9 @@ pub fn init_bot_settings_menu(
     }
 }
 
+/// Whenever [`interface::GameSettings`] is added to a page layout fill it
+/// with network game settings interface.
+/// Should be called only from state `AppState::Menu(MenuState::PlayOverNetwork)`
 pub fn init_network_settings_menu(
     mut commands: Commands,
     node: Query<Entity, Added<interface::GameSettings>>,
@@ -109,6 +116,8 @@ pub fn init_network_settings_menu(
     }
 }
 
+/// Whenever [`interface::GameList`] is added to a page layout send GetPlayerGames request or
+/// fill it with a status message.
 pub fn init_game_list(
     mut commands: Commands,
     mut game_list: Query<&mut interface::GameList, Added<interface::GameList>>,
@@ -137,6 +146,7 @@ pub fn init_game_list(
     }
 }
 
+/// Whenever timer is finished send GetPlayerGames request or fill game list with a status message.
 pub fn send_get_player_games(
     mut game_list: Query<&mut interface::GameList>,
     mut commands: Commands,
@@ -168,6 +178,7 @@ pub fn send_get_player_games(
     }
 }
 
+/// Save chosen strategy into a [`BotGameSettings`] component.
 pub fn update_active_strategy(
     button: Query<(&Strategy, &interface::GameSettingsLink), With<Button>>,
     mut settings: Query<&mut BotGameSettings>,
@@ -189,6 +200,8 @@ pub fn update_active_strategy(
     }
 }
 
+/// Set border color for a strategy button that has just been pressed, reset it for
+/// other strategy buttons.
 pub fn update_strategy_button_border(
     mut button: Query<(Entity, &mut BorderColor), (With<Button>, With<Strategy>)>,
     mut setting_pressed: EventReader<interface::SettingOptionPressed>,
@@ -207,6 +220,7 @@ pub fn update_strategy_button_border(
     }
 }
 
+/// Save chosen difficulty to a [`BotGameSettings`] component.
 pub fn update_active_difficulty(
     button: Query<(&BotDifficulty, &interface::GameSettingsLink), With<Button>>,
     mut settings: Query<&mut BotGameSettings>,
@@ -228,14 +242,16 @@ pub fn update_active_difficulty(
     }
 }
 
-pub fn create_bot_game_pressed(
+/// Get all data required to create a bot game, spawn [`CreateGameContext`] component and
+/// send [`GameDataReady`] event.
+pub fn create_bot_game(
     mut commands: Commands,
     button: Query<
         (&Interaction, &interface::GameSettingsLink),
         (Changed<Interaction>, With<interface::CreateGame>),
     >,
     game_settings: Query<(&CommonGameSettings, &BotGameSettings)>,
-    mut create_game: EventWriter<CreateGame>,
+    mut game_data_ready: EventWriter<GameDataReady>,
     settings: Res<Settings>,
 ) {
     for (interaction, settings_link) in button.iter() {
@@ -267,12 +283,14 @@ pub fn create_bot_game_pressed(
                 None,
             );
             let context_entity = commands.spawn(ctx).id();
-            create_game.send(CreateGame::new_local(user, context_entity));
+            game_data_ready.send(GameDataReady::new_local(user, context_entity));
         }
     }
 }
 
-pub fn create_network_game_pressed(
+/// Get all data required to create a network game, spawn [`CreateGameContext`] component and
+/// send [`GameDataReady`] event.
+pub fn create_network_game(
     mut commands: Commands,
     button: Query<
         (&Interaction, &interface::GameSettingsLink),
@@ -310,7 +328,10 @@ pub fn create_network_game_pressed(
     }
 }
 
-pub fn save_opponent_pressed(
+/// Whenever [`interface::SubmitPressed`] or [`TextInputSubmitEvent`] event is received
+/// try to convert [`TextInputValue`] content into [`u64`] and
+/// save result in a [`NetworkGameSettings`].
+pub fn save_opponent(
     mut settings: Query<&mut NetworkGameSettings>,
     input: Query<(&TextInputValue, &interface::GameSettingsLink), With<interface::UserIdInput>>,
     mut submit_pressed: EventReader<interface::SubmitPressed>,
@@ -341,16 +362,19 @@ pub fn save_opponent_pressed(
     }
 }
 
-pub fn join_pressed(
+/// Whenever [`JoinPressed`] event is received:
+/// if the game is already in memory or send [`GameReady`] event,
+/// otherwise send GetGame request.
+pub fn join_game(
     mut commands: Commands,
     game: Query<(Entity, &NetworkGame)>,
-    mut join_pressed: EventReader<JoinPressed>,
-    mut game_ready: EventWriter<GameReady>,
+    mut join_pressed: EventReader<interface::JoinPressed>,
+    mut game_ready: EventWriter<interface::GameReady>,
     client: Option<Res<GrpcClient>>,
 ) {
     for event in join_pressed.read() {
         if let Some((game_entity, _)) = game.iter().find(|(_, &game)| *game == event.game_id()) {
-            game_ready.send(GameReady::new(game_entity));
+            game_ready.send(interface::GameReady::new(game_entity));
             return;
         }
         if let Some(client) = client.as_ref() {

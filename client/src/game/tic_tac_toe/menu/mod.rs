@@ -16,18 +16,17 @@ impl Plugin for GameMenuPlugin {
         app.add_systems(
             Update,
             (
-                init_bot_settings_menu.run_if(in_state(AppState::Menu(MenuState::PlayAgainstBot))),
-                init_network_settings_menu
+                (init_bot_settings_menu, create_bot_game)
+                    .run_if(in_state(AppState::Menu(MenuState::PlayAgainstBot))),
+                (init_network_settings_menu, create_network_game)
                     .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                 init_game_list,
                 send_get_player_games.in_set(NetworkSystems),
                 update_active_strategy,
                 update_strategy_button_border,
                 update_active_difficulty,
-                create_bot_game_pressed,
-                create_network_game_pressed,
-                save_opponent_pressed,
-                join_pressed,
+                save_opponent,
+                join_game,
             )
                 .run_if(resource_exists::<GameMenuContext<TicTacToe>>),
         );

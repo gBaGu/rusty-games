@@ -10,6 +10,12 @@ pub enum MenuState {
     Settings,
 }
 
+impl MenuState {
+    pub fn is_game_menu(&self) -> bool {
+        *self == Self::Game || *self == Self::PlayOverNetwork || *self == Self::PlayAgainstBot
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, States)]
 pub enum AppState {
     Menu(MenuState),

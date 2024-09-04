@@ -1,10 +1,10 @@
 mod board;
-pub mod bot;
+mod bot;
+mod components;
+mod menu;
 mod resources;
 mod systems;
 mod ui;
-mod menu;
-mod components;
 
 use bevy::prelude::*;
 use game_server::game::grid::GridIndex;
@@ -32,21 +32,26 @@ pub struct TicTacToePlugin;
 
 impl Plugin for TicTacToePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((board::BoardPlugin, bot::BotPlugin, menu::GameMenuPlugin, ui::InGameUIPlugin))
-            .add_event::<PlayerActionInitialized>()
-            .add_event::<PlayerActionApplied>()
-            .add_systems(Startup, init)
-            .add_systems(
-                Update,
-                (
-                    handle_create_game_reply,
-                    handle_get_game_reply_on_join,
-                    handle_get_game,
-                    create,
-                    create_pending_action,
-                    apply_action,
-                    (send_pending_action, send_get_game).in_set(NetworkSystems),
-                ),
-            );
+        app.add_plugins((
+            board::BoardPlugin,
+            bot::BotPlugin,
+            menu::GameMenuPlugin,
+            ui::InGameUIPlugin,
+        ))
+        .add_event::<PlayerActionInitialized>()
+        .add_event::<PlayerActionApplied>()
+        .add_systems(Startup, init)
+        .add_systems(
+            Update,
+            (
+                handle_create_game_reply,
+                handle_get_game_reply_on_join,
+                handle_get_game,
+                create,
+                create_pending_action,
+                apply_action,
+                (send_pending_action, send_get_game).in_set(NetworkSystems),
+            ),
+        );
     }
 }

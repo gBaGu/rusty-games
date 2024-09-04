@@ -11,6 +11,8 @@ use crate::game::{BotAuthority, BotDifficulty, BotReady, CurrentPlayer, PlayerPo
 const MIN_ACTION_DELAY: u64 = 500;
 const MAX_ACTION_DELAY: u64 = 1500;
 
+/// Chooses random board index from a set of available cells.
+/// In case there is no empty cells in a board returns `None`.
 fn get_random_action(board: &TTTBoard) -> Option<GridIndex> {
     let empty_cells: Vec<_> = board
         .all_indexed()
@@ -24,6 +26,9 @@ fn get_random_action(board: &TTTBoard) -> Option<GridIndex> {
     Some(empty_cells[index])
 }
 
+/// For every bot that has a [`Delay`] component and which turn has started
+/// reset and start delay timer.
+/// Duration of the delay is chosen randomly between `MIN_ACTION_DELAY` and `MAX_ACTION_DELAY`.
 pub fn start_delay(mut bot: Query<&mut Delay, (With<BotAuthority>, Added<CurrentPlayer>)>) {
     let mut rng = thread_rng();
     for mut delay in bot.iter_mut() {
@@ -56,6 +61,9 @@ pub fn delay(
     }
 }
 
+/// Listens for the [`BotReady`] event and if there is no [`PendingAction`] in the game
+/// sends [`PlayerActionInitialized`] event with action generated
+/// depending on [`Strategy`] and [`BotDifficulty`] values of a bot entity.
 pub fn initialize_action(
     game: Query<(Entity, &LocalGame), Without<PendingAction>>,
     bot: Query<(&Strategy, Option<&BotDifficulty>), With<BotAuthority>>,

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use game_server::game::PlayerId;
 
 use super::{
     GameStateBox, GameStateInfoBundle, NextPlayer, NextPlayerImageBundle, PlayerActionApplied,
@@ -14,6 +15,20 @@ use crate::game::{
 use crate::interface::common::{FONT_PATH, SECONDARY_COLOR, TURN_SOUND_PATH};
 use crate::interface::{PlayerColor, Playground};
 
+fn create_player_info_bundle(
+    game: Entity,
+    player_id: PlayerId,
+    color: Color,
+    is_current_player: bool,
+) -> PlayerInfoBundle {
+    if is_current_player {
+        PlayerInfoBundle::new_active(game, player_id, color)
+    } else {
+        PlayerInfoBundle::new_inactive(game, player_id, color)
+    }
+}
+
+/// Create in-game ui after [`Playground`] component had been added to a game entity.
 pub fn create(
     mut commands: Commands,
     playground: Query<(Entity, &GameLink), Added<Playground>>,
@@ -61,16 +76,10 @@ pub fn create(
         };
         let player1_image = images.get(**user.1).cloned().unwrap_or_default();
         let player2_image = images.get(**enemy.1).cloned().unwrap_or_default();
-        let player1_info = if user.5.is_some() {
-            PlayerInfoBundle::new_active(game_link.get(), **user.1, user_color)
-        } else {
-            PlayerInfoBundle::new_inactive(game_link.get(), **user.1, user_color)
-        };
-        let player2_info = if enemy.5.is_some() {
-            PlayerInfoBundle::new_active(game_link.get(), **enemy.1, enemy_color)
-        } else {
-            PlayerInfoBundle::new_inactive(game_link.get(), **enemy.1, enemy_color)
-        };
+        let player1_info =
+            create_player_info_bundle(game_link.get(), **user.1, user_color, user.5.is_some());
+        let player2_info =
+            create_player_info_bundle(game_link.get(), **enemy.1, enemy_color, enemy.5.is_some());
         commands.entity(playground_entity).with_children(|builder| {
             builder
                 .spawn(NodeBundle {
@@ -137,6 +146,8 @@ pub fn create(
     }
 }
 
+/// Receive [`TurnStart`] event and set current player info border color to [`PlayerColor`],
+/// reset border color for others.
 pub fn update_player_info_border(
     mut player_info: Query<(&mut BorderColor, &PlayerPosition, &PlayerColor, &GameLink)>,
     mut turn_start: EventReader<TurnStart>,
@@ -155,6 +166,7 @@ pub fn update_player_info_border(
     }
 }
 
+/// Receive [`TurnStart`] event and update next player image to an image (X/O) of a current player.
 pub fn update_next_player(
     mut next_player: Query<(&mut UiImage, &GameLink), With<NextPlayer>>,
     mut turn_start: EventReader<TurnStart>,
@@ -174,6 +186,7 @@ pub fn update_next_player(
     }
 }
 
+/// Receive [`PlayerWon`] event and game state container to show the winner.
 pub fn set_winner(
     mut commands: Commands,
     game_state_info: Query<(Entity, &GameLink), With<GameStateBox>>,
@@ -208,6 +221,7 @@ pub fn set_winner(
     }
 }
 
+/// Receive [`Draw`] event and game state container to show the draw.
 pub fn set_draw(
     mut commands: Commands,
     game_state_info: Query<(Entity, &GameLink), With<GameStateBox>>,
@@ -233,6 +247,7 @@ pub fn set_draw(
     }
 }
 
+/// Receive [`PlayerActionApplied`] and play turn sound.
 pub fn action_sound(
     mut commands: Commands,
     mut action_applied: EventReader<PlayerActionApplied>,

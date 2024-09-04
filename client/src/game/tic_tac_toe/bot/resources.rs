@@ -10,6 +10,7 @@ use crate::game::BotDifficulty;
 
 pub const Q_LEARNING_AGENT_PATH: &str = "assets/agents/";
 
+/// Resource that stores Q-Learning model weights for each available difficulty.
 #[derive(Resource)]
 pub struct QLearningModel {
     easy: Option<Agent>,

@@ -1,26 +1,33 @@
+use std::marker::PhantomData;
+
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
-use std::marker::PhantomData;
 
 use crate::app_state::{AppState, AppStateTransition};
 use crate::game::{GameInfo, GameLink};
 use crate::interface::common::{column_node_bundle, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
 
+/// Component that indicates that the game is being shawn on the screen.
+/// Board and in-game ui will be connected to this component.
 #[derive(Debug, Component)]
 pub struct Playground;
 
+/// Component that indicates that the ui node contains game settings.
+/// This container will be filled depending on a current game page and app state.
 #[derive(Debug, Component)]
 pub struct GameSettings;
 
+/// Component that indicates that entity is related to a particular game type T.
 #[derive(Debug, Component)]
-pub struct GamePage<T>(PhantomData<T>);
+pub struct GameTag<T>(PhantomData<T>);
 
-impl<T> Default for GamePage<T> {
+impl<T> Default for GameTag<T> {
     fn default() -> Self {
         Self(PhantomData::default())
     }
 }
 
+/// Component that indicates that entity is related to a settings entity.
 #[derive(Debug, Component)]
 pub struct GameSettingsLink(Entity);
 
@@ -34,6 +41,7 @@ impl GameSettingsLink {
     }
 }
 
+/// Component that stores color that will be used in in-game ui to identify a player.
 #[derive(Clone, Copy, Debug, Deref, DerefMut, Component)]
 pub struct PlayerColor(Color);
 
@@ -43,9 +51,11 @@ impl From<Color> for PlayerColor {
     }
 }
 
+/// Component that stores information about a game that can be joined.
 #[derive(Clone, Debug, Deref, Component)]
 pub struct JoinGame(pub GameInfo);
 
+/// Component that indicates that button entity is used to submit some information.
 #[derive(Debug, Component)]
 pub struct SubmitButton {
     pub source: Entity,
@@ -57,6 +67,7 @@ pub enum Setting {
     UserId,
 }
 
+/// Component that indicates that input entity is used to create user id value.
 #[derive(Component)]
 pub struct UserIdInput;
 
@@ -64,6 +75,7 @@ pub struct UserIdInput;
 #[derive(Debug, Component)]
 pub struct CreateGame;
 
+/// Component that indicates that the entity should be drawn on top of everything else.
 #[derive(Component)]
 pub struct Overlay;
 
@@ -94,7 +106,7 @@ impl GameSettingsBundle {
 #[derive(Debug, Bundle)]
 pub struct GamePageButtonBundle<T: Send + Sync + 'static> {
     pub button: ButtonBundle,
-    pub game_page: GamePage<T>,
+    pub game_tag: GameTag<T>,
 }
 
 impl<T: Send + Sync + 'static> GamePageButtonBundle<T> {
@@ -105,7 +117,7 @@ impl<T: Send + Sync + 'static> GamePageButtonBundle<T> {
                 background_color: PRIMARY_COLOR.into(),
                 ..default()
             },
-            game_page: GamePage::default(),
+            game_tag: GameTag::default(),
         }
     }
 }

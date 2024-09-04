@@ -5,6 +5,7 @@ use crate::game::tic_tac_toe::bot::Strategy;
 use crate::interface::common::PRIMARY_COLOR;
 use crate::interface::GameSettingsLink;
 
+/// Component that stores settings that are common for both bot and network games.
 #[derive(Debug, Component)]
 pub struct CommonGameSettings {
     user_first: bool,
@@ -24,6 +25,7 @@ impl CommonGameSettings {
     }
 }
 
+/// Component that stores settings related only to a network game.
 #[derive(Debug, Default, Component)]
 pub struct NetworkGameSettings {
     opponent: Option<u64>,
@@ -39,6 +41,7 @@ impl NetworkGameSettings {
     }
 }
 
+/// Component that stores settings related only to a game with bot.
 #[derive(Debug, Default, Component)]
 pub struct BotGameSettings {
     strategy: Option<Strategy>,

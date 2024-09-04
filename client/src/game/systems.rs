@@ -1,19 +1,20 @@
-use crate::game::components::PendingActionStatus;
-use crate::grpc::RpcResultReady;
-use crate::interface::GameReadyToExit;
+use std::ops::Deref;
+
 use bevy::prelude::*;
 use game_server::game::{FinishedState, GameState};
 use game_server::proto;
-use std::ops::Deref;
 
 use super::{
     ActiveGame, CurrentPlayer, Draw, NetworkGame, PlayerPosition, PlayerWon, StateUpdated,
     TurnStart, Winner,
 };
+use crate::game::components::PendingActionStatus;
+use crate::grpc::RpcResultReady;
+use crate::interface::GameReadyToExit;
 
 /// Receive reply for MakeTurn rpc and if it's successful update [`PendingActionStatus`] component.
-/// Does not depend on specific game type
-pub fn handle_make_turn(
+/// Does not depend on specific game type.
+pub fn confirm_pending_action(
     mut game: Query<&mut PendingActionStatus, (With<NetworkGame>, With<ActiveGame>)>,
     mut make_turn_reply: EventReader<RpcResultReady<proto::MakeTurnReply>>,
 ) {
@@ -49,6 +50,8 @@ pub fn handle_make_turn(
     }
 }
 
+/// Receive [`StateUpdated`] event and send [`TurnStart`], [`PlayerWon`] or [`Draw`]
+/// depending on a new state.
 pub fn handle_state_updated(
     mut state_updated: EventReader<StateUpdated>,
     mut turn_start: EventWriter<TurnStart>,
@@ -73,6 +76,7 @@ pub fn handle_state_updated(
     }
 }
 
+/// Receives [`TurnStart`] event and updates [`CurrentPlayer`] accordingly.
 pub fn update_current_player(
     mut commands: Commands,
     player: Query<(Entity, &PlayerPosition, &Parent)>,
@@ -94,12 +98,26 @@ pub fn update_current_player(
     }
 }
 
-pub fn handle_draw(mut draw: EventReader<Draw>, mut ready_to_exit: EventWriter<GameReadyToExit>) {
+/// Receives [`Draw`] event, clears [`CurrentPlayer`] tag for players
+/// and sends [`GameReadyToExit`] event because currently
+/// there is nothing to do after the game is ended with a draw.
+pub fn handle_draw(
+    mut commands: Commands,
+    player: Query<(Entity, &Parent), With<CurrentPlayer>>,
+    mut draw: EventReader<Draw>,
+    mut ready_to_exit: EventWriter<GameReadyToExit>,
+) {
     for event in draw.read() {
+        for (player_entity, _) in player.iter().filter(|(.., p)| p.get() == event.game()) {
+            let mut player_cmds = commands.entity(player_entity);
+            player_cmds.remove::<CurrentPlayer>();
+        }
         ready_to_exit.send(GameReadyToExit::new(event.game()));
     }
 }
 
+/// Receives [`PlayerWon`] event, clears [`CurrentPlayer`] tag for players
+/// and inserts [`Winner`] tag into the entity of a player that won the game.
 pub fn handle_win(
     mut commands: Commands,
     player: Query<(Entity, &PlayerPosition, &Parent)>,

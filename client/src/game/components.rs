@@ -11,6 +11,7 @@ use crate::interface::GameSettingsLink;
 #[derive(Component)]
 pub struct Board;
 
+/// Component that specifies a difficulty of a bot.
 #[derive(Clone, Copy, Debug, Component)]
 pub enum BotDifficulty {
     Easy,
@@ -28,6 +29,7 @@ impl BotDifficulty {
     }
 }
 
+/// Player action that is waiting to be applied.
 #[derive(Debug, Component)]
 pub struct PendingAction<T> {
     player: PlayerId,
@@ -51,6 +53,10 @@ impl<T: Clone + Copy> PendingAction<T> {
     }
 }
 
+/// Confirmation status of a [`PendingAction`].
+/// In case of a bot game pending actions are created as `Confirmed`.
+/// In case of a network game pending actions are created as `NotConfirmed` and need to undergo
+/// confirmation process by executing them on the server side.
 #[derive(Clone, Copy, Debug, PartialEq, Component)]
 pub enum PendingActionStatus {
     NotConfirmed,
@@ -68,6 +74,7 @@ impl PendingActionStatus {
     }
 }
 
+/// Component that indicates that entity is related to a particular game.
 #[derive(Debug, Component, Deref)]
 pub struct GameLink(Entity);
 
@@ -81,12 +88,15 @@ impl GameLink {
     }
 }
 
+/// Component that indicates that the game is being played now.
 #[derive(Debug, Component)]
 pub struct ActiveGame;
 
+/// Component that indicates that the game is stored on the server by the id this component stores.
 #[derive(Clone, Copy, Debug, Component, Deref, DerefMut)]
 pub struct NetworkGame(u64);
 
+/// Component that indicates that the game is waiting for the server reply to be created locally.
 #[derive(Debug, Component)]
 pub struct PendingGame<T>(PhantomData<T>);
 
@@ -96,6 +106,8 @@ impl<T> Default for PendingGame<T> {
     }
 }
 
+/// Local game instance.
+/// If [`NetworkGame`] is present this instance will reflect the one on the server side.
 #[derive(Debug, Default, Component, Deref, DerefMut)]
 pub struct LocalGame<T>(T);
 
@@ -105,6 +117,7 @@ impl<T: Game> From<T> for LocalGame<T> {
     }
 }
 
+/// Component that stores position of a player in the game player queue.
 #[derive(Clone, Copy, Debug, PartialEq, Component, Deref, DerefMut)]
 pub struct PlayerPosition(PlayerId);
 
@@ -114,6 +127,7 @@ impl PlayerPosition {
     }
 }
 
+/// Component that indicates that the player is managed by a user with id this component stores.
 #[derive(Clone, Copy, Debug, Component, Deref, DerefMut)]
 pub struct UserAuthority(u64);
 
@@ -123,6 +137,7 @@ impl UserAuthority {
     }
 }
 
+/// Component that indicates that the player is managed by a bot with id this component stores.
 #[derive(Clone, Copy, Debug, Component, Deref, DerefMut)]
 pub struct BotAuthority(u64);
 
@@ -132,19 +147,20 @@ impl BotAuthority {
     }
 }
 
-/// Indicates player that is currently logged in and playing the game
+/// Indicates player that is currently logged in the game.
 #[derive(Debug, Component)]
 pub struct CurrentUser;
 
-/// Indicates player that is currently authorized to perform action(s) in the game
+/// Indicates player that is currently authorized to perform action(s) in the game.
 #[derive(Debug, Component)]
 pub struct CurrentPlayer;
 
+/// Indicates player that won the game.
 #[derive(Debug, Component)]
 pub struct Winner;
 
 /// Bundle for a board.
-/// Contains [`SpriteBundle`] and a [`Board`].
+/// Contains [`GameLink`], [`SpriteBundle`] and a [`Board`].
 #[derive(Bundle)]
 pub struct BoardBundle {
     game_link: GameLink,
@@ -309,8 +325,6 @@ impl NetworkPlayerBundle {
         }
     }
 }
-
-/////////////////////
 
 /// Component that stores a position inside the board.
 #[derive(Clone, Copy, Debug, PartialEq, Component, Deref, DerefMut)]

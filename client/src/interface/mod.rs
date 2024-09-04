@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
 pub use components::{
-    CreateGame, GamePage, GameSettings, GameSettingsLink, PlayerColor, Playground,
+    CreateGame, GameSettings, GameSettingsLink, GameTag, PlayerColor, Playground,
     SubmitButtonBundle, UserIdInput, UserIdTextInputBundle,
 };
 pub use events::{GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed};
@@ -20,7 +20,7 @@ pub use systems::{enter_game_page, remove_game_page_context};
 
 use crate::app_state::{AppState, MenuState};
 use crate::grpc::NetworkSystems;
-use events::{GameExit, PlayerGamesReady};
+use events::{GameLeft, PlayerGamesReady};
 use systems::*;
 
 pub struct InterfacePlugin;
@@ -31,7 +31,7 @@ impl Plugin for InterfacePlugin {
             .init_resource::<RefreshGamesTimer>()
             .add_event::<GameReady>()
             .add_event::<GameReadyToExit>()
-            .add_event::<GameExit>()
+            .add_event::<GameLeft>()
             .add_event::<SubmitPressed>()
             .add_event::<SettingOptionPressed>()
             .add_event::<JoinPressed>()
@@ -66,7 +66,7 @@ impl Plugin for InterfacePlugin {
                 OnExit(AppState::Paused),
                 (
                     clear_pause_overlay,
-                    exit_game.run_if(not(in_state(AppState::Game))),
+                    clear_game_visuals.run_if(not(in_state(AppState::Game))),
                 ),
             )
             .add_systems(
@@ -75,7 +75,8 @@ impl Plugin for InterfacePlugin {
             )
             .add_systems(
                 OnExit(AppState::Game),
-                (cleanup_ui, exit_game.before(cleanup_ui)).run_if(not(in_state(AppState::Paused))),
+                (cleanup_ui, clear_game_visuals.before(cleanup_ui))
+                    .run_if(not(in_state(AppState::Paused))),
             )
             .add_systems(
                 Update,
@@ -98,7 +99,7 @@ impl Plugin for InterfacePlugin {
                     )
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     create_game_over_overlay,
-                    handle_game_exit,
+                    deactivate_game,
                 ),
             );
     }

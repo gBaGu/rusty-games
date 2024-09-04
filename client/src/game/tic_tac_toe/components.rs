@@ -2,17 +2,21 @@ use bevy::prelude::*;
 use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::Game;
 
-use crate::game::{BotDifficulty, FullGameInfo, GameInfo, TTTBotStrategy};
+use super::bot::Strategy;
+use crate::game::{BotDifficulty, FullGameInfo, GameInfo};
 
+/// This enum is used to specify if the opponent is a bot or another user.
 #[derive(Clone, Copy, Debug)]
 pub enum EnemyType {
     User(u64),
     Bot {
-        strategy: TTTBotStrategy,
+        strategy: Strategy,
         difficulty: Option<BotDifficulty>,
     },
 }
 
+/// Component that is used in combination with GameDataReady event
+/// to create Tic Tac Toe game entity.
 #[derive(Clone, Debug, Component)]
 pub struct CreateGameContext {
     enemy: EnemyType,

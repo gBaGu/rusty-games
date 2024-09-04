@@ -1,9 +1,10 @@
+use std::ops::Deref;
+
 use bevy::prelude::*;
 use game_server::game::grid::GridIndex;
+use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::{BoardCell, FinishedState, Game, GameState};
 use game_server::proto;
-use std::ops::Deref;
-use game_server::game::tic_tac_toe::TicTacToe;
 
 use super::bot::{BotBundle, NoDifficultyBotBundle};
 use super::{
@@ -14,24 +15,27 @@ use crate::game::components::{PendingActionStatus, PendingGame};
 use crate::game::resources::RefreshGameTimer;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
 use crate::game::{
-    ActiveGame, CreateGame, CurrentPlayer, CurrentUserPlayerBundle, FullGameInfo, GameInfo,
+    ActiveGame, CurrentPlayer, CurrentUserPlayerBundle, FullGameInfo, GameDataReady, GameInfo,
     NetworkGame, NetworkPlayerBundle, StateUpdated, Winner,
 };
 use crate::grpc::{GrpcClient, RpcResultReady};
 use crate::interface::GameReady;
 use crate::Settings;
 
+/// Load X and O images and initialize [`Images`] resource.
 pub fn init(mut commands: Commands, asset_server: Res<AssetServer>) {
     let x_img = asset_server.load(X_SPRITE_PATH);
     let o_img = asset_server.load(O_SPRITE_PATH);
     commands.insert_resource(Images::new(x_img, o_img));
 }
 
+/// Receive CreateGame rpc reply, despawn pending game entity, spawn [`CreateGameContext`]
+/// component created from game info and send [`GameDataReady`] event.
 pub fn handle_create_game_reply(
     mut commands: Commands,
     pending_game: Query<Entity, With<PendingGame<TicTacToe>>>,
     mut create_game_reply: EventReader<RpcResultReady<proto::CreateGameReply>>,
-    mut create_game: EventWriter<CreateGame>,
+    mut game_data_ready: EventWriter<GameDataReady>,
     settings: Res<Settings>,
 ) {
     let Some(user) = settings.user_id() else {
@@ -58,7 +62,11 @@ pub fn handle_create_game_reply(
                 let game_id = info.id;
                 if let Some(ctx) = CreateGameContext::new_from_game_info(user, info) {
                     let context_entity = commands.spawn(ctx).id();
-                    create_game.send(CreateGame::new_over_network(game_id, user, context_entity));
+                    game_data_ready.send(GameDataReady::new_over_network(
+                        game_id,
+                        user,
+                        context_entity,
+                    ));
                 }
             }
             Err(err) => {
@@ -68,11 +76,13 @@ pub fn handle_create_game_reply(
     }
 }
 
+/// Receive GetGame rpc reply, despawn pending game entity, spawn [`CreateGameContext`] component
+/// created from game info and send [`GameDataReady`] event.
 pub fn handle_get_game_reply_on_join(
     mut commands: Commands,
     pending_game: Query<(Entity, &NetworkGame), With<PendingGame<TicTacToe>>>,
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
-    mut create_game: EventWriter<CreateGame>,
+    mut game_data_ready: EventWriter<GameDataReady>,
     settings: Res<Settings>,
 ) {
     let Some(user) = settings.user_id() else {
@@ -99,7 +109,7 @@ pub fn handle_get_game_reply_on_join(
                 if info.info.id == *network_game {
                     if let Some(ctx) = CreateGameContext::new_from_full_game_info(user, info) {
                         let context_entity = commands.spawn(ctx).id();
-                        create_game.send(CreateGame::new_over_network(
+                        game_data_ready.send(GameDataReady::new_over_network(
                             *network_game,
                             user,
                             context_entity,
@@ -114,6 +124,8 @@ pub fn handle_get_game_reply_on_join(
     }
 }
 
+/// Receive GetGame rpc reply and synchronize active game sending [`StateUpdated`] event if
+/// the state has changed and [`PlayerActionApplied`] event for every new action.
 pub fn handle_get_game(
     mut game: Query<(Entity, &NetworkGame, &mut LocalGame), With<ActiveGame>>,
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
@@ -173,14 +185,15 @@ pub fn handle_get_game(
     }
 }
 
-/// Receive CreateGame event and spawn game bundle as well as players.
+/// Receive [`GameDataReady`] event, spawn game bundle and player bundles
+/// as a children of a game entity, send [`GameReady`] event.
 pub fn create(
     mut commands: Commands,
     context: Query<(Entity, &CreateGameContext)>,
-    mut create_game: EventReader<CreateGame>,
+    mut game_data_ready: EventReader<GameDataReady>,
     mut game_ready: EventWriter<GameReady>,
 ) {
-    for event in create_game.read() {
+    for event in game_data_ready.read() {
         let Ok((ctx_entity, ctx)) = context.get(event.context()) else {
             continue;
         };
@@ -190,7 +203,10 @@ pub fn create(
 
         let [user_position, enemy_position] = if ctx.user_first() { [0, 1] } else { [1, 0] };
         let user_id = commands
-            .spawn(CurrentUserPlayerBundle::new(event.current_user(), user_position))
+            .spawn(CurrentUserPlayerBundle::new(
+                event.current_user(),
+                user_position,
+            ))
             .id();
         let enemy_id = match ctx.enemy() {
             EnemyType::User(id) => commands.spawn(NetworkPlayerBundle::new(id, enemy_position)),
@@ -236,6 +252,10 @@ pub fn create(
     }
 }
 
+/// Receive [`PlayerActionInitialized`] event and if the game has no [`PendingAction`]
+/// insert [`PendingActionBundle`] into a game entity.
+/// If game entity contains [`NetworkGame`] component pending action will be
+/// `PendingActionStatus::NotConfirmed`, otherwise `PendingActionStatus::Confirmed`.
 pub fn create_pending_action(
     mut commands: Commands,
     game: Query<Option<&NetworkGame>, (With<ActiveGame>, Without<PendingAction>)>,
@@ -265,6 +285,8 @@ pub fn create_pending_action(
     }
 }
 
+/// If the game has [`PendingAction`] and it is confirmed, apply it and send
+/// [`PlayerActionApplied`] and [`StateUpdated`] events.
 pub fn apply_action(
     mut commands: Commands,
     mut game: Query<
@@ -292,6 +314,8 @@ pub fn apply_action(
     }
 }
 
+/// If the game has [`PendingAction`] and it is not confirmed, send MakeTurn request and
+/// change action status to `PendingActionStatus::WaitingConfirmation`.
 pub fn send_pending_action(
     mut commands: Commands,
     mut game: Query<(&NetworkGame, &PendingAction, &mut PendingActionStatus), With<ActiveGame>>,
@@ -320,7 +344,7 @@ pub fn send_pending_action(
     }
 }
 
-/// Update timer and if it's finished stop it and create a grpc call task
+/// Update timer and if it's finished stop it and create a task with grpc GetGame call.
 pub fn send_get_game(
     mut commands: Commands,
     game: Query<&NetworkGame, (With<ActiveGame>, With<LocalGame>)>,

@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use game_server::game::PlayerId;
 
+/// Resource that stores X and O image handles.
 #[derive(Resource)]
 pub struct Images {
     x_img: Handle<Image>,

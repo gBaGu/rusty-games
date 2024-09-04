@@ -7,31 +7,33 @@ use game_server::game::tic_tac_toe::TicTacToe;
 use game_server::game::Game;
 use game_server::proto;
 
+use super::common::{
+    column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
+    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, MENU_LIST_MIN_HEIGHT,
+    SECONDARY_COLOR,
+};
 use super::components::{
     CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, JoinGame,
     MenuNavigationButtonBundle, Overlay, OverlayNodeBundle, Playground, PlaygroundBundle, Setting,
     SettingTextInputBundle, SubmitButton, SubmitButtonBundle, UiImageBundle,
 };
+use super::events::{GameLeft, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
 use super::game_list::{GameList, GameListBundle};
 use super::resources::RefreshGamesTimer;
-use super::{GamePage, GameReady, GameReadyToExit, GameSettingsLink, JoinPressed};
+use super::{GameReady, GameReadyToExit, GameSettingsLink, GameTag, JoinPressed};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::{CommandsExt, EntityCommandsExt};
 use crate::game::{
     ActiveGame, Board, BotDifficulty, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner,
 };
 use crate::grpc::RpcResultReady;
-use crate::interface::common::{
-    column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
-    CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, MENU_LIST_MIN_HEIGHT,
-    SECONDARY_COLOR,
-};
-use crate::interface::events::{GameExit, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
 use crate::Settings;
 
+/// Whenever game page button is pressed create [`GameMenuContext`] resource and
+/// set next state to `AppState::Menu(MenuState::Game)`.
 pub fn enter_game_page<T: Game + Send + Sync + 'static>(
     mut commands: Commands,
-    game_menu_button: Query<&Interaction, (With<Button>, Changed<Interaction>, With<GamePage<T>>)>,
+    game_menu_button: Query<&Interaction, (With<Button>, Changed<Interaction>, With<GameTag<T>>)>,
     mut next_app_state: ResMut<NextState<AppState>>,
 ) {
     for interaction in game_menu_button.iter() {
@@ -42,14 +44,12 @@ pub fn enter_game_page<T: Game + Send + Sync + 'static>(
     }
 }
 
+/// If current state doesn't related to a specific game remove [`GameMenuContext`] resource.
 pub fn remove_game_page_context<T: Game + Send + Sync + 'static>(
     mut commands: Commands,
     app_state: Res<State<AppState>>,
 ) {
-    if *app_state.get() != AppState::Menu(MenuState::Game)
-        && *app_state.get() != AppState::Menu(MenuState::PlayAgainstBot)
-        && *app_state.get() != AppState::Menu(MenuState::PlayOverNetwork)
-    {
+    if !matches!(*app_state.get(), AppState::Menu(s) if s.is_game_menu()) {
         commands.remove_resource::<GameMenuContext<T>>();
     }
 }
@@ -451,23 +451,25 @@ pub fn create_game_over_overlay(
     }
 }
 
-pub fn exit_game(
+/// Despawn [`Playground`] and [`Board`] entities and their descendants.
+pub fn clear_game_visuals(
     mut commands: Commands,
     playground: Query<(Entity, &GameLink), With<Playground>>,
     board: Query<Entity, With<Board>>,
-    mut game_exit: EventWriter<GameExit>,
+    mut game_left: EventWriter<GameLeft>,
 ) {
     for (playground, game_link) in playground.iter() {
         commands.entity(playground).despawn_recursive();
-        game_exit.send(GameExit::new(game_link.get()));
+        game_left.send(GameLeft::new(game_link.get()));
     }
     for board in board.iter() {
         commands.entity(board).despawn_recursive();
     }
 }
 
-pub fn handle_game_exit(mut commands: Commands, mut game_exit: EventReader<GameExit>) {
-    for event in game_exit.read() {
+/// Remove [`ActiveGame`] component from a game entity.
+pub fn deactivate_game(mut commands: Commands, mut game_left: EventReader<GameLeft>) {
+    for event in game_left.read() {
         commands.entity(event.get()).remove::<ActiveGame>();
     }
 }

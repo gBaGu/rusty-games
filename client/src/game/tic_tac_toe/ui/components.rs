@@ -33,9 +33,11 @@ fn image_node_bundle() -> NodeBundle {
     }
 }
 
+/// Component that indicates the container with game state information.
 #[derive(Debug, Component)]
 pub struct GameStateBox;
 
+/// Component that indicates the image of a next player sign.
 #[derive(Debug, Component)]
 pub struct NextPlayer;
 

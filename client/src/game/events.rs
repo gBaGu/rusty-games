@@ -1,14 +1,15 @@
 use bevy::prelude::*;
 use game_server::game::{GameState, PlayerId};
 
+/// Event that signals that all data required to create a game entity is ready.
 #[derive(Debug, Event)]
-pub struct CreateGame {
+pub struct GameDataReady {
     id: Option<u64>,
     current_user: u64,
     context: Entity,
 }
 
-impl CreateGame {
+impl GameDataReady {
     pub fn new(id: Option<u64>, current_user: u64, ctx: Entity) -> Self {
         Self { id, current_user, context: ctx }
     }
@@ -34,6 +35,7 @@ impl CreateGame {
     }
 }
 
+/// Event that signals that particular bot is ready to make some action in a game.
 #[derive(Clone, Copy, Debug, Event)]
 pub struct BotReady {
     bot: Entity,
@@ -63,6 +65,7 @@ impl BotReady {
     }
 }
 
+/// Event that signals that `player` wants to make game action.
 #[derive(Clone, Copy, Debug, Event)]
 pub struct PlayerActionInitialized<T> {
     game: Entity,
@@ -92,6 +95,7 @@ impl<T: Clone + Copy> PlayerActionInitialized<T> {
     }
 }
 
+/// Event that signals that `action` created by `player` is applied.
 #[derive(Clone, Copy, Debug, Event)]
 pub struct PlayerActionApplied<T> {
     game: Entity,
@@ -121,6 +125,7 @@ impl<T: Clone + Copy> PlayerActionApplied<T> {
     }
 }
 
+/// Event that signals that `player` is now authorized to make actions in tha game.
 #[derive(Debug, Event)]
 pub struct TurnStart {
     game: Entity,
@@ -144,6 +149,7 @@ impl TurnStart {
     }
 }
 
+/// Event that signals that the game state is updated.
 #[derive(Debug, Event)]
 pub struct StateUpdated {
     game: Entity,
@@ -167,6 +173,7 @@ impl StateUpdated {
     }
 }
 
+/// Event that signals that the game is finished with a draw.
 #[derive(Debug, Event)]
 pub struct Draw {
     game: Entity,
@@ -182,6 +189,7 @@ impl Draw {
     }
 }
 
+/// Event that signals that the game is finished with a win of `player`.
 #[derive(Debug, Event)]
 pub struct PlayerWon {
     game: Entity,

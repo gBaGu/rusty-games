@@ -10,14 +10,13 @@ use game_server::game;
 use game_server::game::tic_tac_toe::TicTacToe;
 
 pub use components::{
-    ActiveGame, Board, BotDifficulty, CurrentPlayer, CurrentUser, GameLink, LocalGame, LocalGameBundle,
-    NetworkGame, NetworkGameBundle, PendingExistingGameBundle, PendingNewGameBundle,
-    PlayerPosition, UserAuthority, Winner,
+    ActiveGame, Board, BotDifficulty, CurrentPlayer, CurrentUser, GameLink, LocalGame,
+    LocalGameBundle, NetworkGame, NetworkGameBundle, PendingExistingGameBundle,
+    PendingNewGameBundle, PlayerPosition, UserAuthority, Winner,
 };
-pub use events::{BotReady, CreateGame, Draw, PlayerWon, StateUpdated, TurnStart};
+pub use events::{BotReady, Draw, GameDataReady, PlayerWon, StateUpdated, TurnStart};
 pub use game_info::{FullGameInfo, GameInfo};
 pub use resources::GameMenuContext;
-pub use tic_tac_toe::bot::Strategy as TTTBotStrategy;
 
 use components::{
     BotAuthority, CurrentUserPlayerBundle, NetworkPlayerBundle, PendingAction, PendingActionBundle,
@@ -40,7 +39,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(tic_tac_toe::TicTacToePlugin)
-            .add_event::<CreateGame>()
+            .add_event::<GameDataReady>()
             .add_event::<BotReady>()
             .add_event::<StateUpdated>()
             .add_event::<TurnStart>()
@@ -50,7 +49,7 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
-                    handle_make_turn,
+                    confirm_pending_action,
                     handle_state_updated,
                     update_current_player,
                     handle_draw,

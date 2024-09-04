@@ -5,7 +5,7 @@ use game_server::game::PlayerId;
 
 use crate::game::{BotAuthority, BotDifficulty, PlayerPosition};
 
-/// Delay before the bot will perform its action
+/// Component that creates human-like delay before the bot will perform its action.
 #[derive(Debug, Component, Deref, DerefMut)]
 pub struct Delay(Timer);
 
@@ -27,6 +27,7 @@ impl Delay {
     }
 }
 
+/// Component that defines the logic that will be used to choose bot action.
 #[derive(Clone, Copy, Debug, Component)]
 pub enum Strategy {
     Random,
