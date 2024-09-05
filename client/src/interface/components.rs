@@ -288,7 +288,6 @@ impl UiImageBundle {
         Self {
             node: NodeBundle {
                 style,
-                background_color: Color::WHITE.into(),
                 ..default()
             },
             image: UiImage::new(image),

@@ -20,14 +20,14 @@ pub struct Background;
 
 fn main() {
     App::new()
-        .init_state::<AppState>()
-        .init_resource::<Settings>()
         .add_plugins((
             DefaultPlugins,
             GamePlugin,
             GrpcPlugin,
             InterfacePlugin,
         ))
+        .init_state::<AppState>()
+        .init_resource::<Settings>()
         .add_systems(Startup, systems::init_app)
         .add_systems(Update, systems::on_resize)
         .run();
