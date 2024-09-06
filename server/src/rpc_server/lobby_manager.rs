@@ -1,5 +1,4 @@
 use std::future::{Future, IntoFuture};
-use std::marker::PhantomData;
 
 use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -28,34 +27,29 @@ pub enum WorkerCommand {
     },
 }
 
-pub struct Worker<T>((JoinHandle<()>, PhantomData<T>));
+pub struct Worker(JoinHandle<()>);
 
-impl<T> IntoFuture for Worker<T> {
+impl IntoFuture for Worker {
     type Output = <JoinHandle<()> as Future>::Output;
     type IntoFuture = JoinHandle<()>;
 
     fn into_future(self) -> Self::IntoFuture {
-        self.0 .0.into_future()
+        self.0.into_future()
     }
 }
 
-impl<T> Worker<T>
-where
-    T: Game + Send + 'static,
-{
-    pub fn new(
+impl Worker {
+    pub fn new<T: Game + Send + 'static>(
         storage: GameStorage<T>,
         mut command_receiver: UnboundedReceiver<WorkerCommand>,
         ct: CancellationToken,
     ) -> Self {
         let worker = tokio::spawn(async move {
-            let mut cancelled = false;
             loop {
                 select! {
                     biased;
-                    _ = ct.cancelled(), if !cancelled => {
+                    _ = ct.cancelled() => {
                         command_receiver.close();
-                        cancelled = true;
                         println!("worker: cancelled");
                         break;
                     },
@@ -96,7 +90,7 @@ where
             }
             println!("worker: finished");
         });
-        Self((worker, Default::default()))
+        Self(worker)
     }
 }
 
@@ -118,7 +112,7 @@ impl<T> LobbyManager<T>
 where
     T: Game + Send + 'static,
 {
-    pub fn start_worker(&mut self, ct: CancellationToken) -> Worker<T> {
+    pub fn start_worker(&mut self, ct: CancellationToken) -> Worker {
         let (s, r) = unbounded_channel();
         let _ = self.command_sender.insert(s);
         Worker::new(self.storage.clone(), r, ct)
