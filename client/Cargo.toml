@@ -9,7 +9,7 @@ async-compat = "0.2.3"
 async-io = "2.3.3"
 bevy = { version = "0.14", features = ["dynamic_linking"] }
 bevy_simple_text_input = "0.9"
-clap = { version = "=4.5.13", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 game-server = { package = "server", path = "../server" }
 prost = "0.13"
 rand = "0.8.5"
