@@ -6,7 +6,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 use tokio::task::JoinHandle;
 use tokio_stream::{Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
-use tonic::transport::{Channel, Server};
+use tonic::transport::{server::TcpIncoming, Channel, Server};
 use tonic::{Code, Request};
 
 use server::game::encoding::ToProtobuf;
@@ -54,8 +54,7 @@ async fn run_server(addr: &str) -> (JoinHandle<()>, CancellationToken) {
     let ct_cloned = ct.clone();
     let addr: SocketAddr = addr.parse().unwrap();
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    let incoming =
-        tonic::transport::server::TcpIncoming::from_listener(listener, true, None).unwrap();
+    let incoming = TcpIncoming::from_listener(listener, true, None).unwrap();
     let t = tokio::spawn(async move {
         let mut game_impl = GameImpl::default();
         let workers = game_impl.start_workers(ct_cloned);
@@ -79,6 +78,31 @@ async fn create_tic_tac_toe_game(client: &mut GameClient<Channel>, players: &[u6
         player_ids: players.to_vec(),
     });
     client.create_game(request).await.unwrap();
+}
+
+#[serial_test::serial]
+#[tokio::test]
+async fn token_cancellation_shuts_down_server() {
+    let addr = "127.0.0.1:50051";
+    let (server_thread, ct) = run_server(addr).await;
+    let mut client = GameClient::connect(format!("http://{}", addr))
+        .await
+        .unwrap();
+
+    let test_request = GetPlayerGamesRequest {
+        game_type: 1,
+        player_id: 1,
+    };
+    let req = Request::new(test_request);
+    let games = client.get_player_games(req).await.unwrap().into_inner();
+    assert!(games.games.is_empty());
+
+    ct.cancel();
+    server_thread.await.unwrap();
+
+    let req = Request::new(test_request);
+    let err = client.get_player_games(req).await.unwrap_err();
+    assert_eq!(err.code(), Code::Unavailable);
 }
 
 #[serial_test::serial]
