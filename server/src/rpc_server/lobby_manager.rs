@@ -49,13 +49,11 @@ where
         ct: CancellationToken,
     ) -> Self {
         let worker = tokio::spawn(async move {
-            let mut cancelled = false;
             loop {
                 select! {
                     biased;
-                    _ = ct.cancelled(), if !cancelled => {
+                    _ = ct.cancelled() => {
                         command_receiver.close();
-                        cancelled = true;
                         println!("worker: cancelled");
                         break;
                     },
