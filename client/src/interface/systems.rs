@@ -27,7 +27,7 @@ use crate::game::{
     ActiveGame, Board, BotDifficulty, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner,
 };
 use crate::grpc::RpcResultReady;
-use crate::Settings;
+use crate::{Settings, UserIdChanged};
 
 /// Whenever game page button is pressed create [`GameMenuContext`] resource and
 /// set next state to `AppState::Menu(MenuState::Game)`.
@@ -173,12 +173,16 @@ pub fn submit_setting(
     mut commands: Commands,
     mut submit_pressed: EventReader<SubmitPressed>,
     mut text_input_submit: EventReader<TextInputSubmitEvent>,
+    mut user_id_changed: EventWriter<UserIdChanged>,
     mut settings: ResMut<Settings>,
     asset_server: Res<AssetServer>,
 ) {
     let mut submit = |input: &str, setting: &Setting| match setting {
         Setting::UserId => {
             if let Ok(val) = input.parse::<u64>() {
+                if !matches!(settings.user_id(), Some(user_id) if user_id == val) {
+                    user_id_changed.send(UserIdChanged::new(val));
+                }
                 settings.set_user_id(val);
                 commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
             } else {

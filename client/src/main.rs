@@ -5,10 +5,12 @@ mod grpc;
 mod interface;
 mod resources;
 mod systems;
+mod events;
 
 use bevy::prelude::*;
 use clap::Parser;
 
+pub use events::UserIdChanged;
 pub use resources::Settings;
 
 use app_state::AppState;
@@ -44,6 +46,7 @@ fn main() {
         ))
         .init_state::<AppState>()
         .insert_resource(settings)
+        .add_event::<UserIdChanged>()
         .add_systems(Startup, systems::init_app)
         .add_systems(Update, systems::on_resize)
         .run();
