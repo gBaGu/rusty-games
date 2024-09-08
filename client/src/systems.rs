@@ -15,6 +15,7 @@ pub fn init_app(mut commands: Commands, window: Query<&Window>) {
                 custom_size: Some(Vec2::new(window.width(), window.height())),
                 ..Default::default()
             },
+            transform: Transform::from_translation(Vec2::splat(0.0).extend(-1.0)),
             ..default()
         },
         Background,
