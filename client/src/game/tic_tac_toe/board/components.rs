@@ -76,16 +76,22 @@ pub struct TileBundle {
 }
 
 impl TileBundle {
-    pub fn new(size: Vec2, translation: Vec3, position: GridIndex, img: Handle<Image>) -> Self {
+    fn new(
+        size: Vec2,
+        translation: Vec3,
+        position: GridIndex,
+        img: Handle<Image>,
+        visibility: Visibility,
+    ) -> Self {
         Self {
             sprite: SpriteBundle {
                 sprite: Sprite {
-                    color: Color::NONE,
                     custom_size: Some(size),
                     ..default()
                 },
                 transform: Transform::from_translation(translation),
                 texture: img,
+                visibility,
                 ..default()
             },
             tile: position.into(),
@@ -93,7 +99,22 @@ impl TileBundle {
     }
 
     pub fn new_empty(size: Vec2, translation: Vec3, position: GridIndex) -> Self {
-        Self::new(size, translation, position, Handle::default())
+        Self::new(
+            size,
+            translation,
+            position,
+            Handle::default(),
+            Visibility::Hidden,
+        )
+    }
+
+    pub fn new_filled(
+        size: Vec2,
+        translation: Vec3,
+        position: GridIndex,
+        img: Handle<Image>,
+    ) -> Self {
+        Self::new(size, translation, position, img, Visibility::Inherited)
     }
 }
 

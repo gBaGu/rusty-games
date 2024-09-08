@@ -58,7 +58,7 @@ pub fn create(
                         let tile = match game.board()[(row, col).into()] {
                             BoardCell(Some(player)) => {
                                 if let Some(img) = images.get(player) {
-                                    TileBundle::new(tile_size, tile_translation, pos, img.clone())
+                                    TileBundle::new_filled(tile_size, tile_translation, pos, img.clone())
                                 } else {
                                     println!("unable to get image for {}", player);
                                     TileBundle::new_empty(tile_size, tile_translation, pos)
@@ -178,7 +178,7 @@ pub fn initialize_action(
 }
 
 pub fn set_tile_image(
-    mut tile: Query<(&mut Sprite, &mut Handle<Image>, &Tile, &Parent)>,
+    mut tile: Query<(&mut Visibility, &mut Handle<Image>, &Tile, &Parent)>,
     board: Query<(Entity, &GameLink), With<Board>>,
     mut action_applied: EventReader<PlayerActionApplied>,
     images: Res<Images>,
@@ -187,14 +187,14 @@ pub fn set_tile_image(
         let Some((board_entity, _)) = board.iter().find(|(_, g)| g.get() == event.game()) else {
             continue;
         };
-        let Some((mut sprite, mut texture, ..)) = tile
+        let Some((mut visibility, mut texture, ..)) = tile
             .iter_mut()
             .find(|(.., &tile, parent)| parent.get() == board_entity && *tile == event.action())
         else {
             continue;
         };
         if let Some(img) = images.get(event.player()) {
-            sprite.color = Color::default();
+            *visibility = Visibility::Inherited;
             *texture = img.clone();
         }
     }
