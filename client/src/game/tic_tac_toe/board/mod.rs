@@ -9,6 +9,7 @@ use game_server::game::grid::GridIndex;
 pub use events::TilePressed;
 
 use super::{LocalGame, PlayerActionApplied};
+use crate::app_state::AppState;
 use components::{TileBundle, WinAnimation, WinAnimationBundle};
 use systems::*;
 
@@ -42,7 +43,7 @@ impl Plugin for BoardPlugin {
             .add_systems(
                 Update,
                 (
-                    handle_input,
+                    handle_mouse_input.run_if(in_state(AppState::Game)),
                     initialize_action,
                     set_tile_image,
                     create_win_animation,

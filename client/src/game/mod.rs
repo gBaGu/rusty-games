@@ -54,6 +54,7 @@ impl Plugin for GamePlugin {
                     update_current_player,
                     handle_draw,
                     handle_win,
+                    update_current_user,
                 ),
             );
     }

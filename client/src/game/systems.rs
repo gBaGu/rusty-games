@@ -5,12 +5,13 @@ use game_server::game::{FinishedState, GameState};
 use game_server::proto;
 
 use super::{
-    ActiveGame, CurrentPlayer, Draw, NetworkGame, PlayerPosition, PlayerWon, StateUpdated,
-    TurnStart, Winner,
+    ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PlayerPosition, PlayerWon,
+    StateUpdated, TurnStart, UserAuthority, Winner,
 };
 use crate::game::components::PendingActionStatus;
 use crate::grpc::RpcResultReady;
 use crate::interface::GameReadyToExit;
+use crate::UserIdChanged;
 
 /// Receive reply for MakeTurn rpc and if it's successful update [`PendingActionStatus`] component.
 /// Does not depend on specific game type.
@@ -134,5 +135,24 @@ pub fn handle_win(
                     player_cmds.insert(Winner);
                 }
             })
+    }
+}
+
+/// Whenever user id is changed in settings insert/remove [`CurrentUser`] for every player
+/// according to his id.
+pub fn update_current_user(
+    mut commands: Commands,
+    player: Query<(Entity, &UserAuthority)>,
+    mut user_id_changed: EventReader<UserIdChanged>,
+) {
+    if let Some(event) = user_id_changed.read().last() {
+        for (player_entity, &user_authority) in player.iter() {
+            let mut player_cmds = commands.entity(player_entity);
+            if *user_authority == event.new_user_id() {
+                player_cmds.insert(CurrentUser);
+            } else {
+                player_cmds.remove::<CurrentUser>();
+            }
+        }
     }
 }
