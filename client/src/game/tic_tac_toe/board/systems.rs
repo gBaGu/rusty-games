@@ -106,7 +106,7 @@ pub fn create(
     }
 }
 
-pub fn handle_input(
+pub fn handle_mouse_input(
     window: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform)>,
     tiles: Query<(&GlobalTransform, &Sprite, &Tile, &Parent)>,
