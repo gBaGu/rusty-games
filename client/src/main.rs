@@ -1,11 +1,11 @@
 mod app_state;
 mod commands;
+mod events;
 mod game;
 mod grpc;
 mod interface;
 mod resources;
 mod systems;
-mod events;
 
 use bevy::prelude::*;
 use clap::Parser;
@@ -38,12 +38,7 @@ fn main() {
     }
 
     App::new()
-        .add_plugins((
-            DefaultPlugins,
-            GamePlugin,
-            GrpcPlugin,
-            InterfacePlugin,
-        ))
+        .add_plugins((DefaultPlugins, GamePlugin, GrpcPlugin, InterfacePlugin))
         .init_state::<AppState>()
         .insert_resource(settings)
         .add_event::<UserIdChanged>()

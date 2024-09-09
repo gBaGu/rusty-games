@@ -4,7 +4,10 @@ use bevy::prelude::*;
 use game_server::game::{FinishedState, GameState};
 use game_server::proto;
 
-use super::{ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PlayerPosition, PlayerWon, StateUpdated, TurnStart, UserAuthority, Winner};
+use super::{
+    ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PlayerPosition, PlayerWon,
+    StateUpdated, TurnStart, UserAuthority, Winner,
+};
 use crate::game::components::PendingActionStatus;
 use crate::grpc::RpcResultReady;
 use crate::interface::GameReadyToExit;

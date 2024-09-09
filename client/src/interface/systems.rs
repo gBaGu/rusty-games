@@ -181,10 +181,10 @@ pub fn submit_setting(
         Setting::UserId => {
             if let Ok(val) = input.parse::<u64>() {
                 if !matches!(settings.user_id(), Some(user_id) if user_id == val) {
+                    settings.set_user_id(val);
+                    commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
                     user_id_changed.send(UserIdChanged::new(val));
                 }
-                settings.set_user_id(val);
-                commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
             } else {
                 commands.play_sound(&asset_server, ERROR_SOUND_PATH);
             }
