@@ -15,6 +15,7 @@ use super::{
 use crate::commands::EntityCommandsExt;
 use crate::game::components::{Board, BoardBundle};
 use crate::game::tic_tac_toe::board::components::{BorderBundle, Tile};
+use crate::game::tic_tac_toe::board::resources::WinAnimationSpriteSheet;
 use crate::game::tic_tac_toe::resources::Images;
 use crate::game::tic_tac_toe::PlayerActionInitialized;
 use crate::game::{ActiveGame, CurrentPlayer, CurrentUser, GameLink, PlayerPosition, PlayerWon};
@@ -58,7 +59,12 @@ pub fn create(
                         let tile = match game.board()[(row, col).into()] {
                             BoardCell(Some(player)) => {
                                 if let Some(img) = images.get(player) {
-                                    TileBundle::new_filled(tile_size, tile_translation, pos, img.clone())
+                                    TileBundle::new_filled(
+                                        tile_size,
+                                        tile_translation,
+                                        pos,
+                                        img.clone(),
+                                    )
                                 } else {
                                     println!("unable to get image for {}", player);
                                     TileBundle::new_empty(tile_size, tile_translation, pos)
@@ -205,7 +211,7 @@ pub fn create_win_animation(
     game: Query<&LocalGame, With<ActiveGame>>,
     board: Query<(Entity, &Sprite, &GameLink), With<Board>>,
     mut player_won: EventReader<PlayerWon>,
-    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    sprite_atlas: Res<WinAnimationSpriteSheet>,
     asset_server: Res<AssetServer>,
 ) {
     for event in player_won.read() {
@@ -236,14 +242,6 @@ pub fn create_win_animation(
 
         println!("create win animation from {} to {}", index1, index3);
         let texture = asset_server.load(WIN_ANIMATION_PATH);
-        let layout = TextureAtlasLayout::from_grid(
-            WIN_ANIMATION_SPRITE_SIZE.as_uvec2(),
-            WIN_ANIMATION_SPRITE_COUNT as u32,
-            1,
-            None,
-            None,
-        );
-        let texture_atlas_layout = texture_atlas_layouts.add(layout);
         let tile_size = calculate_tile_size(board_size);
         let from_center = calculate_tile_center(board_size, tile_size, index1);
         let to_center = calculate_tile_center(board_size, tile_size, index3);
@@ -259,7 +257,7 @@ pub fn create_win_animation(
                 WIN_ANIMATION_SPRITE_COUNT - 1,
                 Duration::from_millis(WIN_ANIMATION_TRANSITION_INTERVAL),
                 texture,
-                texture_atlas_layout,
+                sprite_atlas.clone(),
                 transform,
             ));
     }

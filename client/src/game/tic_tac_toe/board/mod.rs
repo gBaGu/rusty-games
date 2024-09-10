@@ -1,5 +1,6 @@
 mod components;
 mod events;
+mod resources;
 mod systems;
 
 use bevy::prelude::*;
@@ -11,6 +12,7 @@ pub use events::TilePressed;
 use super::{LocalGame, PlayerActionApplied};
 use crate::app_state::AppState;
 use components::{TileBundle, WinAnimation, WinAnimationBundle};
+use resources::WinAnimationSpriteSheet;
 use systems::*;
 
 pub const BORDER_WIDTH: f32 = 1.0;
@@ -39,7 +41,8 @@ pub struct BoardPlugin;
 
 impl Plugin for BoardPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<TilePressed>()
+        app.init_resource::<WinAnimationSpriteSheet>()
+            .add_event::<TilePressed>()
             .add_systems(
                 Update,
                 (
