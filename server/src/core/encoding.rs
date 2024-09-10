@@ -1,8 +1,8 @@
-use prost::Message;
 use std::num::TryFromIntError;
 
-use crate::game::BoardCell;
-use crate::game::grid::GridIndex;
+use prost::Message;
+
+use crate::core::{BoardCell, GridIndex};
 use crate::proto::{Maybe, Position};
 
 pub type ProtobufResult<T> = Result<T, ProtobufError>;
@@ -17,7 +17,7 @@ pub enum ProtobufError {
     InvalidPlayersLength { expected: usize, found: usize },
     #[error("invalid board length: expected={expected}, found={found}")]
     InvalidBoardLength { expected: usize, found: usize },
-    #[error("game state is invalid")]
+    #[error("core state is invalid")]
     InvalidGameState,
     #[error("message data has missing field: {missing_field}")]
     MessageDataMissing { missing_field: String },

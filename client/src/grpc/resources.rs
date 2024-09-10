@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
-use game_server::game::encoding::ToProtobuf;
+use game_server::core::ToProtobuf;
 use game_server::proto;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Code, Request};

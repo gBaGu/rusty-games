@@ -11,7 +11,7 @@ use super::game_storage::GameStorage;
 use super::lobby::{Connection, MoveEvent, UpdateRequestReader};
 use super::rpc::{GameImpl, RpcInnerResult, UserId};
 use super::GameId;
-use crate::game::{Game, GameState};
+use crate::core::{Game, GameState};
 use crate::proto;
 
 #[derive(Debug)]
@@ -60,7 +60,7 @@ impl Worker {
                         match command {
                             WorkerCommand::UpdateGame { game, user, data } => {
                                 println!(
-                                    "worker: UpdateGame game={}, user={}, data={:?}",
+                                    "worker: UpdateGame core={}, user={}, data={:?}",
                                     game, user, data
                                 );
                                 if let Err(err) = storage.update(game, user, &data) {
@@ -70,7 +70,7 @@ impl Worker {
                                 }
                             }
                             WorkerCommand::Disconnect { game, user } => {
-                                println!("worker: Disconnect game={}, user={}", game, user);
+                                println!("worker: Disconnect core={}, user={}", game, user);
                                 match storage.disconnect(game, user) {
                                     Ok(conn) => {
                                         if let Some(mut conn) = conn {

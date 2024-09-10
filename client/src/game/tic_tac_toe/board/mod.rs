@@ -5,7 +5,7 @@ mod systems;
 
 use bevy::prelude::*;
 use bevy::ui::UiSystem;
-use game_server::game::grid::GridIndex;
+use game_server::core;
 
 pub use events::TilePressed;
 
@@ -22,7 +22,7 @@ pub const WIN_ANIMATION_TRANSITION_INTERVAL: u64 = 50;
 pub const WIN_ANIMATION_SPRITE_SIZE: Vec2 = Vec2::new(51.0, 150.0);
 
 /// Returns center coordinates for a board tile with given `pos`.
-pub fn calculate_tile_center(board_size: Vec2, tile_size: Vec2, tile_pos: GridIndex) -> Vec2 {
+pub fn calculate_tile_center(board_size: Vec2, tile_size: Vec2, tile_pos: core::GridIndex) -> Vec2 {
     let tile_x = (tile_size.x + BORDER_WIDTH) * tile_pos.col() as f32 + tile_size.x / 2.0
         - board_size.x / 2.0;
     let tile_y = (tile_size.y + BORDER_WIDTH) * (2 - tile_pos.row()) as f32 + tile_size.y / 2.0

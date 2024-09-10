@@ -1,21 +1,21 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
+use game_server::core;
 
 #[derive(Component)]
 pub struct Border;
 
 #[derive(Clone, Copy, Debug, PartialEq, Component, Deref, DerefMut)]
-pub struct Tile(GridIndex);
+pub struct Tile(core::GridIndex);
 
-impl From<GridIndex> for Tile {
-    fn from(value: GridIndex) -> Self {
+impl From<core::GridIndex> for Tile {
+    fn from(value: core::GridIndex) -> Self {
         Self(value)
     }
 }
 
-impl From<Tile> for GridIndex {
+impl From<Tile> for core::GridIndex {
     fn from(value: Tile) -> Self {
         value.0
     }
@@ -79,7 +79,7 @@ impl TileBundle {
     fn new(
         size: Vec2,
         translation: Vec3,
-        position: GridIndex,
+        position: core::GridIndex,
         img: Handle<Image>,
         visibility: Visibility,
     ) -> Self {
@@ -98,7 +98,7 @@ impl TileBundle {
         }
     }
 
-    pub fn new_empty(size: Vec2, translation: Vec3, position: GridIndex) -> Self {
+    pub fn new_empty(size: Vec2, translation: Vec3, position: core::GridIndex) -> Self {
         Self::new(
             size,
             translation,
@@ -111,7 +111,7 @@ impl TileBundle {
     pub fn new_filled(
         size: Vec2,
         translation: Vec3,
-        position: GridIndex,
+        position: core::GridIndex,
         img: Handle<Image>,
     ) -> Self {
         Self::new(size, translation, position, img, Visibility::Inherited)

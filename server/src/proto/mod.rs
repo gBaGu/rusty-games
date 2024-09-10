@@ -2,8 +2,8 @@ tonic::include_proto!("game");
 
 use std::num::TryFromIntError;
 
-use crate::game;
-use crate::game::chess;
+use crate::core;
+use crate::core::chess;
 
 pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
 
@@ -16,18 +16,18 @@ impl game_session_request::Request {
     }
 }
 
-impl From<game::GameState> for GameState {
-    fn from(value: game::GameState) -> Self {
+impl From<core::GameState> for GameState {
+    fn from(value: core::GameState) -> Self {
         match value {
-            game::GameState::Turn(id) => Self {
+            core::GameState::Turn(id) => Self {
                 next_player_id: Some(id),
                 ..Default::default()
             },
-            game::GameState::Finished(game::FinishedState::Win(id)) => Self {
+            core::GameState::Finished(core::FinishedState::Win(id)) => Self {
                 winner: Some(id),
                 ..Default::default()
             },
-            game::GameState::Finished(game::FinishedState::Draw) => Self::default(),
+            core::GameState::Finished(core::FinishedState::Draw) => Self::default(),
         }
     }
 }
@@ -55,10 +55,10 @@ impl From<chess::types::Piece> for ChessPiece {
     }
 }
 
-impl TryFrom<game::grid::GridIndex> for Position {
+impl TryFrom<core::GridIndex> for Position {
     type Error = TryFromIntError;
 
-    fn try_from(value: game::grid::GridIndex) -> Result<Self, Self::Error> {
+    fn try_from(value: core::GridIndex) -> Result<Self, Self::Error> {
         Ok(Self {
             row: value.row().try_into()?,
             col: value.col().try_into()?,

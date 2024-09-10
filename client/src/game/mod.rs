@@ -6,8 +6,8 @@ mod systems;
 mod tic_tac_toe;
 
 use bevy::prelude::*;
-use game_server::game;
-use game_server::game::tic_tac_toe::TicTacToe;
+use game_server::core;
+use game_server::core::tic_tac_toe::TicTacToe;
 
 pub use components::{
     ActiveGame, Board, BotDifficulty, CurrentPlayer, CurrentUser, GameLink, LocalGame,
@@ -32,7 +32,7 @@ pub const BOARD_SIZE: usize = 3;
 const BOARD_PROTO_SIZE: usize = BOARD_SIZE * BOARD_SIZE;
 const PLAYERS_SIZE: usize = 2;
 
-pub type TTTBoard = <TicTacToe as game::Game>::Board;
+pub type TTTBoard = <TicTacToe as core::Game>::Board;
 
 pub struct GamePlugin;
 

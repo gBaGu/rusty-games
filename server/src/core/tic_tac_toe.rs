@@ -1,9 +1,8 @@
 use generic_array::typenum;
 
 use super::grid::{Grid, GridIndex};
-use crate::game::error::GameError;
-use crate::game::player_pool::PlayerIdQueue;
-use crate::game::{BoardCell, Game, GameResult, GameState, PlayerId};
+use super::player_pool::PlayerIdQueue;
+use crate::core::{BoardCell, Game, GameError, GameResult, GameState, PlayerPosition};
 
 pub fn winning_combinations() -> [(GridIndex, GridIndex, GridIndex); 8] {
     [
@@ -18,11 +17,11 @@ pub fn winning_combinations() -> [(GridIndex, GridIndex, GridIndex); 8] {
     ]
 }
 
-type Cell = BoardCell<PlayerId>;
+type Cell = BoardCell<PlayerPosition>;
 
 #[derive(Clone, Debug)]
 pub struct TicTacToe {
-    players: PlayerIdQueue<PlayerId>,
+    players: PlayerIdQueue<PlayerPosition>,
     state: GameState,
     field: Grid<Cell, typenum::U3, typenum::U3>,
 }
@@ -41,14 +40,14 @@ impl Default for TicTacToe {
 impl Game for TicTacToe {
     const NUM_PLAYERS: u8 = 2;
     type TurnData = GridIndex;
-    type Players = PlayerIdQueue<PlayerId>;
+    type Players = PlayerIdQueue<PlayerPosition>;
     type Board = Grid<Cell, typenum::U3, typenum::U3>;
 
     fn new() -> Self {
         Self::default()
     }
 
-    fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
+    fn update(&mut self, id: PlayerPosition, data: Self::TurnData) -> GameResult<GameState> {
         if matches!(self.state, GameState::Finished(_)) {
             return Err(GameError::GameIsFinished);
         }

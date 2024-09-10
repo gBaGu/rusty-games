@@ -1,7 +1,7 @@
 use bevy::prelude::*;
-use game_server::game::{FinishedState, GameState};
+use game_server::core;
 
-use super::{HORIZONTAL_MARGIN, GameList};
+use super::{GameList, HORIZONTAL_MARGIN};
 use crate::commands::EntityCommandsExt;
 use crate::grpc::{Connected, Disconnected};
 use crate::interface::common::{menu_item_style, menu_text_style, row_node_bundle};
@@ -38,21 +38,23 @@ pub fn update(
                     .with_children(|builder| {
                         for game in games {
                             let state_text = match game.state {
-                                GameState::Turn(id) => {
+                                core::GameState::Turn(id) => {
                                     let Some(user_id) = game.get_user_id(id) else {
                                         println!("skipping corrupted GameInfo");
                                         continue;
                                     };
                                     format!("Next: {}", user_id)
                                 }
-                                GameState::Finished(FinishedState::Win(id)) => {
+                                core::GameState::Finished(core::FinishedState::Win(id)) => {
                                     let Some(user_id) = game.get_user_id(id) else {
                                         println!("skipping corrupted GameInfo");
                                         continue;
                                     };
                                     format!("Winner: {}", user_id)
                                 }
-                                GameState::Finished(FinishedState::Draw) => "Draw".into(),
+                                core::GameState::Finished(core::FinishedState::Draw) => {
+                                    "Draw".into()
+                                }
                             };
                             builder.spawn(row_node_bundle()).with_children(|builder| {
                                 for s in [

@@ -6,8 +6,7 @@ use std::sync::{Arc, Mutex};
 use super::error::RpcError;
 use super::lobby::{Connection, Lobby};
 use super::rpc::{GameId, RpcInnerResult, UserId};
-use crate::game::encoding::{ProtobufResult, ToProtobuf};
-use crate::game::{Game, GameBoard, GameState};
+use crate::core::{Game, GameBoard, GameState, ProtobufResult, ToProtobuf};
 use crate::proto;
 
 type GameMap<T> = HashMap<GameId, Lobby<T>>;

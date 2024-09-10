@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
+use game_server::core;
 
 /// Event emitted when board tile is pressed.
 /// Contains entity of a board whose tile was pressed
@@ -7,11 +7,11 @@ use game_server::game::grid::GridIndex;
 #[derive(Debug, Event)]
 pub struct TilePressed {
     board: Entity,
-    pos: GridIndex,
+    pos: core::GridIndex,
 }
 
 impl TilePressed {
-    pub fn new(board: Entity, pos: GridIndex) -> Self {
+    pub fn new(board: Entity, pos: core::GridIndex) -> Self {
         Self { board, pos }
     }
 
@@ -19,7 +19,7 @@ impl TilePressed {
         self.board
     }
 
-    pub fn pos(&self) -> GridIndex {
+    pub fn pos(&self) -> core::GridIndex {
         self.pos
     }
 }

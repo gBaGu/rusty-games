@@ -3,9 +3,8 @@ use std::time::Duration;
 use bevy::input::{mouse::MouseButtonInput, ButtonState};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use game_server::game::grid::GridIndex;
-use game_server::game::tic_tac_toe::winning_combinations;
-use game_server::game::{BoardCell, Game, GameState};
+use game_server::core::tic_tac_toe::winning_combinations;
+use game_server::core::{self, Game as _};
 
 use super::{
     calculate_tile_center, calculate_tile_size, LocalGame, PlayerActionApplied, TileBundle,
@@ -53,11 +52,11 @@ pub fn create(
             .with_children(|builder| {
                 for row in 0..3 {
                     for col in 0..3 {
-                        let pos = GridIndex::new(row, col);
+                        let pos = core::GridIndex::new(row, col);
                         let tile_translation =
                             calculate_tile_center(board_size, tile_size, pos).extend(1.0);
                         let tile = match game.board()[(row, col).into()] {
-                            BoardCell(Some(player)) => {
+                            core::BoardCell(Some(player)) => {
                                 if let Some(img) = images.get(player) {
                                     TileBundle::new_filled(
                                         tile_size,
@@ -70,7 +69,7 @@ pub fn create(
                                     TileBundle::new_empty(tile_size, tile_translation, pos)
                                 }
                             }
-                            BoardCell(None) => {
+                            core::BoardCell(None) => {
                                 TileBundle::new_empty(tile_size, tile_translation, pos)
                             }
                         };
@@ -166,7 +165,7 @@ pub fn initialize_action(
         let Ok(game) = game.get(game_link.get()) else {
             continue;
         };
-        if matches!(game.state(), GameState::Finished(_))
+        if matches!(game.state(), core::GameState::Finished(_))
             || game.board()[event.pos().into()].is_some()
         {
             // TODO: send ui invalid action event

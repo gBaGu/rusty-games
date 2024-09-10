@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game_server::game::PlayerId;
+use game_server::core;
 
 use super::{
     GameStateBox, GameStateInfoBundle, NextPlayer, NextPlayerImageBundle, PlayerActionApplied,
@@ -17,7 +17,7 @@ use crate::interface::{PlayerColor, Playground};
 
 fn create_player_info_bundle(
     game: Entity,
-    player_id: PlayerId,
+    player_id: core::PlayerPosition,
     color: Color,
     is_current_player: bool,
 ) -> PlayerInfoBundle {

@@ -3,9 +3,8 @@ use std::ops::Deref;
 use bevy::app::AppExit;
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
-use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::Game;
-use game_server::proto;
+use game_server::core::tic_tac_toe::TicTacToe;
+use game_server::{core, proto};
 
 use super::common::{
     column_node_bundle, menu_item_style, menu_text_style, root_node_bundle, row_node_bundle,
@@ -31,7 +30,7 @@ use crate::{Settings, UserIdChanged};
 
 /// Whenever game page button is pressed create [`GameMenuContext`] resource and
 /// set next state to `AppState::Menu(MenuState::Game)`.
-pub fn enter_game_page<T: Game + Send + Sync + 'static>(
+pub fn enter_game_page<T: core::Game + Send + Sync + 'static>(
     mut commands: Commands,
     game_menu_button: Query<&Interaction, (With<Button>, Changed<Interaction>, With<GameTag<T>>)>,
     mut next_app_state: ResMut<NextState<AppState>>,
@@ -45,7 +44,7 @@ pub fn enter_game_page<T: Game + Send + Sync + 'static>(
 }
 
 /// If current state doesn't related to a specific game remove [`GameMenuContext`] resource.
-pub fn remove_game_page_context<T: Game + Send + Sync + 'static>(
+pub fn remove_game_page_context<T: core::Game + Send + Sync + 'static>(
     mut commands: Commands,
     app_state: Res<State<AppState>>,
 ) {

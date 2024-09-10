@@ -1,5 +1,6 @@
 use std::iter::{Cycle, Peekable};
 use std::marker::PhantomData;
+
 use smallvec::{IntoIter, SmallVec};
 
 pub trait Player {

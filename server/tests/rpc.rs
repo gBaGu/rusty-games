@@ -9,9 +9,7 @@ use tokio_util::sync::CancellationToken;
 use tonic::transport::{server::TcpIncoming, Channel, Server};
 use tonic::{Code, Request};
 
-use server::game::encoding::ToProtobuf;
-use server::game::grid::GridIndex;
-use server::game::BoardCell;
+use server::core::{BoardCell, GridIndex, ToProtobuf};
 use server::proto::game_client::GameClient;
 use server::proto::game_server::GameServer;
 use server::proto::*;
@@ -71,7 +69,7 @@ async fn run_server(addr: &str) -> (JoinHandle<()>, CancellationToken) {
     return (t, ct);
 }
 
-/// Creates a game with id=1 and player_ids=[1, 2]
+/// Creates a core with id=1 and player_ids=[1, 2]
 async fn create_tic_tac_toe_game(client: &mut GameClient<Channel>, players: &[u64]) {
     let request = Request::new(CreateGameRequest {
         game_type: 1,
@@ -122,7 +120,7 @@ async fn game_session_invalid_request() {
         .unwrap_err();
     assert_eq!(status.code(), Code::InvalidArgument);
 
-    // invalid game type
+    // invalid core type
     let status = client
         .game_session(tokio_stream::once(GameSessionRequest {
             request: Some(game_session_request::Request::Init(GameSession {

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
-use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::Game;
+use game_server::core::tic_tac_toe::TicTacToe;
+use game_server::core::Game as _;
 
 use super::bot::Strategy;
 use crate::game::{BotDifficulty, FullGameInfo, GameInfo};

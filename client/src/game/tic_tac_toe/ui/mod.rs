@@ -2,7 +2,7 @@ mod components;
 mod systems;
 
 use bevy::prelude::*;
-use game_server::game::tic_tac_toe::TicTacToe;
+use game_server::core::tic_tac_toe::TicTacToe;
 
 use super::PlayerActionApplied;
 use crate::app_state::{AppState, MenuState};

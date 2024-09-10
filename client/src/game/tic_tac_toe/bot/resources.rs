@@ -2,7 +2,7 @@ use std::path::Path;
 
 use bevy::asset::io::file::FileAssetReader;
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
+use game_server::core;
 use tic_tac_toe_ai::Agent;
 
 use super::TTTBoard;
@@ -48,7 +48,7 @@ impl QLearningModel {
         }
     }
 
-    pub fn get_move(&self, difficulty: BotDifficulty, board: &TTTBoard) -> Option<GridIndex> {
+    pub fn get_move(&self, difficulty: BotDifficulty, board: &TTTBoard) -> Option<core::GridIndex> {
         let agent = match difficulty {
             BotDifficulty::Easy => self.easy.as_ref(),
             BotDifficulty::Medium => self.medium.as_ref(),

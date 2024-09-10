@@ -1,8 +1,6 @@
 use prost::Message;
 
-use crate::game::encoding::{ProtobufResult, ToProtobuf};
-use crate::game::grid::GridIndex;
-use crate::game::PlayerId;
+use crate::core::{GridIndex, PlayerPosition, ProtobufResult, ToProtobuf};
 use crate::proto;
 
 #[derive(Debug, PartialEq)]
@@ -63,7 +61,7 @@ pub enum PieceKind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Piece {
     pub kind: PieceKind,
-    pub owner: PlayerId,
+    pub owner: PlayerPosition,
 }
 
 impl ToProtobuf for Piece {
@@ -73,42 +71,42 @@ impl ToProtobuf for Piece {
 }
 
 impl Piece {
-    pub fn create_pawn(owner: PlayerId) -> Self {
+    pub fn create_pawn(owner: PlayerPosition) -> Self {
         Self {
             kind: PieceKind::Pawn,
             owner,
         }
     }
 
-    pub fn create_bishop(owner: PlayerId) -> Self {
+    pub fn create_bishop(owner: PlayerPosition) -> Self {
         Self {
             kind: PieceKind::Bishop,
             owner,
         }
     }
 
-    pub fn create_knight(owner: PlayerId) -> Self {
+    pub fn create_knight(owner: PlayerPosition) -> Self {
         Self {
             kind: PieceKind::Knight,
             owner,
         }
     }
 
-    pub fn create_rook(owner: PlayerId) -> Self {
+    pub fn create_rook(owner: PlayerPosition) -> Self {
         Self {
             kind: PieceKind::Rook,
             owner,
         }
     }
 
-    pub fn create_queen(owner: PlayerId) -> Self {
+    pub fn create_queen(owner: PlayerPosition) -> Self {
         Self {
             kind: PieceKind::Queen,
             owner,
         }
     }
 
-    pub fn create_king(owner: PlayerId) -> Self {
+    pub fn create_king(owner: PlayerPosition) -> Self {
         Self {
             kind: PieceKind::King,
             owner,
@@ -143,7 +141,7 @@ impl Piece {
         self.kind == PieceKind::King
     }
 
-    pub fn is_enemy(&self, player: PlayerId) -> bool {
+    pub fn is_enemy(&self, player: PlayerPosition) -> bool {
         self.owner != player
     }
 }

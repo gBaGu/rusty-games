@@ -4,20 +4,19 @@ use tokio::sync::mpsc::error::SendError;
 use tonic::Status;
 
 use super::GameId;
-use crate::game::encoding::ProtobufError;
-use crate::game::error::GameError;
+use crate::core::{GameError, ProtobufError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {
-    #[error("game must be finished before deletion")]
+    #[error("core must be finished before deletion")]
     DeleteActiveGameFailed,
-    #[error("this player already has an active game")]
+    #[error("this player already has an active core")]
     DuplicateGame,
-    #[error("unrecognized game type")]
+    #[error("unrecognized core type")]
     InvalidGameType,
-    #[error("game with this id doesn't exist: {id}")]
+    #[error("core with this id doesn't exist: {id}")]
     NoSuchGame { id: GameId },
-    #[error("player trying to access game they doesn't belong to")]
+    #[error("player trying to access core they doesn't belong to")]
     ForeignGame,
     #[error("internal error: {reason}")]
     Internal { reason: String },

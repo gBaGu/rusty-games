@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
-use game_server::game::Game;
+use game_server::core;
+use game_server::core::Game as _;
 use rand::{thread_rng, Rng};
 
 use super::{Delay, LocalGame, PendingAction, PlayerActionInitialized, QLearningModel, Strategy};
@@ -13,7 +13,7 @@ const MAX_ACTION_DELAY: u64 = 1500;
 
 /// Chooses random board index from a set of available cells.
 /// In case there is no empty cells in a board returns `None`.
-fn get_random_action(board: &TTTBoard) -> Option<GridIndex> {
+fn get_random_action(board: &TTTBoard) -> Option<core::GridIndex> {
     let empty_cells: Vec<_> = board
         .all_indexed()
         .filter_map(|(index, cell)| if cell.is_none() { Some(index) } else { None })
@@ -87,7 +87,7 @@ pub fn initialize_action(
                     println!("unable to get bot difficulty");
                     None
                 }
-            },
+            }
         };
         let Some(action) = action else {
             println!("unable to get action from bot strategy");
