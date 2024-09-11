@@ -4,12 +4,12 @@ mod systems;
 
 use bevy::prelude::*;
 
-pub use components::{BotBundle, NoDifficultyBotBundle, Strategy};
-
 use super::{LocalGame, PendingAction, PlayerActionInitialized, TTTBoard};
 use components::Delay;
 use resources::QLearningModel;
 use systems::*;
+
+pub use components::{BotBundle, NoDifficultyBotBundle, Strategy};
 
 pub struct BotPlugin;
 

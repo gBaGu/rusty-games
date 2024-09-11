@@ -9,21 +9,19 @@ use bevy::prelude::*;
 use game_server::core;
 use game_server::core::tic_tac_toe::TicTacToe;
 
-pub use components::{
-    ActiveGame, Board, BotDifficulty, CurrentPlayer, CurrentUser, GameLink, LocalGame,
-    LocalGameBundle, NetworkGame, NetworkGameBundle, PendingExistingGameBundle,
-    PendingNewGameBundle, PlayerPosition, UserAuthority, Winner,
-};
-pub use events::{BotReady, Draw, GameDataReady, PlayerWon, StateUpdated, TurnStart};
-pub use game_info::{FullGameInfo, GameInfo};
-pub use resources::GameMenuContext;
-
 use components::{
-    BotAuthority, CurrentUserPlayerBundle, NetworkPlayerBundle, PendingAction, PendingActionBundle,
+    BotAuthority, CurrentPlayer, CurrentUserPlayerBundle, LocalGame, LocalGameBundle, NetworkGame,
+    NetworkGameBundle, NetworkPlayerBundle, PendingAction, PendingActionBundle,
+    PendingExistingGameBundle, PendingNewGameBundle, PlayerPosition, UserAuthority,
 };
 use events::{PlayerActionApplied, PlayerActionInitialized};
 use resources::RefreshGameTimer;
 use systems::*;
+
+pub use components::{ActiveGame, Board, BotDifficulty, CurrentUser, GameLink, Winner};
+pub use events::{BotReady, Draw, GameDataReady, PlayerWon, StateUpdated, TurnStart};
+pub use game_info::{FullGameInfo, GameInfo};
+pub use resources::GameMenuContext;
 
 pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 

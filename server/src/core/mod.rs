@@ -11,12 +11,12 @@ use std::ops::{Deref, DerefMut};
 
 use generic_array::ArrayLength;
 
+use grid::Grid;
+use player_pool::{Player, PlayerQueue};
+
 pub use encoding::{FromProtobuf, ProtobufError, ProtobufResult, ToProtobuf};
 pub use error::GameError;
 pub use grid::GridIndex;
-
-use grid::Grid;
-use player_pool::{Player, PlayerQueue};
 
 pub type GameResult<T> = Result<T, GameError>;
 pub type PlayerPosition = u32; // TODO: change to u8

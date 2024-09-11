@@ -7,13 +7,13 @@ use bevy::prelude::*;
 use bevy::ui::UiSystem;
 use game_server::core;
 
-pub use events::TilePressed;
-
 use super::{LocalGame, PlayerActionApplied};
 use crate::app_state::AppState;
 use components::{TileBundle, WinAnimation, WinAnimationBundle};
 use resources::WinAnimationSpriteSheet;
 use systems::*;
+
+pub use events::TilePressed;
 
 pub const BORDER_WIDTH: f32 = 1.0;
 pub const WIN_ANIMATION_PATH: &str = "sprites/win_animation.png";
