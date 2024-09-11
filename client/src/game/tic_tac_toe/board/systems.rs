@@ -1,24 +1,40 @@
 use std::time::Duration;
 
-use bevy::input::{mouse::MouseButtonInput, ButtonState};
+use bevy::input::mouse::MouseButtonInput;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use game_server::core::tic_tac_toe as ttt;
 use game_server::core::{self, Game as _};
 
+use super::components::{BorderBundle, Tile};
+use super::resources::WinAnimationSpriteSheet;
 use super::{
-    calculate_tile_center, calculate_tile_size, LocalGame, PlayerActionApplied, TileBundle,
-    TilePressed, WinAnimation, WinAnimationBundle, BORDER_WIDTH, WIN_ANIMATION_PATH,
-    WIN_ANIMATION_SPRITE_COUNT, WIN_ANIMATION_SPRITE_SIZE, WIN_ANIMATION_TRANSITION_INTERVAL,
+    LocalGame, PlayerActionApplied, TileBundle, TilePressed, WinAnimation, WinAnimationBundle,
+    BORDER_WIDTH, WIN_ANIMATION_PATH, WIN_ANIMATION_SPRITE_COUNT, WIN_ANIMATION_SPRITE_SIZE,
+    WIN_ANIMATION_TRANSITION_INTERVAL,
 };
 use crate::commands::EntityCommandsExt;
 use crate::game::components::{Board, BoardBundle};
-use crate::game::tic_tac_toe::board::components::{BorderBundle, Tile};
-use crate::game::tic_tac_toe::board::resources::WinAnimationSpriteSheet;
 use crate::game::tic_tac_toe::resources::Images;
 use crate::game::tic_tac_toe::PlayerActionInitialized;
 use crate::game::{ActiveGame, CurrentPlayer, CurrentUser, GameLink, PlayerPosition, PlayerWon};
 use crate::interface::{GameReadyToExit, Playground};
+
+/// Returns center coordinates for a board tile with given `pos`.
+fn calculate_tile_center(board_size: Vec2, tile_size: Vec2, tile_pos: core::GridIndex) -> Vec2 {
+    let tile_x = (tile_size.x + BORDER_WIDTH) * tile_pos.col() as f32 + tile_size.x / 2.0
+        - board_size.x / 2.0;
+    let tile_y = (tile_size.y + BORDER_WIDTH) * (2 - tile_pos.row()) as f32 + tile_size.y / 2.0
+        - board_size.y / 2.0;
+    Vec2::new(tile_x, tile_y)
+}
+
+/// Returns tile size for a given board size.
+fn calculate_tile_size(board_size: Vec2) -> Vec2 {
+    let tile_width = (board_size.x - BORDER_WIDTH * 2.0) / 3.0;
+    let tile_height = (board_size.y - BORDER_WIDTH * 2.0) / 3.0;
+    Vec2::new(tile_width, tile_height)
+}
 
 pub fn create(
     mut commands: Commands,
@@ -127,7 +143,7 @@ pub fn handle_mouse_input(
         return;
     };
     for event in button_evr.read() {
-        if let ButtonState::Pressed = event.state {
+        if event.state.is_pressed() {
             let cursor_position = window.cursor_position();
             if let Some(world_position) = cursor_position
                 .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
@@ -226,15 +242,17 @@ pub fn create_win_animation(
             continue;
         };
         let Some((index1, _, index3)) =
-            ttt::winning_combinations().into_iter().find(|(id1, id2, id3)| {
-                let cell1 = game.board()[*id1];
-                let cell2 = game.board()[*id2];
-                let cell3 = game.board()[*id3];
-                if cell1 == cell2 && cell2 == cell3 {
-                    return cell1.is_some();
-                }
-                false
-            })
+            ttt::winning_combinations()
+                .into_iter()
+                .find(|(id1, id2, id3)| {
+                    let cell1 = game.board()[*id1];
+                    let cell2 = game.board()[*id2];
+                    let cell3 = game.board()[*id3];
+                    if cell1 == cell2 && cell2 == cell3 {
+                        return cell1.is_some();
+                    }
+                    false
+                })
         else {
             continue;
         };
