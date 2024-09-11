@@ -3,7 +3,7 @@ use std::time::Duration;
 use bevy::input::{mouse::MouseButtonInput, ButtonState};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use game_server::core::tic_tac_toe::winning_combinations;
+use game_server::core::tic_tac_toe as ttt;
 use game_server::core::{self, Game as _};
 
 use super::{
@@ -226,7 +226,7 @@ pub fn create_win_animation(
             continue;
         };
         let Some((index1, _, index3)) =
-            winning_combinations().into_iter().find(|(id1, id2, id3)| {
+            ttt::winning_combinations().into_iter().find(|(id1, id2, id3)| {
                 let cell1 = game.board()[*id1];
                 let cell2 = game.board()[*id2];
                 let cell3 = game.board()[*id3];

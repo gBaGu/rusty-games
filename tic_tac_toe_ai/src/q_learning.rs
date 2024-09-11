@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::ops::BitAnd;
 use std::path::Path;
 
-use game_server::core::tic_tac_toe::{winning_combinations, TicTacToe};
+use game_server::core::tic_tac_toe::{self as ttt, TicTacToe};
 use game_server::core::{BoardCell, Game, GameState, PlayerPosition};
 use rand::distributions::Uniform;
 use rand::Rng;
@@ -90,7 +90,7 @@ fn get_best_actions(actions: &[Action], action_values: &[Option<QValue>]) -> Vec
 
 fn calculate_reward(state: &<TicTacToe as Game>::Board, player: PlayerPosition) -> Reward {
     let mut reward = 0.0;
-    for (id1, id2, id3) in winning_combinations() {
+    for (id1, id2, id3) in ttt::winning_combinations() {
         reward += match (state[id1], state[id2], state[id3]) {
             (BoardCell(Some(p1)), BoardCell(Some(p2)), BoardCell(Some(p3)))
                 if p1 == p2 && p2 == p3 =>
