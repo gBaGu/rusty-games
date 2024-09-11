@@ -17,7 +17,7 @@ pub enum ProtobufError {
     InvalidPlayersLength { expected: usize, found: usize },
     #[error("invalid board length: expected={expected}, found={found}")]
     InvalidBoardLength { expected: usize, found: usize },
-    #[error("core state is invalid")]
+    #[error("game state is invalid")]
     InvalidGameState,
     #[error("message data has missing field: {missing_field}")]
     MessageDataMissing { missing_field: String },

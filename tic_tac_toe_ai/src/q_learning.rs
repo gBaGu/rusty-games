@@ -411,8 +411,6 @@ mod test {
     use rand_chacha::rand_core::SeedableRng;
 
     use super::*;
-    use game_server::core::tic_tac_toe::TicTacToe;
-    use game_server::core::Game;
 
     type TTTBoard = <TicTacToe as Game>::Board;
 

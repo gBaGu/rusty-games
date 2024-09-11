@@ -8,15 +8,15 @@ use crate::core::{GameError, ProtobufError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {
-    #[error("core must be finished before deletion")]
+    #[error("game must be finished before deletion")]
     DeleteActiveGameFailed,
-    #[error("this player already has an active core")]
+    #[error("this player already has an active game")]
     DuplicateGame,
-    #[error("unrecognized core type")]
+    #[error("unrecognized game type")]
     InvalidGameType,
-    #[error("core with this id doesn't exist: {id}")]
+    #[error("game with this id doesn't exist: {id}")]
     NoSuchGame { id: GameId },
-    #[error("player trying to access core they doesn't belong to")]
+    #[error("player trying to access game they doesn't belong to")]
     ForeignGame,
     #[error("internal error: {reason}")]
     Internal { reason: String },

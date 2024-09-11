@@ -8,7 +8,7 @@ pub enum GameError {
     CellIsEmpty { row: usize, col: usize },
     #[error("cell ({row}, {col}) is occupied")]
     CellIsOccupied { row: usize, col: usize },
-    #[error("can't make turn on a finished core")]
+    #[error("can't make turn on a finished game")]
     GameIsFinished,
     #[error("other player's turn (expected: {expected}, found: {found})")]
     NotYourTurn {

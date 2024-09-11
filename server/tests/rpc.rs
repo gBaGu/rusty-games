@@ -69,7 +69,7 @@ async fn run_server(addr: &str) -> (JoinHandle<()>, CancellationToken) {
     return (t, ct);
 }
 
-/// Creates a core with id=1 and player_ids=[1, 2]
+/// Creates a game with id=1 and player_ids=[1, 2]
 async fn create_tic_tac_toe_game(client: &mut GameClient<Channel>, players: &[u64]) {
     let request = Request::new(CreateGameRequest {
         game_type: 1,
@@ -120,7 +120,7 @@ async fn game_session_invalid_request() {
         .unwrap_err();
     assert_eq!(status.code(), Code::InvalidArgument);
 
-    // invalid core type
+    // invalid game type
     let status = client
         .game_session(tokio_stream::once(GameSessionRequest {
             request: Some(game_session_request::Request::Init(GameSession {

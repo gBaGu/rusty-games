@@ -66,10 +66,10 @@ impl TryFrom<core::GridIndex> for Position {
     }
 }
 
-impl TryFrom<chess::turn_data::TurnData> for PositionPair {
+impl TryFrom<chess::TurnData> for PositionPair {
     type Error = TryFromIntError;
 
-    fn try_from(value: chess::turn_data::TurnData) -> Result<Self, Self::Error> {
+    fn try_from(value: chess::TurnData) -> Result<Self, Self::Error> {
         Ok(Self {
             first: Some(value.from.try_into()?),
             second: Some(value.to.try_into()?),

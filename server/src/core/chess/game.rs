@@ -1777,7 +1777,7 @@ mod test {
         let e5 = GridIndex::new(3, 4);
         let mut chess = Chess::new();
 
-        // cannot update finished core
+        // cannot update finished game
         chess.set_draw();
         assert_eq!(
             chess
