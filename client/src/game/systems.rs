@@ -1,8 +1,7 @@
 use std::ops::Deref;
 
 use bevy::prelude::*;
-use game_server::game::{FinishedState, GameState};
-use game_server::proto;
+use game_server::{core, proto};
 
 use super::{
     ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PlayerPosition, PlayerWon,
@@ -30,7 +29,7 @@ pub fn confirm_pending_action(
         let _ = match event.deref() {
             Ok(response) => {
                 if let Some(new_state) = &response.get_ref().game_state {
-                    match GameState::try_from(new_state.clone()) {
+                    match core::GameState::try_from(new_state.clone()) {
                         Ok(state) => state,
                         Err(err) => {
                             println!("failed to convert game state: {}", err);
@@ -61,15 +60,15 @@ pub fn handle_state_updated(
 ) {
     for event in state_updated.read() {
         match event.state() {
-            GameState::Turn(next_player) => {
+            core::GameState::Turn(next_player) => {
                 println!("turn start: {:?}", event.game());
                 turn_start.send(TurnStart::new(event.game(), next_player));
             }
-            GameState::Finished(FinishedState::Win(winner)) => {
+            core::GameState::Finished(core::FinishedState::Win(winner)) => {
                 println!("win: {:?}", event.game());
                 player_won.send(PlayerWon::new(event.game(), winner));
             }
-            GameState::Finished(FinishedState::Draw) => {
+            core::GameState::Finished(core::FinishedState::Draw) => {
                 println!("draw: {:?}", event.game());
                 draw.send(Draw::new(event.game()));
             }

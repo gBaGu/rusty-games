@@ -2,11 +2,12 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
-use game_server::game::encoding::ToProtobuf;
+use game_server::core::ToProtobuf;
 use game_server::proto;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Code, Request};
-use tonic_health::pb::{health_check_response::ServingStatus, HealthCheckRequest};
+use tonic_health::pb::health_check_response::ServingStatus;
+use tonic_health::pb::HealthCheckRequest;
 
 use super::{CallTask, GameClient, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC};
 use crate::grpc::error::GrpcError;

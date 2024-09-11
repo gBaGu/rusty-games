@@ -9,9 +9,7 @@ use tokio_util::sync::CancellationToken;
 use tonic::transport::{server::TcpIncoming, Channel, Server};
 use tonic::{Code, Request};
 
-use server::game::encoding::ToProtobuf;
-use server::game::grid::GridIndex;
-use server::game::BoardCell;
+use server::core::{BoardCell, GridIndex, ToProtobuf};
 use server::proto::game_client::GameClient;
 use server::proto::game_server::GameServer;
 use server::proto::*;

@@ -4,36 +4,38 @@ use std::collections::HashMap;
 use generic_array::typenum;
 
 use super::iterator::{while_empty, GridExt};
-use crate::game::chess::turn_data::TurnData;
-use crate::game::chess::types::{MoveType, Piece, PieceKind, Team};
-use crate::game::error::GameError;
-use crate::game::grid::{Grid, GridIndex};
-use crate::game::player_pool::{Player, PlayerDataQueue, PlayerQueue};
-use crate::game::{BoardCell, Game, GameResult, GameState, PlayerId};
+use super::turn_data::TurnData;
+use super::types::{MoveType, Piece, PieceKind, Team};
+use crate::core::grid::{Grid, GridIndex};
+use crate::core::player_pool::{Player, PlayerDataQueue, PlayerQueue};
+use crate::core::{BoardCell, Game, GameError, GameResult, GameState, PlayerPosition};
 
 type Cell = BoardCell<Piece>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PlayerData {
-    id: PlayerId,
+    id: PlayerPosition,
     team: Team,
 }
 
 impl PlayerData {
-    pub fn new(id: PlayerId, team: Team) -> PlayerData {
+    pub fn new(id: PlayerPosition, team: Team) -> PlayerData {
         Self { id, team }
     }
 }
 
 impl Player for PlayerData {
-    type Id = PlayerId;
+    type Id = PlayerPosition;
 
-    fn id(&self) -> PlayerId {
+    fn id(&self) -> PlayerPosition {
         self.id
     }
 }
 
-fn initial_board(player1: PlayerId, player2: PlayerId) -> Grid<Cell, typenum::U8, typenum::U8> {
+fn initial_board(
+    player1: PlayerPosition,
+    player2: PlayerPosition,
+) -> Grid<Cell, typenum::U8, typenum::U8> {
     let mut board = Grid::<Cell, _, _>::default();
     // init pawns
     for i in 0..8 {
@@ -111,16 +113,16 @@ impl AdditionalState {
 
 #[derive(Clone, Debug)]
 pub struct Chess {
-    players: PlayerDataQueue<PlayerData, PlayerId>,
+    players: PlayerDataQueue<PlayerData, PlayerPosition>,
     state: GameState,
     board: Grid<Cell, typenum::U8, typenum::U8>,
-    player_state: HashMap<PlayerId, AdditionalState>,
+    player_state: HashMap<PlayerPosition, AdditionalState>,
 }
 
 impl Game for Chess {
     const NUM_PLAYERS: u8 = 2;
     type TurnData = TurnData;
-    type Players = PlayerDataQueue<PlayerData, PlayerId>;
+    type Players = PlayerDataQueue<PlayerData, PlayerPosition>;
     type Board = Grid<Cell, typenum::U8, typenum::U8>;
 
     fn new() -> Self {
@@ -150,7 +152,7 @@ impl Game for Chess {
         }
     }
 
-    fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState> {
+    fn update(&mut self, id: PlayerPosition, data: Self::TurnData) -> GameResult<GameState> {
         if self.is_finished() {
             return Err(GameError::GameIsFinished);
         }
@@ -235,25 +237,25 @@ impl Game for Chess {
 }
 
 impl Chess {
-    fn disable_castling(&mut self, id: PlayerId) {
+    fn disable_castling(&mut self, id: PlayerPosition) {
         if let Some(state) = self.player_state.get_mut(&id) {
             state.castle_options = CastleOptions::none();
         }
     }
 
-    fn disable_left_castling(&mut self, id: PlayerId) {
+    fn disable_left_castling(&mut self, id: PlayerPosition) {
         if let Some(state) = self.player_state.get_mut(&id) {
             state.castle_options.left = false;
         }
     }
 
-    fn disable_right_castling(&mut self, id: PlayerId) {
+    fn disable_right_castling(&mut self, id: PlayerPosition) {
         if let Some(state) = self.player_state.get_mut(&id) {
             state.castle_options.right = false;
         }
     }
 
-    fn update_king_position(&mut self, id: PlayerId, pos: GridIndex) {
+    fn update_king_position(&mut self, id: PlayerPosition, pos: GridIndex) {
         if let Some(state) = self.player_state.get_mut(&id) {
             state.king_pos = pos;
             // castling is disabled once king has moved
@@ -278,20 +280,20 @@ impl Chess {
         Ok(old_to)
     }
 
-    fn is_enemy(&self, position: GridIndex, player: PlayerId) -> bool {
+    fn is_enemy(&self, position: GridIndex, player: PlayerPosition) -> bool {
         self.board[position]
             .filter(|target| target.is_enemy(player))
             .is_some()
     }
 
-    fn is_in_check(&self, id: PlayerId) -> bool {
+    fn is_in_check(&self, id: PlayerPosition) -> bool {
         if let Some(threats) = self.player_state.get(&id).map(|state| &state.check) {
             return !threats.is_empty();
         }
         false
     }
 
-    fn get_king_position(&self, id: PlayerId) -> Option<GridIndex> {
+    fn get_king_position(&self, id: PlayerPosition) -> Option<GridIndex> {
         self.player_state.get(&id).map(|state| state.king_pos)
     }
 
@@ -319,7 +321,7 @@ impl Chess {
         MoveType::Other
     }
 
-    fn can_castle(&self, id: PlayerId) -> GameResult<CastleOptions> {
+    fn can_castle(&self, id: PlayerPosition) -> GameResult<CastleOptions> {
         let player_state = self
             .player_state
             .get(&id)
@@ -559,7 +561,7 @@ impl Chess {
         Ok(res)
     }
 
-    fn find_pieces_positions(&self, id: PlayerId) -> Vec<GridIndex> {
+    fn find_pieces_positions(&self, id: PlayerPosition) -> Vec<GridIndex> {
         let mut pieces = vec![];
         for row in 0..8 {
             for col in 0..8 {
@@ -607,11 +609,11 @@ mod test {
 
     use itertools::Itertools;
 
-    use crate::game::{FinishedState, PlayerId};
-    use crate::game::grid::WithGridIndex;
+    use crate::core::grid::WithGridIndex;
+    use crate::core::{FinishedState, PlayerPosition};
 
-    const FIRST_PLAYER: PlayerId = 0;
-    const SECOND_PLAYER: PlayerId = 1;
+    const FIRST_PLAYER: PlayerPosition = 0;
+    const SECOND_PLAYER: PlayerPosition = 1;
 
     fn row_indices(row: usize) -> Vec<GridIndex> {
         Grid::<Option<Cell>, typenum::U8, typenum::U8>::default()

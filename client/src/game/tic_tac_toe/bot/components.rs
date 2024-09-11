@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use game_server::game::PlayerId;
+use game_server::core;
 
 use crate::game::{BotAuthority, BotDifficulty, PlayerPosition};
 
@@ -52,7 +52,7 @@ pub struct NoDifficultyBotBundle {
 }
 
 impl NoDifficultyBotBundle {
-    pub fn new(id: u64, player_position: PlayerId, strategy: Strategy) -> Self {
+    pub fn new(id: u64, player_position: core::PlayerPosition, strategy: Strategy) -> Self {
         Self {
             player: PlayerPosition::new(player_position),
             auth: BotAuthority::new(id),
@@ -71,7 +71,7 @@ pub struct BotBundle {
 impl BotBundle {
     pub fn new(
         id: u64,
-        player_position: PlayerId,
+        player_position: core::PlayerPosition,
         strategy: Strategy,
         difficulty: BotDifficulty,
     ) -> Self {

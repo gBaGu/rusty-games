@@ -10,13 +10,12 @@ use game_server::proto;
 use tonic::transport;
 use tonic_health::pb::health_client;
 
-pub use components::CallTask;
-pub use events::{Connected, Disconnected, RpcResultReady};
-pub use resources::GrpcClient;
-
-use components::{ConnectClientTask, ReceiveUpdateTask};
+use components::{CallTask, ConnectClientTask, ReceiveUpdateTask};
 use resources::{ConnectTimer, ConnectionStatusWatcher};
 use systems::*;
+
+pub use events::{Connected, Disconnected, RpcResultReady};
+pub use resources::GrpcClient;
 
 pub const DEFAULT_GRPC_SERVER_ADDRESS: &str = "http://localhost:50051";
 pub const CONNECT_INTERVAL_SEC: f32 = 5.0;

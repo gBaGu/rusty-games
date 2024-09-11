@@ -10,13 +10,13 @@ mod systems;
 use bevy::prelude::*;
 use clap::Parser;
 
-pub use events::UserIdChanged;
-pub use resources::Settings;
-
 use app_state::AppState;
 use game::GamePlugin;
 use grpc::GrpcPlugin;
 use interface::InterfacePlugin;
+
+pub use events::UserIdChanged;
+pub use resources::Settings;
 
 #[derive(Parser)]
 #[command(version)]

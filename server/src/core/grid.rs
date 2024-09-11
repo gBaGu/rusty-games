@@ -1,7 +1,8 @@
-use generic_array::{ArrayLength, GenericArray};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, Index, IndexMut};
+
+use generic_array::{ArrayLength, GenericArray};
 
 /// Index struct to access elements in the [`Grid`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]

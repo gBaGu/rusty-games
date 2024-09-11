@@ -7,9 +7,8 @@ mod systems;
 mod ui;
 
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
-use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::Game;
+use game_server::core;
+use game_server::core::tic_tac_toe::TicTacToe;
 
 use crate::grpc::NetworkSystems;
 use resources::Images;
@@ -18,15 +17,15 @@ use systems::*;
 pub const X_SPRITE_PATH: &str = "sprites/X.png";
 pub const O_SPRITE_PATH: &str = "sprites/O.png";
 
-pub type TTTBoard = <TicTacToe as Game>::Board;
+pub type TTTBoard = <TicTacToe as core::Game>::Board;
 
 type LocalGame = super::LocalGame<TicTacToe>;
 type LocalGameBundle = super::LocalGameBundle<TicTacToe>;
 type NetworkGameBundle = super::NetworkGameBundle<TicTacToe>;
-type PendingAction = super::PendingAction<GridIndex>;
-type PendingActionBundle = super::PendingActionBundle<GridIndex>;
-type PlayerActionInitialized = super::PlayerActionInitialized<GridIndex>;
-type PlayerActionApplied = super::PlayerActionApplied<GridIndex>;
+type PendingAction = super::PendingAction<core::GridIndex>;
+type PendingActionBundle = super::PendingActionBundle<core::GridIndex>;
+type PlayerActionInitialized = super::PlayerActionInitialized<core::GridIndex>;
+type PlayerActionApplied = super::PlayerActionApplied<core::GridIndex>;
 
 pub struct TicTacToePlugin;
 

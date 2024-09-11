@@ -1,8 +1,7 @@
 use std::marker::PhantomData;
 
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
-use game_server::game::{Game, PlayerId};
+use game_server::core;
 
 use crate::interface::common::{PRIMARY_COLOR, SECONDARY_COLOR};
 use crate::interface::GameSettingsLink;
@@ -32,23 +31,20 @@ impl BotDifficulty {
 /// Player action that is waiting to be applied.
 #[derive(Debug, Component)]
 pub struct PendingAction<T> {
-    player: PlayerId,
+    player: core::PlayerPosition,
     action: T,
 }
 
 impl<T: Clone + Copy> PendingAction<T> {
-    pub fn new(player: PlayerId, action: T) -> Self {
-        Self {
-            player,
-            action,
-        }
+    pub fn new(player: core::PlayerPosition, action: T) -> Self {
+        Self { player, action }
     }
 
     pub fn action(&self) -> T {
         self.action
     }
 
-    pub fn player(&self) -> PlayerId {
+    pub fn player(&self) -> core::PlayerPosition {
         self.player
     }
 }
@@ -111,7 +107,7 @@ impl<T> Default for PendingGame<T> {
 #[derive(Debug, Default, Component, Deref, DerefMut)]
 pub struct LocalGame<T>(T);
 
-impl<T: Game> From<T> for LocalGame<T> {
+impl<T: core::Game> From<T> for LocalGame<T> {
     fn from(value: T) -> Self {
         Self(value)
     }
@@ -119,10 +115,10 @@ impl<T: Game> From<T> for LocalGame<T> {
 
 /// Component that stores position of a player in the game player queue.
 #[derive(Clone, Copy, Debug, PartialEq, Component, Deref, DerefMut)]
-pub struct PlayerPosition(PlayerId);
+pub struct PlayerPosition(core::PlayerPosition);
 
 impl PlayerPosition {
-    pub fn new(player: PlayerId) -> Self {
+    pub fn new(player: core::PlayerPosition) -> Self {
         Self(player)
     }
 }
@@ -248,7 +244,7 @@ impl<T: Default + Send + Sync + 'static> Default for LocalGameBundle<T> {
     }
 }
 
-impl<T: Game + Send + Sync + 'static> From<T> for LocalGameBundle<T> {
+impl<T: core::Game + Send + Sync + 'static> From<T> for LocalGameBundle<T> {
     fn from(value: T) -> Self {
         Self {
             local_game: LocalGame::from(value),
@@ -278,18 +274,18 @@ pub struct PendingActionBundle<T: Send + Sync + 'static> {
 }
 
 impl<T: Clone + Copy + Send + Sync + 'static> PendingActionBundle<T> {
-    pub fn new(player: PlayerId, action: T, status: PendingActionStatus) -> Self {
+    pub fn new(player: core::PlayerPosition, action: T, status: PendingActionStatus) -> Self {
         Self {
             action: PendingAction::new(player, action),
             status,
         }
     }
 
-    pub fn new_confirmed(player: PlayerId, action: T) -> Self {
+    pub fn new_confirmed(player: core::PlayerPosition, action: T) -> Self {
         Self::new(player, action, PendingActionStatus::Confirmed)
     }
 
-    pub fn new_unconfirmed(player: PlayerId, action: T) -> Self {
+    pub fn new_unconfirmed(player: core::PlayerPosition, action: T) -> Self {
         Self::new(player, action, PendingActionStatus::NotConfirmed)
     }
 }
@@ -302,7 +298,7 @@ pub struct CurrentUserPlayerBundle {
 }
 
 impl CurrentUserPlayerBundle {
-    pub fn new(id: u64, player_position: PlayerId) -> Self {
+    pub fn new(id: u64, player_position: core::PlayerPosition) -> Self {
         Self {
             player: PlayerPosition(player_position),
             auth: UserAuthority::new(id),
@@ -318,7 +314,7 @@ pub struct NetworkPlayerBundle {
 }
 
 impl NetworkPlayerBundle {
-    pub fn new(id: u64, player_position: PlayerId) -> Self {
+    pub fn new(id: u64, player_position: core::PlayerPosition) -> Self {
         Self {
             player: PlayerPosition(player_position),
             auth: UserAuthority::new(id),
@@ -328,21 +324,21 @@ impl NetworkPlayerBundle {
 
 /// Component that stores a position inside the board.
 #[derive(Clone, Copy, Debug, PartialEq, Component, Deref, DerefMut)]
-pub struct Position(GridIndex);
+pub struct Position(core::GridIndex);
 
 impl Position {
     pub fn new(row: usize, col: usize) -> Self {
-        Self(GridIndex::new(row, col))
+        Self(core::GridIndex::new(row, col))
     }
 }
 
-impl From<GridIndex> for Position {
-    fn from(value: GridIndex) -> Self {
+impl From<core::GridIndex> for Position {
+    fn from(value: core::GridIndex) -> Self {
         Self(value)
     }
 }
 
-impl From<Position> for GridIndex {
+impl From<Position> for core::GridIndex {
     fn from(value: Position) -> Self {
         value.0
     }

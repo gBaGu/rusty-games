@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game_server::game::PlayerId;
+use game_server::core;
 
 use super::ITEM_HEIGHT;
 use crate::game::{GameLink, PlayerPosition};
@@ -66,7 +66,7 @@ pub struct PlayerInfoBundle {
 }
 
 impl PlayerInfoBundle {
-    pub fn new_active(game: Entity, player: PlayerId, color: Color) -> Self {
+    pub fn new_active(game: Entity, player: core::PlayerPosition, color: Color) -> Self {
         let mut node = ui_info_container();
         node.border_color = color.into();
         Self {
@@ -77,7 +77,7 @@ impl PlayerInfoBundle {
         }
     }
 
-    pub fn new_inactive(game: Entity, player: PlayerId, color: Color) -> Self {
+    pub fn new_inactive(game: Entity, player: core::PlayerPosition, color: Color) -> Self {
         Self {
             node: ui_info_container(),
             game_link: GameLink::new(game),

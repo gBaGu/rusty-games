@@ -2,9 +2,9 @@ use std::iter::{Iterator, Scan};
 
 use generic_array::ArrayLength;
 
-use crate::game::chess::types::Piece;
-use crate::game::grid::{Grid, GridIndex, WithGridIndex};
-use crate::game::BoardCell;
+use super::types::Piece;
+use crate::core::grid::{Grid, GridIndex, WithGridIndex};
+use crate::core::BoardCell;
 
 type IndexedCell<'a> = (GridIndex, &'a BoardCell<Piece>);
 

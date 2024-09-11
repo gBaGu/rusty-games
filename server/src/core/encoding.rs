@@ -1,8 +1,8 @@
-use prost::Message;
 use std::num::TryFromIntError;
 
-use crate::game::BoardCell;
-use crate::game::grid::GridIndex;
+use prost::Message;
+
+use crate::core::{BoardCell, GridIndex};
 use crate::proto::{Maybe, Position};
 
 pub type ProtobufResult<T> = Result<T, ProtobufError>;

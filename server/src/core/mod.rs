@@ -1,25 +1,28 @@
 pub mod chess;
-pub mod encoding;
-pub mod grid;
 pub mod tic_tac_toe;
 
-pub(crate) mod error;
-pub(crate) mod player_pool;
+mod encoding;
+mod error;
+mod grid;
+mod player_pool;
 
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
+
 use generic_array::ArrayLength;
 
-use encoding::{FromProtobuf, ProtobufError, ToProtobuf};
-use error::GameError;
 use grid::Grid;
 use player_pool::{Player, PlayerQueue};
 
-pub type GameResult<T> = Result<T, GameError>;
-pub type PlayerId = u32; // TODO: change to u8, rename to PlayerPosition
+pub use encoding::{FromProtobuf, ProtobufError, ProtobufResult, ToProtobuf};
+pub use error::GameError;
+pub use grid::GridIndex;
 
-impl Player for PlayerId {
-    type Id = PlayerId;
+pub type GameResult<T> = Result<T, GameError>;
+pub type PlayerPosition = u32; // TODO: change to u8
+
+impl Player for PlayerPosition {
+    type Id = PlayerPosition;
 
     fn id(&self) -> Self::Id {
         *self
@@ -66,13 +69,13 @@ impl<T> DerefMut for BoardCell<T> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FinishedState {
-    Win(PlayerId),
+    Win(PlayerPosition),
     Draw,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GameState {
-    Turn(PlayerId),
+    Turn(PlayerPosition),
     Finished(FinishedState),
 }
 
@@ -111,11 +114,11 @@ where
 pub trait Game: Sized {
     const NUM_PLAYERS: u8;
     type TurnData: FromProtobuf;
-    type Players: PlayerQueue<Id = PlayerId>;
+    type Players: PlayerQueue<Id = PlayerPosition>;
     type Board: GameBoard;
 
     fn new() -> Self;
-    fn update(&mut self, id: PlayerId, data: Self::TurnData) -> GameResult<GameState>;
+    fn update(&mut self, id: PlayerPosition, data: Self::TurnData) -> GameResult<GameState>;
 
     fn board(&self) -> &Self::Board;
     fn board_mut(&mut self) -> &mut Self::Board;
@@ -136,7 +139,7 @@ pub trait Game: Sized {
         self.state()
     }
 
-    fn set_winner(&mut self, id: PlayerId) -> GameState {
+    fn set_winner(&mut self, id: PlayerPosition) -> GameState {
         self.set_state(GameState::Finished(FinishedState::Win(id)));
         self.state()
     }
@@ -158,7 +161,7 @@ pub trait Game: Sized {
             .ok_or(GameError::PlayerPoolCorrupted)
     }
 
-    fn get_player_ids(&self) -> Vec<PlayerId> {
+    fn get_player_ids(&self) -> Vec<PlayerPosition> {
         self.players().as_slice().iter().map(|p| p.id()).collect()
     }
 

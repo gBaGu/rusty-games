@@ -1,9 +1,8 @@
 use std::ops::Deref;
 
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
-use game_server::game::tic_tac_toe::TicTacToe;
-use game_server::game::{BoardCell, FinishedState, Game, GameState};
+use game_server::core::tic_tac_toe::TicTacToe;
+use game_server::core::{self, Game as _};
 use game_server::proto;
 
 use super::bot::{BotBundle, NoDifficultyBotBundle};
@@ -158,8 +157,8 @@ pub fn handle_get_game(
                 let mut update_count = 0;
                 for (i, row) in full_info.board.iter().enumerate() {
                     for (j, cell) in row.iter().enumerate() {
-                        if let BoardCell(Some(player)) = cell {
-                            let pos = GridIndex::new(i, j);
+                        if let core::BoardCell(Some(player)) = cell {
+                            let pos = core::GridIndex::new(i, j);
                             let local_cell = &mut local_game.board_mut()[pos];
                             if local_cell.is_none() {
                                 *local_cell = *cell;
@@ -224,14 +223,14 @@ pub fn create(
         }
         .id();
         match state {
-            GameState::Turn(player) => {
+            core::GameState::Turn(player) => {
                 if player == user_position {
                     commands.entity(user_id).insert(CurrentPlayer);
                 } else if player == enemy_position {
                     commands.entity(enemy_id).insert(CurrentPlayer);
                 }
             }
-            GameState::Finished(FinishedState::Win(player)) => {
+            core::GameState::Finished(core::FinishedState::Win(player)) => {
                 if player == user_position {
                     commands.entity(user_id).insert(Winner);
                 } else if player == enemy_position {

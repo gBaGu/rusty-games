@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use game_server::game::{GameState, PlayerId};
+use game_server::core;
 
 /// Event that signals that all data required to create a game entity is ready.
 #[derive(Debug, Event)]
@@ -11,7 +11,11 @@ pub struct GameDataReady {
 
 impl GameDataReady {
     pub fn new(id: Option<u64>, current_user: u64, ctx: Entity) -> Self {
-        Self { id, current_user, context: ctx }
+        Self {
+            id,
+            current_user,
+            context: ctx,
+        }
     }
 
     pub fn new_over_network(id: u64, current_user: u64, ctx: Entity) -> Self {
@@ -40,11 +44,11 @@ impl GameDataReady {
 pub struct BotReady {
     bot: Entity,
     game: Entity,
-    player_position: PlayerId,
+    player_position: core::PlayerPosition,
 }
 
 impl BotReady {
-    pub fn new(bot: Entity, game: Entity, player_position: PlayerId) -> Self {
+    pub fn new(bot: Entity, game: Entity, player_position: core::PlayerPosition) -> Self {
         Self {
             bot,
             game,
@@ -60,7 +64,7 @@ impl BotReady {
         self.game
     }
 
-    pub fn player_position(&self) -> PlayerId {
+    pub fn player_position(&self) -> core::PlayerPosition {
         self.player_position
     }
 }
@@ -69,12 +73,12 @@ impl BotReady {
 #[derive(Clone, Copy, Debug, Event)]
 pub struct PlayerActionInitialized<T> {
     game: Entity,
-    player: PlayerId,
+    player: core::PlayerPosition,
     action: T,
 }
 
 impl<T: Clone + Copy> PlayerActionInitialized<T> {
-    pub fn new(game: Entity, player: PlayerId, action: T) -> Self {
+    pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,
             player,
@@ -86,7 +90,7 @@ impl<T: Clone + Copy> PlayerActionInitialized<T> {
         self.game
     }
 
-    pub fn player(&self) -> PlayerId {
+    pub fn player(&self) -> core::PlayerPosition {
         self.player
     }
 
@@ -99,12 +103,12 @@ impl<T: Clone + Copy> PlayerActionInitialized<T> {
 #[derive(Clone, Copy, Debug, Event)]
 pub struct PlayerActionApplied<T> {
     game: Entity,
-    player: PlayerId,
+    player: core::PlayerPosition,
     action: T,
 }
 
 impl<T: Clone + Copy> PlayerActionApplied<T> {
-    pub fn new(game: Entity, player: PlayerId, action: T) -> Self {
+    pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,
             player,
@@ -116,7 +120,7 @@ impl<T: Clone + Copy> PlayerActionApplied<T> {
         self.game
     }
 
-    pub fn player(&self) -> PlayerId {
+    pub fn player(&self) -> core::PlayerPosition {
         self.player
     }
 
@@ -129,22 +133,19 @@ impl<T: Clone + Copy> PlayerActionApplied<T> {
 #[derive(Debug, Event)]
 pub struct TurnStart {
     game: Entity,
-    player: PlayerId,
+    player: core::PlayerPosition,
 }
 
 impl TurnStart {
-    pub fn new(game: Entity, player: PlayerId) -> Self {
-        Self {
-            game,
-            player,
-        }
+    pub fn new(game: Entity, player: core::PlayerPosition) -> Self {
+        Self { game, player }
     }
 
     pub fn game(&self) -> Entity {
         self.game
     }
 
-    pub fn player(&self) -> PlayerId {
+    pub fn player(&self) -> core::PlayerPosition {
         self.player
     }
 }
@@ -153,22 +154,19 @@ impl TurnStart {
 #[derive(Debug, Event)]
 pub struct StateUpdated {
     game: Entity,
-    state: GameState,
+    state: core::GameState,
 }
 
 impl StateUpdated {
-    pub fn new(game: Entity, state: GameState) -> Self {
-        Self {
-            game,
-            state,
-        }
+    pub fn new(game: Entity, state: core::GameState) -> Self {
+        Self { game, state }
     }
 
     pub fn game(&self) -> Entity {
         self.game
     }
 
-    pub fn state(&self) -> GameState {
+    pub fn state(&self) -> core::GameState {
         self.state
     }
 }
@@ -193,22 +191,19 @@ impl Draw {
 #[derive(Debug, Event)]
 pub struct PlayerWon {
     game: Entity,
-    player: PlayerId,
+    player: core::PlayerPosition,
 }
 
 impl PlayerWon {
-    pub fn new(game: Entity, player: PlayerId) -> Self {
-        Self {
-            game,
-            player,
-        }
+    pub fn new(game: Entity, player: core::PlayerPosition) -> Self {
+        Self { game, player }
     }
 
     pub fn game(&self) -> Entity {
         self.game
     }
 
-    pub fn player(&self) -> PlayerId {
+    pub fn player(&self) -> core::PlayerPosition {
         self.player
     }
 }

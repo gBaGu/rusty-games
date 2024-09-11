@@ -12,20 +12,19 @@ use super::error::RpcError;
 use super::lobby_manager::WorkerCommand;
 use super::rpc::{RpcInnerResult, UserId};
 use super::GameId;
-use crate::game::encoding::FromProtobuf;
-use crate::game::{Game, GameState, PlayerId};
+use crate::core::{FromProtobuf, Game, GameState, PlayerPosition};
 use crate::proto::{game_session_request, GameSessionRequest};
 
 type ChannelSendResult<T> = Result<(), SendError<T>>;
 
 #[derive(Debug)]
 pub struct MoveEvent {
-    pub player: PlayerId,
+    pub player: PlayerPosition,
     pub data: Vec<u8>,
 }
 
 impl MoveEvent {
-    pub fn new(player: PlayerId, data: Vec<u8>) -> Self {
+    pub fn new(player: PlayerPosition, data: Vec<u8>) -> Self {
         Self { player, data }
     }
 }
@@ -134,7 +133,7 @@ impl Connection {
 
     pub fn notify(
         &self,
-        player: PlayerId,
+        player: PlayerPosition,
         data: Vec<u8>,
     ) -> ChannelSendResult<RpcInnerResult<MoveEvent>> {
         self.reply_sender.send(Ok(MoveEvent::new(player, data)))

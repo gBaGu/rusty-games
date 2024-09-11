@@ -9,6 +9,11 @@ mod systems;
 use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
+use crate::app_state::{AppState, MenuState};
+use crate::grpc::NetworkSystems;
+use events::{GameLeft, PlayerGamesReady};
+use systems::*;
+
 pub use components::{
     CreateGame, GameSettings, GameSettingsLink, GameTag, PlayerColor, Playground,
     SubmitButtonBundle, UserIdInput, UserIdTextInputBundle,
@@ -17,11 +22,6 @@ pub use events::{GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, 
 pub use game_list::GameList;
 pub use resources::RefreshGamesTimer;
 pub use systems::{enter_game_page, remove_game_page_context};
-
-use crate::app_state::{AppState, MenuState};
-use crate::grpc::NetworkSystems;
-use events::{GameLeft, PlayerGamesReady};
-use systems::*;
 
 pub struct InterfacePlugin;
 

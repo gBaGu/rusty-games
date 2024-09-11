@@ -1,7 +1,7 @@
 extern crate server;
 
-use server::game::tic_tac_toe::TicTacToe;
-use server::game::Game;
+use server::core::tic_tac_toe::TicTacToe;
+use server::core::Game;
 
 fn main() {
     let player1 = 1;

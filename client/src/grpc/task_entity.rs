@@ -1,7 +1,8 @@
 use std::ops::DerefMut;
 
 use bevy::prelude::*;
-use bevy::tasks::{block_on, futures_lite::future, Task};
+use bevy::tasks::futures_lite::future;
+use bevy::tasks::{self, Task};
 
 /// This struct is intended for use with entities that only needed to wait on a task.
 /// It makes sure that task entity is despawned after successful poll
@@ -22,7 +23,7 @@ impl<'a, 'w, 's, T> TaskEntity<'a, 'w, 's, T> {
 
     /// Polls future and in case if result is ready adds despawn command to `commands`
     pub fn poll_once(&mut self) -> Option<T> {
-        block_on(future::poll_once(self.task.deref_mut())).and_then(|res| {
+        tasks::block_on(future::poll_once(self.task.deref_mut())).and_then(|res| {
             self.commands.entity(self.entity).despawn();
             Some(res)
         })

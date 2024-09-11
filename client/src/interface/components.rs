@@ -3,9 +3,9 @@ use std::marker::PhantomData;
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
 
+use super::common::{self, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
 use crate::app_state::{AppState, AppStateTransition};
 use crate::game::{GameInfo, GameLink};
-use crate::interface::common::{column_node_bundle, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
 
 /// Component that indicates that the game is being shawn on the screen.
 /// Board and in-game ui will be connected to this component.
@@ -97,7 +97,7 @@ pub struct GameSettingsBundle {
 impl GameSettingsBundle {
     pub fn new() -> Self {
         Self {
-            node: column_node_bundle(),
+            node: common::column_node_bundle(),
             game_settings: GameSettings,
         }
     }

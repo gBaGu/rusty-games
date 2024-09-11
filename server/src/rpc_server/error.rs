@@ -4,8 +4,7 @@ use tokio::sync::mpsc::error::SendError;
 use tonic::Status;
 
 use super::GameId;
-use crate::game::encoding::ProtobufError;
-use crate::game::error::GameError;
+use crate::core::{GameError, ProtobufError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {

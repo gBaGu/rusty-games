@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use game_server::game::grid::GridIndex;
-use game_server::game::Game;
-use rand::{thread_rng, Rng};
+use game_server::core;
+use game_server::core::Game as _;
+use rand::Rng;
 
 use super::{Delay, LocalGame, PendingAction, PlayerActionInitialized, QLearningModel, Strategy};
 use crate::game::{BotAuthority, BotDifficulty, BotReady, CurrentPlayer, PlayerPosition, TTTBoard};
@@ -13,7 +13,7 @@ const MAX_ACTION_DELAY: u64 = 1500;
 
 /// Chooses random board index from a set of available cells.
 /// In case there is no empty cells in a board returns `None`.
-fn get_random_action(board: &TTTBoard) -> Option<GridIndex> {
+fn get_random_action(board: &TTTBoard) -> Option<core::GridIndex> {
     let empty_cells: Vec<_> = board
         .all_indexed()
         .filter_map(|(index, cell)| if cell.is_none() { Some(index) } else { None })
@@ -21,7 +21,7 @@ fn get_random_action(board: &TTTBoard) -> Option<GridIndex> {
     if empty_cells.is_empty() {
         return None;
     }
-    let mut rng = thread_rng();
+    let mut rng = rand::thread_rng();
     let index = rng.gen_range(0..empty_cells.len());
     Some(empty_cells[index])
 }
@@ -30,7 +30,7 @@ fn get_random_action(board: &TTTBoard) -> Option<GridIndex> {
 /// reset and start delay timer.
 /// Duration of the delay is chosen randomly between `MIN_ACTION_DELAY` and `MAX_ACTION_DELAY`.
 pub fn start_delay(mut bot: Query<&mut Delay, (With<BotAuthority>, Added<CurrentPlayer>)>) {
-    let mut rng = thread_rng();
+    let mut rng = rand::thread_rng();
     for mut delay in bot.iter_mut() {
         let milliseconds = rng.gen_range(MIN_ACTION_DELAY..MAX_ACTION_DELAY);
         println!("starting bot delay ({}ms)", milliseconds);
@@ -87,7 +87,7 @@ pub fn initialize_action(
                     println!("unable to get bot difficulty");
                     None
                 }
-            },
+            }
         };
         let Some(action) = action else {
             println!("unable to get action from bot strategy");

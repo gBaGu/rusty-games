@@ -1,7 +1,6 @@
 use prost::Message;
 
-use crate::game::encoding::{FromProtobuf, ProtobufError, ProtobufResult, ToProtobuf};
-use crate::game::grid::GridIndex;
+use crate::core::{FromProtobuf, GridIndex, ProtobufError, ProtobufResult, ToProtobuf};
 use crate::proto::PositionPair;
 
 #[derive(Clone, Copy, Debug)]
@@ -19,25 +18,17 @@ impl TurnData {
 impl FromProtobuf for TurnData {
     fn from_protobuf(buf: &[u8]) -> Result<Self, ProtobufError> {
         let pos = PositionPair::decode(buf)?;
-        let first = pos
-            .first
-            .ok_or_else(|| ProtobufError::MessageDataMissing {
-                missing_field: "first".to_string(),
-            })?;
+        let first = pos.first.ok_or_else(|| ProtobufError::MessageDataMissing {
+            missing_field: "first".to_string(),
+        })?;
         let second = pos
             .second
             .ok_or_else(|| ProtobufError::MessageDataMissing {
                 missing_field: "second".to_string(),
             })?;
         let turn_data = TurnData::new(
-            GridIndex::new(
-                usize::try_from(first.row)?,
-                usize::try_from(first.col)?,
-            ),
-            GridIndex::new(
-                usize::try_from(second.row)?,
-                usize::try_from(second.col)?,
-            ),
+            GridIndex::new(usize::try_from(first.row)?, usize::try_from(first.col)?),
+            GridIndex::new(usize::try_from(second.row)?, usize::try_from(second.col)?),
         );
         Ok(turn_data)
     }

@@ -11,7 +11,7 @@ use super::game_storage::GameStorage;
 use super::lobby::{Connection, MoveEvent, UpdateRequestReader};
 use super::rpc::{GameImpl, RpcInnerResult, UserId};
 use super::GameId;
-use crate::game::{Game, GameState};
+use crate::core::{Game, GameState};
 use crate::proto;
 
 #[derive(Debug)]

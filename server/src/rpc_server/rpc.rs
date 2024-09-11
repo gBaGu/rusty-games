@@ -8,8 +8,8 @@ use tonic::{Request, Response, Status, Streaming};
 
 use super::error::RpcError;
 use super::lobby_manager::LobbyManager;
-use crate::game::chess::game::Chess;
-use crate::game::tic_tac_toe::TicTacToe;
+use crate::core::chess::Chess;
+use crate::core::tic_tac_toe::TicTacToe;
 use crate::proto;
 
 pub type GameId = u64;

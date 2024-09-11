@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputSubmitEvent, TextInputValue};
-use game_server::game::tic_tac_toe::TicTacToe;
+use game_server::core::tic_tac_toe::TicTacToe;
 use game_server::proto;
 
 use crate::commands::EntityCommandsExt;

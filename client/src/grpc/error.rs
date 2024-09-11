@@ -1,4 +1,4 @@
-use game_server::game::encoding::ProtobufError;
+use game_server::core::ProtobufError;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum GrpcError {

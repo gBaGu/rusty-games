@@ -1,4 +1,4 @@
-use super::PlayerId;
+use super::PlayerPosition;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum GameError {
@@ -11,11 +11,17 @@ pub enum GameError {
     #[error("can't make turn on a finished game")]
     GameIsFinished,
     #[error("other player's turn (expected: {expected}, found: {found})")]
-    NotYourTurn { expected: PlayerId, found: PlayerId },
+    NotYourTurn {
+        expected: PlayerPosition,
+        found: PlayerPosition,
+    },
     #[error("failed to make move: {reason}")]
     InvalidMove { reason: String },
     #[error("player {found} is unable to make this move, player {expected} is expected")]
-    UnauthorizedMove { expected: PlayerId, found: PlayerId },
+    UnauthorizedMove {
+        expected: PlayerPosition,
+        found: PlayerPosition,
+    },
     #[error("failed to switch players in the pool")]
     PlayerPoolCorrupted,
 }
@@ -33,11 +39,11 @@ impl GameError {
         Self::InvalidMove { reason }
     }
 
-    pub fn not_your_turn(expected: PlayerId, found: PlayerId) -> Self {
+    pub fn not_your_turn(expected: PlayerPosition, found: PlayerPosition) -> Self {
         Self::NotYourTurn { expected, found }
     }
 
-    pub fn unauthorized_move(expected: PlayerId, found: PlayerId) -> Self {
+    pub fn unauthorized_move(expected: PlayerPosition, found: PlayerPosition) -> Self {
         Self::UnauthorizedMove { expected, found }
     }
 }

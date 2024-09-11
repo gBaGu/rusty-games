@@ -6,24 +6,22 @@ mod systems;
 mod tic_tac_toe;
 
 use bevy::prelude::*;
-use game_server::game;
-use game_server::game::tic_tac_toe::TicTacToe;
-
-pub use components::{
-    ActiveGame, Board, BotDifficulty, CurrentPlayer, CurrentUser, GameLink, LocalGame,
-    LocalGameBundle, NetworkGame, NetworkGameBundle, PendingExistingGameBundle,
-    PendingNewGameBundle, PlayerPosition, UserAuthority, Winner,
-};
-pub use events::{BotReady, Draw, GameDataReady, PlayerWon, StateUpdated, TurnStart};
-pub use game_info::{FullGameInfo, GameInfo};
-pub use resources::GameMenuContext;
+use game_server::core;
+use game_server::core::tic_tac_toe::TicTacToe;
 
 use components::{
-    BotAuthority, CurrentUserPlayerBundle, NetworkPlayerBundle, PendingAction, PendingActionBundle,
+    BotAuthority, CurrentPlayer, CurrentUserPlayerBundle, LocalGame, LocalGameBundle, NetworkGame,
+    NetworkGameBundle, NetworkPlayerBundle, PendingAction, PendingActionBundle,
+    PendingExistingGameBundle, PendingNewGameBundle, PlayerPosition, UserAuthority,
 };
 use events::{PlayerActionApplied, PlayerActionInitialized};
 use resources::RefreshGameTimer;
 use systems::*;
+
+pub use components::{ActiveGame, Board, BotDifficulty, CurrentUser, GameLink, Winner};
+pub use events::{BotReady, Draw, GameDataReady, PlayerWon, StateUpdated, TurnStart};
+pub use game_info::{FullGameInfo, GameInfo};
+pub use resources::GameMenuContext;
 
 pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 
@@ -32,7 +30,7 @@ pub const BOARD_SIZE: usize = 3;
 const BOARD_PROTO_SIZE: usize = BOARD_SIZE * BOARD_SIZE;
 const PLAYERS_SIZE: usize = 2;
 
-pub type TTTBoard = <TicTacToe as game::Game>::Board;
+pub type TTTBoard = <TicTacToe as core::Game>::Board;
 
 pub struct GamePlugin;
 
