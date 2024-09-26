@@ -84,6 +84,14 @@ impl GameLink {
     }
 }
 
+/// Component that indicates that the entity is a game.
+#[derive(Debug, Component)]
+pub struct Game;
+
+/// Component that indicates finished game.
+#[derive(Debug, Component)]
+pub struct FinishedGame;
+
 /// Component that indicates that the game is being played now.
 #[derive(Debug, Component)]
 pub struct ActiveGame;
@@ -234,12 +242,14 @@ impl<T: Send + Sync + 'static> PendingExistingGameBundle<T> {
 #[derive(Debug, Bundle)]
 pub struct LocalGameBundle<T: Send + Sync + 'static> {
     pub local_game: LocalGame<T>,
+    game: Game,
 }
 
 impl<T: Default + Send + Sync + 'static> Default for LocalGameBundle<T> {
     fn default() -> Self {
         Self {
             local_game: LocalGame(T::default()),
+            game: Game,
         }
     }
 }
@@ -248,6 +258,7 @@ impl<T: core::Game + Send + Sync + 'static> From<T> for LocalGameBundle<T> {
     fn from(value: T) -> Self {
         Self {
             local_game: LocalGame::from(value),
+            game: Game,
         }
     }
 }
@@ -256,6 +267,7 @@ impl<T: core::Game + Send + Sync + 'static> From<T> for LocalGameBundle<T> {
 pub struct NetworkGameBundle<T: Send + Sync + 'static> {
     pub id: NetworkGame,
     pub local_game: LocalGame<T>,
+    game: Game,
 }
 
 impl<T: Send + Sync + 'static> NetworkGameBundle<T> {
@@ -263,6 +275,7 @@ impl<T: Send + Sync + 'static> NetworkGameBundle<T> {
         Self {
             id: NetworkGame(id),
             local_game: LocalGame(game),
+            game: Game,
         }
     }
 }

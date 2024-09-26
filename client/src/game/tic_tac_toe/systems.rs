@@ -346,7 +346,7 @@ pub fn send_pending_action(
 /// Update timer and if it's finished stop it and create a task with grpc GetGame call.
 pub fn send_get_game(
     mut commands: Commands,
-    game: Query<&NetworkGame, (With<ActiveGame>, With<LocalGame>)>,
+    game: Query<&NetworkGame, With<ActiveGame>>,
     mut timer: ResMut<RefreshGameTimer>,
     client: Res<GrpcClient>,
     time: Res<Time>,
