@@ -52,7 +52,10 @@ impl Plugin for GamePlugin {
                     update_current_player,
                     handle_draw,
                     handle_win,
+                    set_game_finished,
                     update_current_user,
+                    clear_foreign_network_games,
+                    clear_game_on_exit,
                 ),
             );
     }
