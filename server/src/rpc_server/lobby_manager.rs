@@ -64,6 +64,7 @@ impl Worker {
                                     game, user, data
                                 );
                                 if let Err(err) = storage.update(game, user, &data) {
+                                    println!("worker: UpdateGame failed: {}", err);
                                     if let Err(err) = storage.notify_err(game, user, err) {
                                         println!("worker: failed to notify on error: {}", err);
                                     }
