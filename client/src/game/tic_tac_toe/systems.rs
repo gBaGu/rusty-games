@@ -10,7 +10,7 @@ use super::{
     Images, LocalGame, LocalGameBundle, NetworkGameBundle, PendingAction, PendingActionBundle,
     PlayerActionApplied, PlayerActionInitialized, O_SPRITE_PATH, X_SPRITE_PATH,
 };
-use crate::game::components::{PendingActionStatus, PendingGame};
+use crate::game::components::{Game, PendingActionStatus, PendingGame};
 use crate::game::resources::RefreshGameTimer;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
 use crate::game::{
@@ -190,7 +190,6 @@ pub fn create(
     mut commands: Commands,
     context: Query<(Entity, &CreateGameContext)>,
     mut game_data_ready: EventReader<GameDataReady>,
-    mut game_ready: EventWriter<GameReady>,
 ) {
     for event in game_data_ready.read() {
         let Ok((ctx_entity, ctx)) = context.get(event.context()) else {
@@ -247,7 +246,34 @@ pub fn create(
         let game_entity = game_cmds.id();
         game_cmds.insert_children(0, &[user_id, enemy_id]);
         println!("game created: {:?}", game_entity);
-        game_ready.send(GameReady::new(game_entity));
+    }
+}
+
+/// Watch network game entity creation, initialize game session and
+/// insert it to a game entity.
+/// Send [`GameReady`] event upon success.
+pub fn handle_network_game_creation(
+    mut commands: Commands,
+    game: Query<(Entity, &NetworkGame), Added<Game>>,
+    mut game_ready: EventWriter<GameReady>,
+    client: Res<GrpcClient>,
+    settings: Res<Settings>,
+) {
+    let Some(user) = settings.user_id() else {
+        return;
+    };
+    for (game_entity, &network_game) in game.iter() {
+        match client.game_session::<core::GridIndex>(
+            proto::GameType::TicTacToe,
+            *network_game,
+            user,
+        ) {
+            Ok(session) => {
+                commands.entity(game_entity).insert(session);
+                game_ready.send(GameReady::new(game_entity));
+            }
+            Err(err) => println!("game_session call failed: {}", err),
+        }
     }
 }
 

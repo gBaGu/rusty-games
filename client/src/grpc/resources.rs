@@ -2,15 +2,18 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
-use game_server::core::ToProtobuf;
+use game_server::core::{FromProtobuf, ToProtobuf};
 use game_server::proto;
 use tonic::codegen::tokio_stream::StreamExt;
 use tonic::{Code, Request};
 use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
 
-use super::{CallTask, GameClient, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC};
-use crate::grpc::error::GrpcError;
+use super::error::GrpcError;
+use super::{
+    CallTask, GameClient, GameSession, GameSessionUpdate, GrpcResult, HealthClient,
+    CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC,
+};
 
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
@@ -39,7 +42,7 @@ impl GrpcClient {
         game_type: proto::GameType,
         player_id: u64,
         opponent_id: u64,
-    ) -> Result<CallTask<proto::CreateGameReply>, GrpcError> {
+    ) -> GrpcResult<CallTask<proto::CreateGameReply>> {
         if !self.connected {
             return Err(GrpcError::NotConnected);
         }
@@ -61,7 +64,7 @@ impl GrpcClient {
         game_id: u64,
         player_id: u64,
         move_data: impl ToProtobuf,
-    ) -> Result<CallTask<proto::MakeTurnReply>, GrpcError> {
+    ) -> GrpcResult<CallTask<proto::MakeTurnReply>> {
         if !self.connected {
             return Err(GrpcError::NotConnected);
         }
@@ -80,11 +83,68 @@ impl GrpcClient {
         Ok(CallTask::new(task))
     }
 
+    pub fn game_session<T>(
+        &self,
+        game_type: proto::GameType,
+        game_id: u64,
+        player_id: u64,
+    ) -> GrpcResult<GameSession<T>>
+    where
+        T: ToProtobuf + FromProtobuf + Send + 'static,
+    {
+        if !self.connected {
+            return Err(GrpcError::NotConnected);
+        }
+        let mut client = self.game.clone();
+        let (action_s, action_r) = async_channel::unbounded::<T>();
+        let (update_s, update_r) = async_channel::unbounded();
+        let task = IoTaskPool::get().spawn(async move {
+            let request_stream = async_stream::stream! {
+                yield proto::GameSessionRequest {
+                    request: Some(proto::game_session_request::Request::Init(proto::GameSession {
+                        game_type: game_type.into(),
+                        game_id,
+                        player_id,
+                    }))
+                };
+
+                while let Ok(action) = action_r.recv().await {
+                    yield proto::GameSessionRequest {
+                        request: Some(proto::game_session_request::Request::TurnData(action.to_protobuf().unwrap()))
+                    }
+                }
+            };
+            let mut reply_stream = match client.game_session(request_stream).await {
+                Ok(resp) => resp.into_inner(),
+                Err(err) => {
+                    println!("failed to execute GameSession request: {}", err);
+                    return;
+                },
+            };
+            while let Some(res) = reply_stream.next().await {
+                let update_result = match res {
+                    Ok(reply) => {
+                        match T::from_protobuf(&reply.turn_data) {
+                            Ok(action) => Ok(GameSessionUpdate::new(reply.player_position, action)),
+                            Err(err) => Err(err.into()),
+                        }
+                    }
+                    Err(err) => Err(GrpcError::GameSessionUpdateFailed(err.to_string())),
+                };
+                if let Err(_err) = update_s.send(update_result).await {
+                    println!("game session update channel is closed, skipping next updates...");
+                    break;
+                }
+            }
+        });
+        Ok(GameSession::new(task, action_s, update_r))
+    }
+
     pub fn get_game(
         &self,
         game_type: proto::GameType,
         game_id: u64,
-    ) -> Result<CallTask<proto::GetGameReply>, GrpcError> {
+    ) -> GrpcResult<CallTask<proto::GetGameReply>> {
         if !self.connected {
             return Err(GrpcError::NotConnected);
         }
@@ -104,7 +164,7 @@ impl GrpcClient {
         &self,
         game_type: proto::GameType,
         player_id: u64,
-    ) -> Result<CallTask<proto::GetPlayerGamesReply>, GrpcError> {
+    ) -> GrpcResult<CallTask<proto::GetPlayerGamesReply>> {
         if !self.connected {
             return Err(GrpcError::NotConnected);
         }

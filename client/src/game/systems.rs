@@ -9,8 +9,18 @@ use super::{
 };
 use crate::game::components::{FinishedGame, Game, PendingActionStatus};
 use crate::grpc::RpcResultReady;
-use crate::interface::{GameLeft, GameReadyToExit};
+use crate::interface::{GameLeft, GameReady, GameReadyToExit};
 use crate::UserIdChanged;
+
+/// Watch local game entity creation and send [`GameReady`] event.
+pub fn handle_local_game_creation(
+    game: Query<Entity, (Added<Game>, Without<NetworkGame>)>,
+    mut game_ready: EventWriter<GameReady>,
+) {
+    for game_entity in game.iter() {
+        game_ready.send(GameReady::new(game_entity));
+    }
+}
 
 /// Receive reply for MakeTurn rpc and if it's successful update [`PendingActionStatus`] component.
 /// Does not depend on specific game type.

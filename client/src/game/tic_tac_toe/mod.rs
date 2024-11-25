@@ -49,7 +49,12 @@ impl Plugin for TicTacToePlugin {
                 create,
                 create_pending_action,
                 apply_action,
-                (send_pending_action, send_get_game).in_set(NetworkSystems),
+                (
+                    send_pending_action,
+                    send_get_game,
+                    handle_network_game_creation,
+                )
+                    .in_set(NetworkSystems),
             ),
         );
     }

@@ -47,6 +47,7 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
+                    handle_local_game_creation,
                     confirm_pending_action,
                     handle_state_updated,
                     update_current_player,

@@ -6,11 +6,12 @@ mod task_entity;
 mod error;
 
 use bevy::prelude::*;
+use game_server::core;
 use game_server::proto;
 use tonic::transport;
 use tonic_health::pb::health_client;
 
-use components::{CallTask, ConnectClientTask, ReceiveUpdateTask};
+use components::{CallTask, ConnectClientTask, GameSession, ReceiveUpdateTask};
 use resources::{ConnectTimer, ConnectionStatusWatcher};
 use systems::*;
 
@@ -26,6 +27,23 @@ pub type HealthClient = health_client::HealthClient<transport::Channel>;
 
 pub fn client_exists_and_connected(client: Option<Res<GrpcClient>>) -> bool {
     matches!(client, Some(c) if c.connected())
+}
+
+type GrpcResult<T> = Result<T, error::GrpcError>;
+
+#[derive(Debug)]
+pub struct GameSessionUpdate<T> {
+    player: core::PlayerPosition,
+    action: T,
+}
+
+impl<T> GameSessionUpdate<T> {
+    pub fn new(player: core::PlayerPosition, action: T) -> Self {
+        Self {
+            player,
+            action,
+        }
+    }
 }
 
 /// System set for network communication systems.
