@@ -181,6 +181,7 @@ async fn game_session_unexpected_stream_request() {
         stream.next().await.unwrap().unwrap_err().code(),
         Code::FailedPrecondition
     );
+    assert!(stream.next().await.is_none()); // stream is finished after the error
 
     // two turns in a row
     let mut stream = client
@@ -211,6 +212,7 @@ async fn game_session_unexpected_stream_request() {
         stream.next().await.unwrap().unwrap_err().code(),
         Code::Internal
     );
+    assert!(stream.next().await.is_none()); // stream is finished after the error
 
     ct.cancel();
     server_thread.await.unwrap();

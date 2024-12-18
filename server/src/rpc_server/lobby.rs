@@ -29,7 +29,8 @@ impl MoveEvent {
     }
 }
 
-/// Thread that reads update data from input stream and sends it to worker
+/// Thread that reads update data from input stream and sends it to worker.
+/// After stream is finished user will be disconnected.
 #[derive(Debug)]
 pub struct UpdateRequestReader(JoinHandle<()>);
 
@@ -177,7 +178,7 @@ impl<T> Lobby<T> {
         self.connections.push(conn);
     }
 
-    pub fn disconnect(&mut self, user: UserId) -> Option<Connection> {
+    pub fn remove_connection(&mut self, user: UserId) -> Option<Connection> {
         let Some((i, _)) = self
             .connections
             .iter()
