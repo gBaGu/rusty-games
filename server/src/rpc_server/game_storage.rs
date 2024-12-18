@@ -34,13 +34,26 @@ impl<T> Deref for GameStorage<T> {
 }
 
 impl<T> GameStorage<T> {
-    pub fn disconnect(&self, game: GameId, user: UserId) -> RpcInnerResult<Option<Connection>> {
+    /// Remove connection and wait for connection task.
+    pub async fn disconnect(&self, game: GameId, user: UserId) -> RpcInnerResult<()> {
+        let Some(mut conn) = self.remove_connection(game, user)? else {
+            return Ok(());
+        };
+        if let Err(err) = conn.wait().await {
+            return Err(RpcError::ConnectionJoinError(err.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Remove `user` connection from the lobby indicated by `game`, return if removed.
+    pub fn remove_connection(&self, game: GameId, user: UserId) -> RpcInnerResult<Option<Connection>> {
         let mut guard = self.lock()?;
         Ok(guard
             .get_mut(&game)
-            .and_then(|lobby| lobby.disconnect(user)))
+            .and_then(|lobby| lobby.remove_connection(user)))
     }
 
+    /// Notify `user` of an error.
     pub fn notify_err(&self, game: GameId, user: UserId, err: RpcError) -> RpcInnerResult<()> {
         let mut guard = self.lock()?;
         if let Some(lobby) = guard.get_mut(&game) {

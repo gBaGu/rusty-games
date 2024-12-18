@@ -150,9 +150,7 @@ async fn game_session_unexpected_stream_request() {
     // first request is not Init
     let status = client
         .game_session(tokio_stream::once(GameSessionRequest {
-            request: Some(game_session_request::Request::TurnData(vec![
-                0, 0, 0, 0, 0, 0, 0, 0,
-            ])),
+            request: Some(game_session_request::Request::TurnData(vec![])),
         }))
         .await
         .unwrap_err();
@@ -183,6 +181,7 @@ async fn game_session_unexpected_stream_request() {
         stream.next().await.unwrap().unwrap_err().code(),
         Code::FailedPrecondition
     );
+    assert!(stream.next().await.is_none()); // stream is finished after the error
 
     // two turns in a row
     let mut stream = client
@@ -195,23 +194,25 @@ async fn game_session_unexpected_stream_request() {
                 })),
             },
             GameSessionRequest {
-                request: Some(game_session_request::Request::TurnData(vec![
-                    0, 0, 0, 0, 0, 0, 0, 0,
-                ])),
+                request: Some(game_session_request::Request::TurnData(
+                    GridIndex::new(0, 0).to_protobuf().unwrap(),
+                )),
             },
             GameSessionRequest {
-                request: Some(game_session_request::Request::TurnData(vec![
-                    0, 0, 0, 0, 0, 0, 0, 1,
-                ])),
+                request: Some(game_session_request::Request::TurnData(
+                    GridIndex::new(0, 1).to_protobuf().unwrap(),
+                )),
             },
         ]))
         .await
         .unwrap()
         .into_inner();
+    assert!(stream.next().await.unwrap().is_ok());
     assert_eq!(
         stream.next().await.unwrap().unwrap_err().code(),
         Code::Internal
     );
+    assert!(stream.next().await.is_none()); // stream is finished after the error
 
     ct.cancel();
     server_thread.await.unwrap();

@@ -64,24 +64,19 @@ impl Worker {
                                     game, user, data
                                 );
                                 if let Err(err) = storage.update(game, user, &data) {
+                                    println!("worker: UpdateGame failed: {}", err);
                                     if let Err(err) = storage.notify_err(game, user, err) {
                                         println!("worker: failed to notify on error: {}", err);
+                                    }
+                                    if let Err(err) = storage.disconnect(game, user).await {
+                                        println!("worker: failed to disconnect on error: {}", err);
                                     }
                                 }
                             }
                             WorkerCommand::Disconnect { game, user } => {
                                 println!("worker: Disconnect game={}, user={}", game, user);
-                                match storage.disconnect(game, user) {
-                                    Ok(conn) => {
-                                        if let Some(mut conn) = conn {
-                                            if let Err(err) = conn.wait().await {
-                                                println!("worker: failed to join reader: {}", err);
-                                            }
-                                        }
-                                    }
-                                    Err(err) => {
-                                        println!("worker: failed to disconnect user {}: {}", user, err);
-                                    }
+                                if let Err(err) = storage.disconnect(game, user).await {
+                                    println!("worker: Disconnect failed: {}", err);
                                 }
                             }
                         }

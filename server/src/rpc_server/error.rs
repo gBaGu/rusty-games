@@ -39,6 +39,8 @@ pub enum RpcError {
     RequestDataMissing(String),
     #[error("worker is not running")]
     WorkerDown,
+    #[error("failed to join connection task: {0}")]
+    ConnectionJoinError(String),
     #[error(transparent)]
     GameError(#[from] GameError),
 }
@@ -76,6 +78,7 @@ impl From<RpcError> for Status {
             | RpcError::TurnDataConversion { .. }
             | RpcError::ChannelSendFailed { .. }
             | RpcError::WorkerDown
+            | RpcError::ConnectionJoinError(_)
             | RpcError::GameError(_) => Status::internal(value.to_string()),
         }
     }
