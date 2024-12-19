@@ -10,10 +10,7 @@ use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
 
 use super::error::GrpcError;
-use super::{
-    CallTask, GameClient, GameSession, GameSessionUpdate, GrpcResult, HealthClient,
-    CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC,
-};
+use super::{CallTask, GameClient, GameSession, GameSessionUpdate, GrpcResult, HealthClient, CONNECT_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC, GAME_SESSION_CHECK_INTERVAL_SEC};
 
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
@@ -58,7 +55,7 @@ impl GrpcClient {
         Ok(CallTask::new(task))
     }
 
-    pub fn make_turn(
+    pub fn _make_turn(
         &self,
         game_type: proto::GameType,
         game_id: u64,
@@ -109,10 +106,13 @@ impl GrpcClient {
                 };
 
                 while let Ok(action) = action_r.recv().await {
+                    let data = action.to_protobuf().expect("game session: failed to encode action data");
+                    println!("game session: action data: {:?}", data);
                     yield proto::GameSessionRequest {
-                        request: Some(proto::game_session_request::Request::TurnData(action.to_protobuf().unwrap()))
+                        request: Some(proto::game_session_request::Request::TurnData(data))
                     }
                 }
+                println!("game session: request stream is finished");
             };
             let mut reply_stream = match client.game_session(request_stream).await {
                 Ok(resp) => resp.into_inner(),
@@ -132,10 +132,11 @@ impl GrpcClient {
                     Err(err) => Err(GrpcError::GameSessionUpdateFailed(err.to_string())),
                 };
                 if let Err(_err) = update_s.send(update_result).await {
-                    println!("game session update channel is closed, skipping next updates...");
+                    println!("game session: update channel is closed, skipping next updates...");
                     break;
                 }
             }
+            println!("game session: task is finished");
         });
         Ok(GameSession::new(task, action_s, update_r))
     }
@@ -245,5 +246,14 @@ impl Default for ConnectTimer {
         let mut t = Timer::from_seconds(CONNECT_INTERVAL_SEC, TimerMode::Repeating);
         t.set_elapsed(Duration::from_secs_f32(CONNECT_INTERVAL_SEC));
         Self(t)
+    }
+}
+
+#[derive(Deref, DerefMut, Resource)]
+pub struct SessionCheckTimer(pub Timer);
+
+impl Default for SessionCheckTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(GAME_SESSION_CHECK_INTERVAL_SEC, TimerMode::Repeating))
     }
 }

@@ -4,13 +4,14 @@ use bevy::prelude::*;
 use game_server::core::tic_tac_toe::TicTacToe;
 use game_server::core::{self, Game as _};
 use game_server::proto;
+use smallvec::SmallVec;
 
 use super::bot::{BotBundle, NoDifficultyBotBundle};
 use super::{
-    Images, LocalGame, LocalGameBundle, NetworkGameBundle, PendingAction, PendingActionBundle,
+    Images, LocalGame, LocalGameBundle, NetworkGameBundle, PendingAction, PendingActionQueue,
     PlayerActionApplied, PlayerActionInitialized, O_SPRITE_PATH, X_SPRITE_PATH,
 };
-use crate::game::components::{Game, PendingActionStatus, PendingGame};
+use crate::game::components::{Game, PendingGame};
 use crate::game::resources::RefreshGameTimer;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
 use crate::game::{
@@ -282,26 +283,20 @@ pub fn handle_network_game_creation(
 /// If game entity contains [`NetworkGame`] component pending action will be
 /// `PendingActionStatus::NotConfirmed`, otherwise `PendingActionStatus::Confirmed`.
 pub fn create_pending_action(
-    mut commands: Commands,
-    game: Query<Option<&NetworkGame>, (With<ActiveGame>, Without<PendingAction>)>,
+    mut game: Query<(Option<&NetworkGame>, &mut PendingActionQueue), With<ActiveGame>>,
     mut action_initialized: EventReader<PlayerActionInitialized>,
 ) {
     for event in action_initialized.read() {
-        match game.get(event.game()) {
-            Ok(Some(_)) => {
-                commands
-                    .entity(event.game())
-                    .insert(PendingActionBundle::new_unconfirmed(
-                        event.player(),
-                        event.action(),
-                    ))
-            }
-            Ok(None) => commands
-                .entity(event.game())
-                .insert(PendingActionBundle::new_confirmed(
+        match game.get_mut(event.game()) {
+            Ok((Some(_), mut queue)) => {
+                queue.push(PendingAction::new_unconfirmed(
                     event.player(),
                     event.action(),
-                )),
+                ));
+            }
+            Ok((None, mut queue)) => {
+                queue.push(PendingAction::new_confirmed(event.player(), event.action()));
+            }
             Err(err) => {
                 println!("failed to get game entity: {}", err);
                 continue;
@@ -312,82 +307,29 @@ pub fn create_pending_action(
 
 /// If the game has [`PendingAction`] and it is confirmed, apply it and send
 /// [`PlayerActionApplied`] and [`StateUpdated`] events.
-pub fn apply_action(
-    mut commands: Commands,
-    mut game: Query<
-        (Entity, &mut LocalGame, &PendingAction, &PendingActionStatus),
-        With<ActiveGame>,
-    >,
+pub fn apply_confirmed(
+    mut game: Query<(Entity, &mut LocalGame, &mut PendingActionQueue), With<ActiveGame>>,
     mut action_applied: EventWriter<PlayerActionApplied>,
     mut state_updated: EventWriter<StateUpdated>,
 ) {
-    for (game_entity, mut game, action, _) in
-        game.iter_mut().filter(|(.., status)| status.is_confirmed())
-    {
-        match game.update(action.player(), action.action()) {
-            Ok(state) => {
-                action_applied.send(PlayerActionApplied::new(
-                    game_entity,
-                    action.player(),
-                    action.action(),
-                ));
-                state_updated.send(StateUpdated::new(game_entity, state));
+    for (game_entity, mut game, mut queue) in game.iter_mut() {
+        let mut actions_processed = 0;
+        for pending_action in queue.iter().take_while(|action| action.is_confirmed()) {
+            match game.update(pending_action.player(), *pending_action.action()) {
+                Ok(state) => {
+                    action_applied.send(PlayerActionApplied::new(
+                        game_entity,
+                        pending_action.player(),
+                        *pending_action.action(),
+                    ));
+                    state_updated.send(StateUpdated::new(game_entity, state));
+                }
+                Err(err) => println!("action {:?} failed with {}", pending_action, err),
             }
-            Err(err) => println!("action {:?} failed with {}", action, err),
+            actions_processed += 1;
         }
-        commands.entity(game_entity).remove::<PendingActionBundle>();
-    }
-}
-
-/// If the game has [`PendingAction`] and it is not confirmed, send MakeTurn request and
-/// change action status to `PendingActionStatus::WaitingConfirmation`.
-pub fn send_pending_action(
-    mut commands: Commands,
-    mut game: Query<(&NetworkGame, &PendingAction, &mut PendingActionStatus), With<ActiveGame>>,
-    client: Res<GrpcClient>,
-    settings: Res<Settings>,
-) {
-    let Some(user) = settings.user_id() else {
-        return;
-    };
-    for (&network_game, action, mut status) in game
-        .iter_mut()
-        .filter(|(.., status)| status.is_not_confirmed())
-    {
-        match client.make_turn(
-            proto::GameType::TicTacToe,
-            *network_game,
-            user,
-            action.action(),
-        ) {
-            Ok(task) => {
-                commands.spawn(task);
-                *status = PendingActionStatus::WaitingConfirmation;
-            }
-            Err(err) => println!("make_turn call failed: {}", err),
-        };
-    }
-}
-
-/// Update timer and if it's finished stop it and create a task with grpc GetGame call.
-pub fn send_get_game(
-    mut commands: Commands,
-    game: Query<&NetworkGame, With<ActiveGame>>,
-    mut timer: ResMut<RefreshGameTimer>,
-    client: Res<GrpcClient>,
-    time: Res<Time>,
-) {
-    let Ok(&network_game) = game.get_single() else {
-        return;
-    };
-    if timer.tick(time.delta()).just_finished() {
-        match client.get_game(proto::GameType::TicTacToe, *network_game) {
-            Ok(task) => {
-                commands.spawn(task);
-                timer.reset();
-                timer.pause();
-            }
-            Err(err) => println!("get_game call failed: {}", err),
+        if actions_processed > 0 {
+            *queue = PendingActionQueue::from(SmallVec::from(&queue[actions_processed..]));
         }
     }
 }

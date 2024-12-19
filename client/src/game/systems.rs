@@ -1,14 +1,14 @@
-use std::ops::Deref;
-
 use bevy::prelude::*;
-use game_server::{core, proto};
+use game_server::core;
 
+use super::components::{FinishedGame, Game};
+use super::pending_action::ConfirmationStatus;
 use super::{
-    ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PlayerPosition, PlayerWon,
-    StateUpdated, TurnStart, UserAuthority, Winner,
+    ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PendingAction, PendingActionQueue,
+    PlayerPosition, PlayerWon, ServerActionReceived, StateUpdated, TurnStart, UserAuthority,
+    Winner,
 };
-use crate::game::components::{FinishedGame, Game, PendingActionStatus};
-use crate::grpc::RpcResultReady;
+use crate::grpc::{SendActionTask, SendSessionAction, SessionFinished, SessionUpdateReceived};
 use crate::interface::{GameLeft, GameReady, GameReadyToExit};
 use crate::UserIdChanged;
 
@@ -22,41 +22,96 @@ pub fn handle_local_game_creation(
     }
 }
 
-/// Receive reply for MakeTurn rpc and if it's successful update [`PendingActionStatus`] component.
-/// Does not depend on specific game type.
-pub fn confirm_pending_action(
-    mut game: Query<&mut PendingActionStatus, (With<NetworkGame>, With<ActiveGame>)>,
-    mut make_turn_reply: EventReader<RpcResultReady<proto::MakeTurnReply>>,
+/// If the game has [`PendingAction`] and it is not confirmed, send MakeTurn request and
+/// change action status to `PendingActionStatus::WaitingConfirmation`.
+pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
+    mut game: Query<
+        (Entity, &mut PendingActionQueue<T>),
+        (With<ActiveGame>, Without<SendActionTask<T>>),
+    >,
+    mut send_action: EventWriter<SendSessionAction<T>>,
 ) {
-    let Ok(mut status) = game.get_single_mut() else {
-        return;
-    };
-    for event in make_turn_reply.read() {
-        if status.is_confirmed() {
-            return;
+    for (game_entity, mut queue) in game.iter_mut() {
+        let Some(next_action) = queue.first_mut() else {
+            continue;
+        };
+        if next_action.is_not_confirmed() {
+            next_action.set_status(ConfirmationStatus::WaitingConfirmation);
+            send_action.send(SendSessionAction::new(game_entity, *next_action.action()));
         }
-        *status = PendingActionStatus::NotConfirmed;
-        let _ = match event.deref() {
-            Ok(response) => {
-                if let Some(new_state) = &response.get_ref().game_state {
-                    match core::GameState::try_from(new_state.clone()) {
-                        Ok(state) => state,
-                        Err(err) => {
-                            println!("failed to convert game state: {}", err);
-                            continue;
-                        }
-                    }
-                } else {
-                    println!("MakeTurn returned empty response");
-                    continue;
-                }
+    }
+}
+
+pub fn revert_action_status<T: Send + Sync + 'static>(
+    mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    mut session_finished: EventReader<SessionFinished>,
+) {
+    for event in session_finished.read() {
+        let Ok(mut queue) = action_queue.get_mut(**event) else {
+            continue;
+        };
+        let Some(next_action) = queue.first_mut() else {
+            continue;
+        };
+        next_action.set_status(ConfirmationStatus::NotConfirmed);
+        println!("session is finished, set status to not confirmed");
+    }
+}
+
+pub fn handle_game_session_update<T: Copy + Send + Sync + 'static>(
+    mut update_received: EventReader<SessionUpdateReceived<T>>,
+    mut server_action_received: EventWriter<ServerActionReceived<T>>,
+    // mut game_session_error: EventWriter<>,
+) {
+    for event in update_received.read() {
+        match event.update() {
+            Ok(update) => {
+                server_action_received.send(ServerActionReceived::new(
+                    event.session_entity(),
+                    update.player(),
+                    *update.action(),
+                ));
             }
             Err(err) => {
-                println!("MakeTurn request failed: {}", err);
+                // TODO: handle game session errors
+                println!("game session error received: {}", err);
+            }
+        }
+    }
+}
+
+pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
+    mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    player: Query<(&PlayerPosition, &Parent), With<CurrentUser>>,
+    mut server_action_received: EventReader<ServerActionReceived<T>>,
+) {
+    for event in server_action_received.read() {
+        let Ok(mut queue) = action_queue.get_mut(event.game()) else {
+            continue;
+        };
+        if player
+            .iter()
+            .filter(|(_, p)| p.get() == event.game())
+            .find(|(&pos, _)| *pos == event.player())
+            .is_some()
+        {
+            let Some(next_action) = queue.first_mut() else {
+                continue;
+            };
+            if !next_action.is_waiting_confirmation() {
+                println!(
+                    "unexpected action status in a game queue: {:?}",
+                    next_action.status()
+                );
                 continue;
             }
-        };
-        *status = PendingActionStatus::Confirmed;
+            next_action.set_status(ConfirmationStatus::Confirmed);
+        } else {
+            queue.push(PendingAction::new_confirmed(
+                event.player(),
+                *event.action(),
+            ));
+        }
     }
 }
 
@@ -230,10 +285,11 @@ mod test {
         CurrentUserPlayerBundle, LocalGameBundle, NetworkGameBundle, NetworkPlayerBundle,
     };
     use crate::Settings;
+    use game_server::core;
     use game_server::core::tic_tac_toe::TicTacToe;
 
-    type TTTLocalGameBundle = LocalGameBundle<TicTacToe>;
-    type TTTNetworkGameBundle = NetworkGameBundle<TicTacToe>;
+    type TTTLocalGameBundle = LocalGameBundle<TicTacToe, <TicTacToe as core::Game>::TurnData>;
+    type TTTNetworkGameBundle = NetworkGameBundle<TicTacToe, <TicTacToe as core::Game>::TurnData>;
 
     #[test]
     fn game_entity_updated_on_finish() {

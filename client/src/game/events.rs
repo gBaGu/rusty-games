@@ -77,7 +77,7 @@ pub struct PlayerActionInitialized<T> {
     action: T,
 }
 
-impl<T: Clone + Copy> PlayerActionInitialized<T> {
+impl<T: Copy> PlayerActionInitialized<T> {
     pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,
@@ -96,6 +96,36 @@ impl<T: Clone + Copy> PlayerActionInitialized<T> {
 
     pub fn action(&self) -> T {
         self.action
+    }
+}
+
+/// Event that indicates that an action
+#[derive(Clone, Copy, Debug, Event)]
+pub struct ServerActionReceived<T> {
+    game: Entity,
+    player: core::PlayerPosition,
+    action: T,
+}
+
+impl<T> ServerActionReceived<T> {
+    pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
+        Self {
+            game,
+            player,
+            action,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> core::PlayerPosition {
+        self.player
+    }
+
+    pub fn action(&self) -> &T {
+        &self.action
     }
 }
 

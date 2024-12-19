@@ -18,14 +18,15 @@ pub const X_SPRITE_PATH: &str = "sprites/X.png";
 pub const O_SPRITE_PATH: &str = "sprites/O.png";
 
 pub type TTTBoard = <TicTacToe as core::Game>::Board;
+pub type Action = <TicTacToe as core::Game>::TurnData;
 
 type LocalGame = super::LocalGame<TicTacToe>;
-type LocalGameBundle = super::LocalGameBundle<TicTacToe>;
-type NetworkGameBundle = super::NetworkGameBundle<TicTacToe>;
-type PendingAction = super::PendingAction<core::GridIndex>;
-type PendingActionBundle = super::PendingActionBundle<core::GridIndex>;
-type PlayerActionInitialized = super::PlayerActionInitialized<core::GridIndex>;
-type PlayerActionApplied = super::PlayerActionApplied<core::GridIndex>;
+type LocalGameBundle = super::LocalGameBundle<TicTacToe, Action>;
+type NetworkGameBundle = super::NetworkGameBundle<TicTacToe, Action>;
+type PendingAction = super::PendingAction<Action>;
+type PendingActionQueue = super::PendingActionQueue<Action>;
+type PlayerActionInitialized = super::PlayerActionInitialized<Action>;
+type PlayerActionApplied = super::PlayerActionApplied<Action>;
 
 pub struct TicTacToePlugin;
 
@@ -48,13 +49,8 @@ impl Plugin for TicTacToePlugin {
                 handle_get_game,
                 create,
                 create_pending_action,
-                apply_action,
-                (
-                    send_pending_action,
-                    send_get_game,
-                    handle_network_game_creation,
-                )
-                    .in_set(NetworkSystems),
+                apply_confirmed,
+                handle_network_game_creation.in_set(NetworkSystems),
             ),
         );
     }
