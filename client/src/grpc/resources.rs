@@ -106,6 +106,7 @@ impl GrpcClient {
                 };
 
                 while let Ok(action) = action_r.recv().await {
+                    // TODO: handle error
                     let data = action.to_protobuf().expect("game session: failed to encode action data");
                     println!("game session: action data: {:?}", data);
                     yield proto::GameSessionRequest {

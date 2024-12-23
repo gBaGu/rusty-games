@@ -4,11 +4,11 @@ use game_server::core;
 use super::components::{FinishedGame, Game};
 use super::pending_action::ConfirmationStatus;
 use super::{
-    ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PendingAction, PendingActionQueue,
-    PlayerPosition, PlayerWon, ServerActionReceived, StateUpdated, TurnStart, UserAuthority,
-    Winner,
+    ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame,
+    PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, ServerActionReceived,
+    StateUpdated, TurnStart, UserAuthority, Winner,
 };
-use crate::grpc::{SendActionTask, SendSessionAction, SessionFinished, SessionUpdateReceived};
+use crate::grpc;
 use crate::interface::{GameLeft, GameReady, GameReadyToExit};
 use crate::UserIdChanged;
 
@@ -22,14 +22,14 @@ pub fn handle_local_game_creation(
     }
 }
 
-/// If the game has [`PendingAction`] and it is not confirmed, send MakeTurn request and
-/// change action status to `PendingActionStatus::WaitingConfirmation`.
+/// If the game has [`PendingAction`] and it is not confirmed, send [`grpc::SendActionTask`] event
+/// and change action status to `ConfirmationStatus::WaitingConfirmation`.
 pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
     mut game: Query<
         (Entity, &mut PendingActionQueue<T>),
-        (With<ActiveGame>, Without<SendActionTask<T>>),
+        (With<ActiveGame>, Without<grpc::SendActionTask<T>>),
     >,
-    mut send_action: EventWriter<SendSessionAction<T>>,
+    mut send_action: EventWriter<grpc::SendSessionAction<T>>,
 ) {
     for (game_entity, mut queue) in game.iter_mut() {
         let Some(next_action) = queue.first_mut() else {
@@ -37,29 +37,50 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
         };
         if next_action.is_not_confirmed() {
             next_action.set_status(ConfirmationStatus::WaitingConfirmation);
-            send_action.send(SendSessionAction::new(game_entity, *next_action.action()));
+            send_action.send(grpc::SendSessionAction::new(
+                game_entity,
+                *next_action.action(),
+            ));
         }
     }
 }
 
+/// For all actions that are waiting for confirmation at the beginning of the [`PendingActionQueue`]
+/// set the status to `ConfirmationStatus::NotConfirmed`.
 pub fn revert_action_status<T: Send + Sync + 'static>(
     mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
-    mut session_finished: EventReader<SessionFinished>,
+    mut confirmation_failed: EventReader<ActionConfirmationFailed>,
 ) {
-    for event in session_finished.read() {
+    for event in confirmation_failed.read() {
         let Ok(mut queue) = action_queue.get_mut(**event) else {
             continue;
         };
-        let Some(next_action) = queue.first_mut() else {
-            continue;
-        };
-        next_action.set_status(ConfirmationStatus::NotConfirmed);
-        println!("session is finished, set status to not confirmed");
+        println!("unable to confirm actions, set status to 'not confirmed'");
+        // revert status for all actions for now
+        for action in queue.iter_mut().take_while(|a| a.is_waiting_confirmation()) {
+            action.set_status(ConfirmationStatus::NotConfirmed);
+        }
+    }
+}
+
+/// For every [`grpc::SessionFinished`] or [`grpc::SendSessionActionFailed`] event
+/// send the [`ActionConfirmationFailed`].
+pub fn handle_game_session_finished(
+    mut session_finished: EventReader<grpc::SessionFinished>,
+    mut send_action_failed: EventReader<grpc::SendSessionActionFailed>,
+    mut confirmation_failed: EventWriter<ActionConfirmationFailed>,
+) {
+    for game_entity in session_finished
+        .read()
+        .map(|e| **e)
+        .chain(send_action_failed.read().map(|e| **e))
+    {
+        confirmation_failed.send(ActionConfirmationFailed::new(game_entity));
     }
 }
 
 pub fn handle_game_session_update<T: Copy + Send + Sync + 'static>(
-    mut update_received: EventReader<SessionUpdateReceived<T>>,
+    mut update_received: EventReader<grpc::SessionUpdateReceived<T>>,
     mut server_action_received: EventWriter<ServerActionReceived<T>>,
     // mut game_session_error: EventWriter<>,
 ) {

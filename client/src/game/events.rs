@@ -99,6 +99,17 @@ impl<T: Copy> PlayerActionInitialized<T> {
     }
 }
 
+/// Event that indicates that an action cannot be confirmed by a server.
+/// Contains game [`Entity`].
+#[derive(Clone, Copy, Debug, Deref, Event)]
+pub struct ActionConfirmationFailed(Entity);
+
+impl ActionConfirmationFailed {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 /// Event that indicates that an action
 #[derive(Clone, Copy, Debug, Event)]
 pub struct ServerActionReceived<T> {

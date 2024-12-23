@@ -29,6 +29,17 @@ impl SessionFinished {
     }
 }
 
+/// Event that indicates that an error occurred during action send attempt.  
+/// Contains an [`Entity`] of a game session.
+#[derive(Copy, Clone, Debug, Deref, Event)]
+pub struct SendSessionActionFailed(Entity);
+
+impl SendSessionActionFailed {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 #[derive(Debug, Event)]
 pub struct SendSessionAction<T> { // TODO: rename OutgoingSessionActionReady
     session_entity: Entity,

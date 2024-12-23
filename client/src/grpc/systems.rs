@@ -13,7 +13,7 @@ use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer}
 use super::task_entity::TaskEntity;
 use super::{
     Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient, SendActionTask,
-    SendSessionAction, SessionFinished, DEFAULT_GRPC_SERVER_ADDRESS,
+    SendSessionAction, SendSessionActionFailed, SessionFinished, DEFAULT_GRPC_SERVER_ADDRESS,
 };
 
 pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
@@ -141,7 +141,6 @@ pub fn init_session_action_send_task<T: Copy + Send + Sync + 'static>(
         let Ok(session) = session.get(event.session_entity()) else {
             continue;
         };
-        // TODO: handle a case when sending into a closed channel
         let sender = session.action_sender();
         let action = *event.action();
         println!("send session action");
@@ -155,6 +154,7 @@ pub fn init_session_action_send_task<T: Copy + Send + Sync + 'static>(
 pub fn handle_session_action_send<T: Send + Sync + 'static>(
     mut commands: Commands,
     mut task: Query<(Entity, &mut SendActionTask<T>)>,
+    mut send_action_failed: EventWriter<SendSessionActionFailed>,
 ) {
     for (task_entity, mut task) in task.iter_mut() {
         if let Some(res) = tasks::block_on(future::poll_once(&mut task.0)).and_then(|res| {
@@ -163,7 +163,7 @@ pub fn handle_session_action_send<T: Send + Sync + 'static>(
         }) {
             println!("send session action task is finished: {:?}", res);
             if let Err(_err) = res {
-                // TODO: handle error
+                send_action_failed.send(SendSessionActionFailed::new(task_entity));
             }
         }
     }

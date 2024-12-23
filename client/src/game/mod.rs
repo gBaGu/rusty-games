@@ -16,7 +16,7 @@ use components::{
     NetworkGameBundle, NetworkPlayerBundle, PendingExistingGameBundle, PendingNewGameBundle,
     PlayerPosition, UserAuthority,
 };
-use events::{PlayerActionApplied, PlayerActionInitialized};
+use events::{ActionConfirmationFailed, PlayerActionApplied, PlayerActionInitialized};
 use resources::RefreshGameTimer;
 use systems::*;
 
@@ -46,6 +46,7 @@ impl Plugin for GamePlugin {
         app.add_plugins(tic_tac_toe::TicTacToePlugin)
             .add_event::<ServerActionReceived<core::GridIndex>>()
             .add_event::<GameDataReady>()
+            .add_event::<ActionConfirmationFailed>()
             .add_event::<BotReady>()
             .add_event::<StateUpdated>()
             .add_event::<TurnStart>()
@@ -68,6 +69,7 @@ impl Plugin for GamePlugin {
                     revert_action_status::<core::GridIndex>,
                     handle_game_session_update::<core::GridIndex>,
                     handle_action_from_server::<core::GridIndex>,
+                    handle_game_session_finished,
                 ),
             );
     }
