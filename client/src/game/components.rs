@@ -2,7 +2,9 @@ use std::marker::PhantomData;
 
 use bevy::prelude::*;
 use game_server::core;
+use smallvec::SmallVec;
 
+use super::PendingAction;
 use crate::interface::common::{PRIMARY_COLOR, SECONDARY_COLOR};
 use crate::interface::GameSettingsLink;
 
@@ -25,48 +27,6 @@ impl BotDifficulty {
             Self::Medium => "medium".to_string(),
             Self::Hard => "hard".to_string(),
         }
-    }
-}
-
-/// Player action that is waiting to be applied.
-#[derive(Debug, Component)]
-pub struct PendingAction<T> {
-    player: core::PlayerPosition,
-    action: T,
-}
-
-impl<T: Clone + Copy> PendingAction<T> {
-    pub fn new(player: core::PlayerPosition, action: T) -> Self {
-        Self { player, action }
-    }
-
-    pub fn action(&self) -> T {
-        self.action
-    }
-
-    pub fn player(&self) -> core::PlayerPosition {
-        self.player
-    }
-}
-
-/// Confirmation status of a [`PendingAction`].
-/// In case of a bot game pending actions are created as `Confirmed`.
-/// In case of a network game pending actions are created as `NotConfirmed` and need to undergo
-/// confirmation process by executing them on the server side.
-#[derive(Clone, Copy, Debug, PartialEq, Component)]
-pub enum PendingActionStatus {
-    NotConfirmed,
-    WaitingConfirmation,
-    Confirmed,
-}
-
-impl PendingActionStatus {
-    pub fn is_confirmed(&self) -> bool {
-        *self == Self::Confirmed
-    }
-
-    pub fn is_not_confirmed(&self) -> bool {
-        *self == Self::NotConfirmed
     }
 }
 
@@ -107,6 +67,22 @@ pub struct PendingGame<T>(PhantomData<T>);
 impl<T> Default for PendingGame<T> {
     fn default() -> Self {
         Self(PhantomData::default())
+    }
+}
+
+/// Contains actions that are waiting to be applied.
+#[derive(Debug, Component, Deref, DerefMut)]
+pub struct PendingActionQueue<T>(SmallVec<[PendingAction<T>; 8]>);
+
+impl<T> Default for PendingActionQueue<T> {
+    fn default() -> Self {
+        Self(SmallVec::default())
+    }
+}
+
+impl<T> From<SmallVec<[PendingAction<T>; 8]>> for PendingActionQueue<T> {
+    fn from(value: SmallVec<[PendingAction<T>; 8]>) -> Self {
+        Self(value)
     }
 }
 
@@ -240,66 +216,60 @@ impl<T: Send + Sync + 'static> PendingExistingGameBundle<T> {
 }
 
 #[derive(Debug, Bundle)]
-pub struct LocalGameBundle<T: Send + Sync + 'static> {
-    pub local_game: LocalGame<T>,
+pub struct LocalGameBundle<G: Send + Sync + 'static, A: Send + Sync + 'static> {
+    pub local_game: LocalGame<G>,
+    pub pending_actions: PendingActionQueue<A>,
     game: Game,
 }
 
-impl<T: Default + Send + Sync + 'static> Default for LocalGameBundle<T> {
+impl<G, A> Default for LocalGameBundle<G, A>
+where
+    G: Default + Send + Sync + 'static,
+    A: Send + Sync + 'static
+{
     fn default() -> Self {
         Self {
-            local_game: LocalGame(T::default()),
+            local_game: Default::default(),
+            pending_actions: Default::default(),
             game: Game,
         }
     }
 }
 
-impl<T: core::Game + Send + Sync + 'static> From<T> for LocalGameBundle<T> {
-    fn from(value: T) -> Self {
+impl<G, A> From<G> for LocalGameBundle<G, A>
+where
+    G: core::Game + Send + Sync + 'static,
+    A: Send + Sync + 'static
+{
+    fn from(value: G) -> Self {
         Self {
             local_game: LocalGame::from(value),
+            pending_actions: Default::default(),
             game: Game,
         }
     }
 }
 
 #[derive(Debug, Bundle)]
-pub struct NetworkGameBundle<T: Send + Sync + 'static> {
+pub struct NetworkGameBundle<G: Send + Sync + 'static, A: Send + Sync + 'static> {
     pub id: NetworkGame,
-    pub local_game: LocalGame<T>,
+    pub local_game: LocalGame<G>,
+    pub pending_actions: PendingActionQueue<A>,
     game: Game,
 }
 
-impl<T: Send + Sync + 'static> NetworkGameBundle<T> {
-    pub fn new(id: u64, game: T) -> Self {
+impl<G, A> NetworkGameBundle<G, A>
+where
+    G: Send + Sync + 'static,
+    A: Send + Sync + 'static
+{
+    pub fn new(id: u64, game: G) -> Self {
         Self {
             id: NetworkGame(id),
             local_game: LocalGame(game),
+            pending_actions: Default::default(),
             game: Game,
         }
-    }
-}
-
-#[derive(Debug, Bundle)]
-pub struct PendingActionBundle<T: Send + Sync + 'static> {
-    action: PendingAction<T>,
-    status: PendingActionStatus,
-}
-
-impl<T: Clone + Copy + Send + Sync + 'static> PendingActionBundle<T> {
-    pub fn new(player: core::PlayerPosition, action: T, status: PendingActionStatus) -> Self {
-        Self {
-            action: PendingAction::new(player, action),
-            status,
-        }
-    }
-
-    pub fn new_confirmed(player: core::PlayerPosition, action: T) -> Self {
-        Self::new(player, action, PendingActionStatus::Confirmed)
-    }
-
-    pub fn new_unconfirmed(player: core::PlayerPosition, action: T) -> Self {
-        Self::new(player, action, PendingActionStatus::NotConfirmed)
     }
 }
 

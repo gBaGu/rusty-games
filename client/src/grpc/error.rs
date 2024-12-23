@@ -4,6 +4,8 @@ use game_server::core::ProtobufError;
 pub enum GrpcError {
     #[error("grpc client is not connected")]
     NotConnected,
+    #[error("game session update request returned with error: {0}")]
+    GameSessionUpdateFailed(String),
     #[error(transparent)]
     ProtobufConversion(#[from] ProtobufError),
 }
