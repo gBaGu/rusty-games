@@ -1,6 +1,4 @@
 use bevy::prelude::*;
-use bevy::tasks;
-use bevy::tasks::futures_lite::future;
 use bevy::tasks::Task;
 use game_server::rpc_server::rpc::RpcResult;
 use tonic::transport;
@@ -37,7 +35,7 @@ pub struct ReceiveSessionUpdateTask<T>(
 /// channels to send/receive action data of type `T` to/from the server.
 #[derive(Debug, Component)]
 pub struct GameSession<T> {
-    task: Option<Task<()>>,
+    task: Task<()>,
     action_sender: async_channel::Sender<T>,
     update_receiver: async_channel::Receiver<GrpcResult<GameSessionUpdate<T>>>,
 }
@@ -49,7 +47,7 @@ impl<T> GameSession<T> {
         update_receiver: async_channel::Receiver<GrpcResult<GameSessionUpdate<T>>>,
     ) -> Self {
         Self {
-            task: Some(task),
+            task,
             action_sender,
             update_receiver,
         }
@@ -63,19 +61,7 @@ impl<T> GameSession<T> {
         self.update_receiver.clone()
     }
 
-    pub fn task(&self) -> Option<&Task<()>> {
-        self.task.as_ref()
-    }
-
-    /// Returns `true` if task is ready.
-    pub fn poll_task(&mut self) -> bool {
-        let Some(task) = &mut self.task else {
-            return false;
-        };
-        tasks::block_on(future::poll_once(task)).is_some()
-    }
-
-    pub fn drop_task(&mut self) {
-        let _ = self.task.take();
+    pub fn task_mut(&mut self) -> &mut Task<()> {
+        &mut self.task
     }
 }

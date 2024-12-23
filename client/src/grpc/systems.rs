@@ -114,18 +114,20 @@ pub fn handle_response<T: Send + Sync + 'static>(
     }
 }
 
-/// Polls unfinished session tasks and if the task is ready drop it and send [`SessionFinished`] event.
+/// Polls unfinished session tasks and if the task is ready remove [`GameSession`] from the entity
+/// and send [`SessionFinished`] event.
 pub fn session_finished<T: Copy + Send + Sync + 'static>(
+    mut commands: Commands,
     mut session: Query<(Entity, &mut GameSession<T>)>,
     mut timer: ResMut<SessionCheckTimer>,
     mut session_finished: EventWriter<SessionFinished>,
     time: Res<Time>,
 ) {
     if timer.tick(time.delta()).just_finished() {
-        for (session_entity, mut session) in session.iter_mut().filter(|(_, s)| s.task().is_some())
+        for (session_entity, mut session) in session.iter_mut()
         {
-            if session.poll_task() {
-                session.drop_task();
+            if tasks::block_on(future::poll_once(session.task_mut())).is_some() {
+                commands.entity(session_entity).remove::<GameSession<T>>();
                 session_finished.send(SessionFinished::new(session_entity));
             }
         }
@@ -161,8 +163,8 @@ pub fn handle_session_action_send<T: Send + Sync + 'static>(
             commands.entity(task_entity).remove::<SendActionTask<T>>();
             Some(res)
         }) {
-            println!("send session action task is finished: {:?}", res);
-            if let Err(_err) = res {
+            if let Err(err) = res {
+                println!("send session action task failed: {}", err);
                 send_action_failed.send(SendSessionActionFailed::new(task_entity));
             }
         }
@@ -174,7 +176,7 @@ pub fn init_session_update_receive_task<T: Send + Sync + 'static>(
     session: Query<(Entity, &GameSession<T>), Without<ReceiveSessionUpdateTask<T>>>,
 ) {
     // TODO: make this system run by some timer
-    for (session_entity, session) in session.iter().filter(|(_, s)| s.task().is_some()) {
+    for (session_entity, session) in session.iter() {
         let receiver = session.update_receiver();
         if !receiver.is_closed() {
             println!("create receive session update task");
