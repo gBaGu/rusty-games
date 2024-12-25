@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputSubmitEvent, TextInputValue};
 use game_server::core::tic_tac_toe::TicTacToe;
-use game_server::proto;
 
 use crate::commands::EntityCommandsExt;
 use crate::game::components::BotDifficultyButtonBundle;
@@ -128,7 +127,7 @@ pub fn init_game_list(
         if let Some(id) = settings.user_id() {
             match client.as_ref() {
                 Some(client) if client.connected() => {
-                    match client.get_player_games(proto::GameType::TicTacToe, id) {
+                    match client.get_player_games::<TicTacToe>(id) {
                         Ok(task) => {
                             commands.spawn(task);
                         }
@@ -136,7 +135,7 @@ pub fn init_game_list(
                             println!("get_player_games call failed: {}", err);
                             *game_list = interface::GameList::Message("Server is down".into());
                         }
-                    }
+                    };
                 }
                 _ => *game_list = interface::GameList::Message("Server is down".into()),
             };
@@ -164,7 +163,7 @@ pub fn send_get_player_games(
             *list = interface::GameList::Message("No user id provided".into());
             return;
         };
-        match client.get_player_games(proto::GameType::TicTacToe, id) {
+        match client.get_player_games::<TicTacToe>(id) {
             Ok(task) => {
                 commands.spawn(task);
                 timer.reset();
@@ -316,7 +315,7 @@ pub fn create_network_game(
                 println!("grpc client is not connected");
                 continue;
             };
-            match client.create_game(proto::GameType::TicTacToe, user, opponent) {
+            match client.create_game::<TicTacToe>(user, opponent) {
                 Ok(task) => {
                     commands.spawn(task);
                     commands.spawn(PendingNewGameBundle::<TicTacToe>::new());
@@ -378,7 +377,7 @@ pub fn join_game(
             return;
         }
         if let Some(client) = client.as_ref() {
-            match client.get_game(proto::GameType::TicTacToe, event.game_id()) {
+            match client.get_game::<TicTacToe>(event.game_id()) {
                 Ok(task) => {
                     commands.spawn(task);
                     commands.spawn(PendingExistingGameBundle::<TicTacToe>::new(event.game_id()));

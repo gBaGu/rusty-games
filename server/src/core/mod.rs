@@ -113,7 +113,7 @@ where
 
 pub trait Game: Sized {
     const NUM_PLAYERS: u8;
-    type TurnData: FromProtobuf;
+    type TurnData: FromProtobuf + ToProtobuf;
     type Players: PlayerQueue<Id = PlayerPosition>;
     type Board: GameBoard;
 

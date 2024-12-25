@@ -264,11 +264,7 @@ pub fn handle_network_game_creation(
         return;
     };
     for (game_entity, &network_game) in game.iter() {
-        match client.game_session::<core::GridIndex>(
-            proto::GameType::TicTacToe,
-            *network_game,
-            user,
-        ) {
+        match client.game_session::<TicTacToe>(*network_game, user) {
             Ok(session) => {
                 commands.entity(game_entity).insert(session);
                 game_ready.send(GameReady::new(game_entity));

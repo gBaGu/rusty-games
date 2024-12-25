@@ -4,8 +4,25 @@ use std::num::TryFromIntError;
 
 use crate::core;
 use crate::core::chess;
+use crate::core::tic_tac_toe;
 
 pub const FILE_DESCRIPTOR_SET: &[u8] = tonic::include_file_descriptor_set!("game_descriptor");
+
+pub trait GetGameType {
+    fn get_game_type() -> GameType;
+}
+
+impl GetGameType for chess::Chess {
+    fn get_game_type() -> GameType {
+        GameType::Chess
+    }
+}
+
+impl GetGameType for tic_tac_toe::TicTacToe {
+    fn get_game_type() -> GameType {
+        GameType::TicTacToe
+    }
+}
 
 impl game_session_request::Request {
     pub fn name(&self) -> String {
