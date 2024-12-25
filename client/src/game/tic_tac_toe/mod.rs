@@ -10,7 +10,6 @@ use bevy::prelude::*;
 use game_server::core;
 use game_server::core::tic_tac_toe::TicTacToe;
 
-use crate::grpc::NetworkSystems;
 use resources::Images;
 use systems::*;
 
@@ -50,7 +49,6 @@ impl Plugin for TicTacToePlugin {
                 create,
                 create_pending_action,
                 apply_confirmed,
-                handle_network_game_creation.in_set(NetworkSystems),
             ),
         );
     }

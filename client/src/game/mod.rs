@@ -57,6 +57,7 @@ impl Plugin for GamePlugin {
                 Update,
                 (
                     handle_local_game_creation,
+                    handle_network_game_creation::<TicTacToe>.in_set(NetworkSystems),
                     handle_state_updated,
                     update_current_player,
                     handle_draw,

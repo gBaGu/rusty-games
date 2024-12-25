@@ -1,14 +1,15 @@
 use bevy::prelude::*;
 use game_server::core;
+use game_server::proto;
 
-use super::components::{FinishedGame, Game};
+use super::components::{FinishedGame, Game, LocalGame};
 use super::pending_action::ConfirmationStatus;
 use super::{
     ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame,
     PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, ServerActionReceived,
     StateUpdated, TurnStart, UserAuthority, Winner,
 };
-use crate::grpc;
+use crate::{grpc, Settings};
 use crate::interface::{GameLeft, GameReady, GameReadyToExit};
 use crate::UserIdChanged;
 
@@ -19,6 +20,34 @@ pub fn handle_local_game_creation(
 ) {
     for game_entity in game.iter() {
         game_ready.send(GameReady::new(game_entity));
+    }
+}
+
+/// Watch network game entity creation, initialize game session and
+/// insert it to a game entity.
+/// Send [`GameReady`] event upon success.
+pub fn handle_network_game_creation<T>(
+    mut commands: Commands,
+    game: Query<(Entity, &NetworkGame), Added<LocalGame<T>>>,
+    mut game_ready: EventWriter<GameReady>,
+    client: Res<grpc::GrpcClient>,
+    settings: Res<Settings>,
+)
+where
+    T: core::Game + proto::GetGameType + Send + Sync + 'static,
+    T::TurnData: Send,
+{
+    let Some(user) = settings.user_id() else {
+        return;
+    };
+    for (game_entity, &network_game) in game.iter() {
+        match client.game_session::<T>(*network_game, user) {
+            Ok(session) => {
+                commands.entity(game_entity).insert(session);
+                game_ready.send(GameReady::new(game_entity));
+            }
+            Err(err) => println!("game_session call failed: {}", err),
+        }
     }
 }
 
