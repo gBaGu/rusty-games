@@ -17,8 +17,8 @@ use systems::*;
 
 pub use components::{GameSession, SendActionTask};
 pub use events::{
-    Connected, Disconnected, RpcResultReady, SendSessionAction, SendSessionActionFailed,
-    SessionFinished, SessionUpdateReceived,
+    CloseSession, Connected, Disconnected, RpcResultReady, SendSessionAction,
+    SendSessionActionFailed, SessionFinished, SessionUpdateReceived,
 };
 pub use resources::GrpcClient;
 
@@ -73,6 +73,7 @@ impl Plugin for GrpcPlugin {
             .add_event::<RpcResultReady<proto::MakeTurnReply>>()
             .add_event::<RpcResultReady<proto::GetGameReply>>()
             .add_event::<RpcResultReady<proto::GetPlayerGamesReply>>()
+            .add_event::<CloseSession>()
             .add_event::<SessionFinished>()
             .add_event::<SendSessionActionFailed>()
             .add_event::<SendSessionAction<core::GridIndex>>()
@@ -98,6 +99,7 @@ impl Plugin for GrpcPlugin {
                         .run_if(any_with_component::<CallTask<proto::GetGameReply>>),
                     handle_response::<proto::GetPlayerGamesReply>
                         .run_if(any_with_component::<CallTask<proto::GetPlayerGamesReply>>),
+                    close_session::<core::GridIndex>,
                     session_finished::<core::GridIndex>,
                     init_session_action_send_task::<core::GridIndex>,
                     handle_session_action_send::<core::GridIndex>,

@@ -66,6 +66,7 @@ impl Plugin for GamePlugin {
                     update_current_user,
                     clear_foreign_network_games,
                     clear_game_on_exit,
+                    close_session,
                     send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
                     revert_action_status::<core::GridIndex>,
                     handle_game_session_update::<core::GridIndex>,

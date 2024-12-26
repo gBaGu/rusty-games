@@ -11,10 +11,7 @@ use super::components::{
 use super::events::{RpcResultReady, SessionUpdateReceived};
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use super::task_entity::TaskEntity;
-use super::{
-    Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient, SendActionTask,
-    SendSessionAction, SendSessionActionFailed, SessionFinished, DEFAULT_GRPC_SERVER_ADDRESS,
-};
+use super::{Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient, SendActionTask, SendSessionAction, SendSessionActionFailed, SessionFinished, DEFAULT_GRPC_SERVER_ADDRESS, CloseSession};
 
 pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
     if timer.tick(time.delta()).just_finished() {
@@ -110,6 +107,18 @@ pub fn handle_response<T: Send + Sync + 'static>(
         let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task);
         if let Some(res) = task.poll_once() {
             response_ready.send(RpcResultReady::new(res));
+        }
+    }
+}
+
+/// Listen to [`CloseSession`] event and close input channel of the [`GameSession`].
+pub fn close_session<T: Copy + Send + Sync + 'static>(
+    session: Query<&GameSession<T>>,
+    mut close_session: EventReader<CloseSession>,
+) {
+    for event in close_session.read() {
+        if let Ok(session) = session.get(**event) {
+            session.action_sender().close();
         }
     }
 }

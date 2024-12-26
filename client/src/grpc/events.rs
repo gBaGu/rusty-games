@@ -18,6 +18,17 @@ impl<T> RpcResultReady<T> {
     }
 }
 
+/// Event that is required to trigger game session to be closed.
+/// Contains an [`Entity`] of a game session.
+#[derive(Debug, Deref, Event)]
+pub struct CloseSession(Entity);
+
+impl CloseSession {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 /// Event that indicates that game session task is finished.
 /// Contains an [`Entity`] of a game session.
 #[derive(Debug, Deref, Event)]

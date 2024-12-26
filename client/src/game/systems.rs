@@ -10,6 +10,7 @@ use super::{
     StateUpdated, TurnStart, UserAuthority, Winner,
 };
 use crate::{grpc, Settings};
+use crate::grpc::CloseSession;
 use crate::interface::{GameLeft, GameReady, GameReadyToExit};
 use crate::UserIdChanged;
 
@@ -325,6 +326,16 @@ pub fn clear_game_on_exit(
         if !is_network_game || (is_network_game && is_finished_game) {
             commands.entity(event.get()).despawn_recursive();
         }
+    }
+}
+
+/// Whenever [`ActiveGame`] component is removed from entity, trigger the [`CloseSession`] event.
+pub fn close_session(
+    mut deactivated_game: RemovedComponents<ActiveGame>,
+    mut close_session: EventWriter<CloseSession>,
+) {
+    for entity in deactivated_game.read() {
+        close_session.send(CloseSession::new(entity));
     }
 }
 
