@@ -25,6 +25,7 @@ pub use resources::GrpcClient;
 pub const DEFAULT_GRPC_SERVER_ADDRESS: &str = "http://localhost:50051";
 pub const CONNECT_INTERVAL_SEC: f32 = 5.0;
 pub const GAME_SESSION_CHECK_INTERVAL_SEC: f32 = 1.0;
+pub const GAME_SESSION_RECONNECT_INTERVAL_SEC: f32 = 1.0;
 pub const HEALTH_RETRY_INTERVAL_SEC: f32 = 5.0;
 
 pub type GameClient = proto::game_client::GameClient<transport::Channel>;
@@ -99,11 +100,12 @@ impl Plugin for GrpcPlugin {
                         .run_if(any_with_component::<CallTask<proto::GetGameReply>>),
                     handle_response::<proto::GetPlayerGamesReply>
                         .run_if(any_with_component::<CallTask<proto::GetPlayerGamesReply>>),
-                    close_session::<core::GridIndex>,
-                    session_finished::<core::GridIndex>,
-                    init_session_action_send_task::<core::GridIndex>,
+                    close_session::<core::tic_tac_toe::TicTacToe>,
+                    session_finished::<core::tic_tac_toe::TicTacToe>,
+                    send_get_game_before_reconnect::<core::tic_tac_toe::TicTacToe>,
+                    init_session_action_send_task::<core::tic_tac_toe::TicTacToe>,
+                    init_session_update_receive_task::<core::tic_tac_toe::TicTacToe>,
                     handle_session_action_send::<core::GridIndex>,
-                    init_session_update_receive_task::<core::GridIndex>,
                     handle_session_update_receive::<core::GridIndex>,
                 ),
             );

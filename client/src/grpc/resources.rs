@@ -88,7 +88,7 @@ impl GrpcClient {
         &self,
         game_id: u64,
         player_id: u64,
-    ) -> GrpcResult<GameSession<T::TurnData>>
+    ) -> GrpcResult<GameSession<T, T::TurnData>>
     where
         T: core::Game + proto::GetGameType,
         T::TurnData: Send + 'static,

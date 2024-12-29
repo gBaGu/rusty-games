@@ -3,15 +3,22 @@ use bevy::prelude::*;
 use bevy::tasks;
 use bevy::tasks::futures_lite::future;
 use bevy::tasks::IoTaskPool;
+use game_server::{core, proto};
 use tonic::transport;
 
 use super::components::{
     CallTask, ConnectClientTask, ReceiveConnectionStatusTask, ReceiveSessionUpdateTask,
+    ReconnectSession, ReconnectSessionBundle, ReconnectSessionTimer,
 };
 use super::events::{RpcResultReady, SessionUpdateReceived};
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use super::task_entity::TaskEntity;
-use super::{Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient, SendActionTask, SendSessionAction, SendSessionActionFailed, SessionFinished, DEFAULT_GRPC_SERVER_ADDRESS, CloseSession};
+use super::{
+    CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
+    SendActionTask, SendSessionAction, SendSessionActionFailed, SessionFinished,
+    DEFAULT_GRPC_SERVER_ADDRESS,
+};
+use crate::game::{ActiveGame, NetworkGame};
 
 pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
     if timer.tick(time.delta()).just_finished() {
@@ -112,10 +119,13 @@ pub fn handle_response<T: Send + Sync + 'static>(
 }
 
 /// Listen to [`CloseSession`] event and close input channel of the [`GameSession`].
-pub fn close_session<T: Copy + Send + Sync + 'static>(
-    session: Query<&GameSession<T>>,
+pub fn close_session<T>(
+    session: Query<&GameSession<T, T::TurnData>>,
     mut close_session: EventReader<CloseSession>,
-) {
+) where
+    T: core::Game + Send + Sync + 'static,
+    T::TurnData: Send,
+{
     for event in close_session.read() {
         if let Ok(session) = session.get(**event) {
             session.action_sender().close();
@@ -125,29 +135,81 @@ pub fn close_session<T: Copy + Send + Sync + 'static>(
 
 /// Polls unfinished session tasks and if the task is ready remove [`GameSession`] from the entity
 /// and send [`SessionFinished`] event.
-pub fn session_finished<T: Copy + Send + Sync + 'static>(
+pub fn session_finished<T>(
     mut commands: Commands,
-    mut session: Query<(Entity, &mut GameSession<T>)>,
+    mut session: Query<(
+        Entity,
+        &mut GameSession<T, T::TurnData>,
+        Option<&ActiveGame>,
+    )>,
     mut timer: ResMut<SessionCheckTimer>,
     mut session_finished: EventWriter<SessionFinished>,
     time: Res<Time>,
-) {
+) where
+    T: core::Game + Send + Sync + 'static,
+    T::TurnData: Send,
+{
     if timer.tick(time.delta()).just_finished() {
-        for (session_entity, mut session) in session.iter_mut()
-        {
+        for (session_entity, mut session, active) in session.iter_mut() {
             if tasks::block_on(future::poll_once(session.task_mut())).is_some() {
-                commands.entity(session_entity).remove::<GameSession<T>>();
+                commands
+                    .entity(session_entity)
+                    .remove::<GameSession<T, T::TurnData>>();
                 session_finished.send(SessionFinished::new(session_entity));
+                if active.is_some() {
+                    commands
+                        .entity(session_entity)
+                        .insert(ReconnectSessionBundle::<T>::default());
+                }
             }
         }
     }
 }
 
-pub fn init_session_action_send_task<T: Copy + Send + Sync + 'static>(
+/// Wait till the [`ReconnectSessionTimer`] is finished and send `GetGame` request.
+pub fn send_get_game_before_reconnect<T>(
     mut commands: Commands,
-    session: Query<&GameSession<T>>,
-    mut send_session_action: EventReader<SendSessionAction<T>>,
-) {
+    mut reconnect: Query<
+        (Entity, &mut ReconnectSessionTimer, &NetworkGame),
+        With<ReconnectSession<T>>,
+    >,
+    client: Option<Res<GrpcClient>>,
+    time: Res<Time>,
+) where
+    T: proto::GetGameType + Send + Sync + 'static,
+{
+    for (game_entity, mut timer, network_game) in reconnect.iter_mut() {
+        if timer.tick(time.delta()).just_finished() {
+            let Some(ref client) = client else {
+                println!("unable to reconnect session: grpc client is not connected");
+                commands
+                    .entity(game_entity)
+                    .remove::<ReconnectSessionBundle<T>>();
+                continue;
+            };
+            match client.get_game::<T>(**network_game) {
+                Ok(task) => {
+                    commands.spawn(task);
+                }
+                Err(err) => {
+                    println!("unable to reconnect session: GetGame call failed: {}", err);
+                    commands
+                        .entity(game_entity)
+                        .remove::<ReconnectSessionBundle<T>>();
+                }
+            }
+        }
+    }
+}
+
+pub fn init_session_action_send_task<T>(
+    mut commands: Commands,
+    session: Query<&GameSession<T, T::TurnData>>,
+    mut send_session_action: EventReader<SendSessionAction<T::TurnData>>,
+) where
+    T: core::Game + Send + Sync + 'static,
+    T::TurnData: Copy + Send + Sync + 'static,
+{
     for event in send_session_action.read() {
         let Ok(session) = session.get(event.session_entity()) else {
             continue;
@@ -162,11 +224,13 @@ pub fn init_session_action_send_task<T: Copy + Send + Sync + 'static>(
     }
 }
 
-pub fn handle_session_action_send<T: Send + Sync + 'static>(
+pub fn handle_session_action_send<T>(
     mut commands: Commands,
     mut task: Query<(Entity, &mut SendActionTask<T>)>,
     mut send_action_failed: EventWriter<SendSessionActionFailed>,
-) {
+) where
+    T: Send + Sync + 'static,
+{
     for (task_entity, mut task) in task.iter_mut() {
         if let Some(res) = tasks::block_on(future::poll_once(&mut task.0)).and_then(|res| {
             commands.entity(task_entity).remove::<SendActionTask<T>>();
@@ -180,10 +244,16 @@ pub fn handle_session_action_send<T: Send + Sync + 'static>(
     }
 }
 
-pub fn init_session_update_receive_task<T: Send + Sync + 'static>(
+pub fn init_session_update_receive_task<T>(
     mut commands: Commands,
-    session: Query<(Entity, &GameSession<T>), Without<ReceiveSessionUpdateTask<T>>>,
-) {
+    session: Query<
+        (Entity, &GameSession<T, T::TurnData>),
+        Without<ReceiveSessionUpdateTask<T::TurnData>>,
+    >,
+) where
+    T: core::Game + Send + Sync + 'static,
+    T::TurnData: Send,
+{
     // TODO: make this system run by some timer
     for (session_entity, session) in session.iter() {
         let receiver = session.update_receiver();
@@ -197,11 +267,13 @@ pub fn init_session_update_receive_task<T: Send + Sync + 'static>(
     }
 }
 
-pub fn handle_session_update_receive<T: Send + Sync + 'static>(
+pub fn handle_session_update_receive<T>(
     mut commands: Commands,
     mut session: Query<(Entity, &mut ReceiveSessionUpdateTask<T>)>,
     mut update_received: EventWriter<SessionUpdateReceived<T>>,
-) {
+) where
+    T: Send + Sync + 'static,
+{
     for (session_entity, mut task) in session.iter_mut() {
         if let Some(res) = tasks::block_on(future::poll_once(&mut task.0)).and_then(|res| {
             commands

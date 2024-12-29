@@ -12,7 +12,7 @@ use game_server::core::tic_tac_toe::TicTacToe;
 
 use crate::grpc::NetworkSystems;
 use components::{
-    BotAuthority, CurrentPlayer, CurrentUserPlayerBundle, LocalGame, LocalGameBundle, NetworkGame,
+    BotAuthority, CurrentPlayer, CurrentUserPlayerBundle, LocalGame, LocalGameBundle,
     NetworkGameBundle, NetworkPlayerBundle, PendingExistingGameBundle, PendingNewGameBundle,
     PlayerPosition, UserAuthority,
 };
@@ -21,10 +21,11 @@ use resources::RefreshGameTimer;
 use systems::*;
 
 pub use components::{
-    ActiveGame, Board, BotDifficulty, CurrentUser, GameLink, PendingActionQueue, Winner,
+    ActiveGame, Board, BotDifficulty, CurrentUser, GameLink, NetworkGame, PendingActionQueue,
+    Winner,
 };
 pub use events::{
-    ServerActionReceived, BotReady, Draw, GameDataReady, PlayerWon, StateUpdated, TurnStart,
+    BotReady, Draw, GameDataReady, PlayerWon, ServerActionReceived, StateUpdated, TurnStart,
 };
 pub use game_info::{FullGameInfo, GameInfo};
 pub use pending_action::PendingAction;
