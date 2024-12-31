@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use bevy::app::AppExit;
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
@@ -383,7 +381,7 @@ pub fn handle_get_player_games(
 ) {
     for event in get_games_result.read() {
         timer.unpause();
-        match event.deref() {
+        match event.result() {
             Ok(response) => {
                 let games: Result<Vec<GameInfo>, _> = response
                     .get_ref()

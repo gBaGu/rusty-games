@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use bevy::prelude::*;
 use game_server::core::tic_tac_toe::TicTacToe;
 use game_server::core::{self, Game as _};
@@ -41,11 +39,11 @@ pub fn handle_create_game_reply(
         return;
     };
     for event in create_game_reply.read() {
-        let Ok(pending_game_entity) = pending_game.get_single() else {
+        let Ok(pending_game_entity) = pending_game.get(event.entity()) else {
             continue;
         };
         commands.entity(pending_game_entity).despawn();
-        match event.deref() {
+        match event.result() {
             Ok(response) => {
                 let Some(game_info) = &response.get_ref().game_info else {
                     println!("received empty CreateGame reply from server");
@@ -79,7 +77,7 @@ pub fn handle_create_game_reply(
 /// created from game info and send [`GameDataReady`] event.
 pub fn handle_get_game_reply_on_join(
     mut commands: Commands,
-    pending_game: Query<(Entity, &NetworkGame), With<PendingGame<TicTacToe>>>,
+    pending_game: Query<&NetworkGame, With<PendingGame<TicTacToe>>>,
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
     mut game_data_ready: EventWriter<GameDataReady>,
     settings: Res<Settings>,
@@ -88,11 +86,11 @@ pub fn handle_get_game_reply_on_join(
         return;
     };
     for event in get_game_reply.read() {
-        let Ok((pending_game_entity, &network_game)) = pending_game.get_single() else {
+        let Ok(&network_game) = pending_game.get(event.entity()) else {
             continue;
         };
-        commands.entity(pending_game_entity).despawn();
-        match event.deref() {
+        commands.entity(event.entity()).despawn();
+        match event.result() {
             Ok(response) => {
                 let Some(game_info) = &response.get_ref().game_info else {
                     println!("received empty CreateGame reply from server");
@@ -126,18 +124,18 @@ pub fn handle_get_game_reply_on_join(
 /// Receive GetGame rpc reply and synchronize active game sending [`StateUpdated`] event if
 /// the state has changed and [`PlayerActionApplied`] event for every new action.
 pub fn handle_get_game(
-    mut game: Query<(Entity, &NetworkGame, &mut LocalGame), With<ActiveGame>>,
+    mut game: Query<(&NetworkGame, &mut LocalGame), With<ActiveGame>>,
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
     mut action_applied: EventWriter<PlayerActionApplied>,
     mut state_updated: EventWriter<StateUpdated>,
     mut timer: ResMut<RefreshGameTimer>,
 ) {
-    let Ok((game_entity, &network_game, mut local_game)) = game.get_single_mut() else {
-        return;
-    };
     for event in get_game_reply.read() {
+        let Ok((&network_game, mut local_game)) = game.get_mut(event.entity()) else {
+            continue;
+        };
         timer.unpause();
-        match event.deref() {
+        match event.result() {
             Ok(response) => {
                 let Some(info) = &response.get_ref().game_info else {
                     println!("dropping empty GetGame response");
@@ -163,7 +161,7 @@ pub fn handle_get_game(
                             if local_cell.is_none() {
                                 *local_cell = *cell;
                                 action_applied.send(PlayerActionApplied::new(
-                                    game_entity,
+                                    event.entity(),
                                     *player,
                                     pos,
                                 ));
@@ -174,7 +172,7 @@ pub fn handle_get_game(
                 }
                 if update_count > 0 {
                     local_game.set_state(full_info.info.state);
-                    state_updated.send(StateUpdated::new(game_entity, full_info.info.state));
+                    state_updated.send(StateUpdated::new(event.entity(), full_info.info.state));
                 }
             }
             Err(err) => {

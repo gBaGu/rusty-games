@@ -119,17 +119,17 @@ pub fn init_network_settings_menu(
 /// fill it with a status message.
 pub fn init_game_list(
     mut commands: Commands,
-    mut game_list: Query<&mut interface::GameList, Added<interface::GameList>>,
+    mut game_list: Query<(Entity, &mut interface::GameList), Added<interface::GameList>>,
     settings: Res<Settings>,
     client: Option<Res<GrpcClient>>,
 ) {
-    for mut game_list in game_list.iter_mut() {
+    for (game_list_entity, mut game_list) in game_list.iter_mut() {
         if let Some(id) = settings.user_id() {
             match client.as_ref() {
                 Some(client) if client.connected() => {
                     match client.get_player_games::<TicTacToe>(id) {
                         Ok(task) => {
-                            commands.spawn(task);
+                            commands.entity(game_list_entity).insert(task);
                         }
                         Err(err) => {
                             println!("get_player_games call failed: {}", err);
@@ -147,7 +147,7 @@ pub fn init_game_list(
 
 /// Whenever timer is finished send GetPlayerGames request or fill game list with a status message.
 pub fn send_get_player_games(
-    mut game_list: Query<&mut interface::GameList>,
+    mut game_list: Query<(Entity, &mut interface::GameList)>,
     mut commands: Commands,
     mut timer: ResMut<interface::RefreshGamesTimer>,
     client: Res<GrpcClient>,
@@ -155,7 +155,7 @@ pub fn send_get_player_games(
     time: Res<Time>,
 ) {
     if timer.tick(time.delta()).just_finished() {
-        let Ok(mut list) = game_list.get_single_mut() else {
+        let Ok((game_list_entity, mut list)) = game_list.get_single_mut() else {
             println!("no game list found to refresh");
             return;
         };
@@ -165,7 +165,7 @@ pub fn send_get_player_games(
         };
         match client.get_player_games::<TicTacToe>(id) {
             Ok(task) => {
-                commands.spawn(task);
+                commands.entity(game_list_entity).insert(task);
                 timer.reset();
                 timer.pause();
             }
@@ -317,8 +317,9 @@ pub fn create_network_game(
             };
             match client.create_game::<TicTacToe>(user, opponent) {
                 Ok(task) => {
-                    commands.spawn(task);
-                    commands.spawn(PendingNewGameBundle::<TicTacToe>::new());
+                    commands
+                        .spawn(PendingNewGameBundle::<TicTacToe>::new())
+                        .insert(task);
                     return;
                 }
                 Err(err) => println!("create_game call failed: {}", err),
@@ -379,8 +380,9 @@ pub fn join_game(
         if let Some(client) = client.as_ref() {
             match client.get_game::<TicTacToe>(event.game_id()) {
                 Ok(task) => {
-                    commands.spawn(task);
-                    commands.spawn(PendingExistingGameBundle::<TicTacToe>::new(event.game_id()));
+                    commands
+                        .spawn(PendingExistingGameBundle::<TicTacToe>::new(event.game_id()))
+                        .insert(task);
                 }
                 Err(err) => println!("get_game call failed: {}", err),
             };

@@ -19,6 +19,7 @@ use super::{
     DEFAULT_GRPC_SERVER_ADDRESS,
 };
 use crate::game::{ActiveGame, NetworkGame};
+use crate::Settings;
 
 pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
     if timer.tick(time.delta()).just_finished() {
@@ -111,9 +112,9 @@ pub fn handle_response<T: Send + Sync + 'static>(
     mut response_ready: EventWriter<RpcResultReady<T>>,
 ) {
     for (entity, mut task) in task.iter_mut() {
-        let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task);
-        if let Some(res) = task.poll_once() {
-            response_ready.send(RpcResultReady::new(res));
+        if let Some(res) = tasks::block_on(future::poll_once(&mut **task)) {
+            commands.entity(entity).remove::<CallTask<T>>();
+            response_ready.send(RpcResultReady::new(entity, res));
         }
     }
 }
@@ -189,7 +190,7 @@ pub fn send_get_game_before_reconnect<T>(
             };
             match client.get_game::<T>(**network_game) {
                 Ok(task) => {
-                    commands.spawn(task);
+                    commands.entity(game_entity).insert(task);
                 }
                 Err(err) => {
                     println!("unable to reconnect session: GetGame call failed: {}", err);
@@ -197,6 +198,48 @@ pub fn send_get_game_before_reconnect<T>(
                         .entity(game_entity)
                         .remove::<ReconnectSessionBundle<T>>();
                 }
+            }
+        }
+    }
+}
+
+pub fn reconnect_session<T>(
+    mut commands: Commands,
+    reconnect: Query<&NetworkGame, With<ReconnectSession<T>>>,
+    mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
+    client: Option<Res<GrpcClient>>,
+    settings: Res<Settings>,
+) where
+    T: core::Game + proto::GetGameType + Send + Sync + 'static,
+    T::TurnData: Send + 'static,
+{
+    for event in get_game_reply.read() {
+        let Ok(network_game) = reconnect.get(event.entity()) else {
+            continue;
+        };
+        commands
+            .entity(event.entity())
+            .remove::<ReconnectSessionBundle<T>>();
+        let Some(user) = settings.user_id() else {
+            println!("unable to reconnect session: user is not logged in");
+            continue;
+        };
+        let Some(ref client) = client else {
+            println!("unable to reconnect session: grpc client is not connected");
+            continue;
+        };
+        match event.result() {
+            Ok(_) => match client.game_session::<T>(**network_game, user) {
+                Ok(session) => {
+                    commands.entity(event.entity()).insert(session);
+                }
+                Err(err) => println!(
+                    "unable to reconnect session: GameSession call failed: {}",
+                    err
+                ),
+            },
+            Err(err) => {
+                println!("unable to reconnect session: GetGame call failed: {}", err);
             }
         }
     }

@@ -9,12 +9,26 @@ pub struct Connected;
 #[derive(Event)]
 pub struct Disconnected;
 
-#[derive(Deref, Event)]
-pub struct RpcResultReady<T>(RpcResult<T>);
+#[derive(Debug, Event)]
+pub struct RpcResultReady<T> {
+    entity: Entity,
+    result: RpcResult<T>,
+}
 
 impl<T> RpcResultReady<T> {
-    pub fn new(val: RpcResult<T>) -> Self {
-        Self(val)
+    pub fn new(entity: Entity, result: RpcResult<T>) -> Self {
+        Self {
+            entity,
+            result,
+        }
+    }
+
+    pub fn entity(&self) -> Entity {
+        self.entity
+    }
+
+    pub fn result(&self) -> &RpcResult<T> {
+        &self.result
     }
 }
 

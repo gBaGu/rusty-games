@@ -102,6 +102,7 @@ impl Plugin for GrpcPlugin {
                         .run_if(any_with_component::<CallTask<proto::GetPlayerGamesReply>>),
                     close_session::<core::tic_tac_toe::TicTacToe>,
                     session_finished::<core::tic_tac_toe::TicTacToe>,
+                    reconnect_session::<core::tic_tac_toe::TicTacToe>,
                     send_get_game_before_reconnect::<core::tic_tac_toe::TicTacToe>,
                     init_session_action_send_task::<core::tic_tac_toe::TicTacToe>,
                     init_session_update_receive_task::<core::tic_tac_toe::TicTacToe>,
