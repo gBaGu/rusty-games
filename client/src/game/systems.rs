@@ -5,47 +5,61 @@ use game_server::proto;
 use super::components::{FinishedGame, Game, LocalGame};
 use super::pending_action::ConfirmationStatus;
 use super::{
-    ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame,
-    PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, ServerActionReceived,
-    StateUpdated, TurnStart, UserAuthority, Winner,
+    ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
+    NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon,
+    ServerActionReceived, StateUpdated, TurnStart, UserAuthority, Winner,
 };
-use crate::{grpc, Settings};
-use crate::grpc::CloseSession;
+use crate::grpc;
 use crate::interface::{GameLeft, GameReady, GameReadyToExit};
-use crate::UserIdChanged;
+use crate::{Settings, UserIdChanged};
 
-/// Watch local game entity creation and send [`GameReady`] event.
-pub fn handle_local_game_creation(
-    game: Query<Entity, (Added<Game>, Without<NetworkGame>)>,
-    mut game_ready: EventWriter<GameReady>,
+/// Watch the game entity creation and send [`GameEntityReady`] event.
+pub fn handle_game_spawn(
+    game: Query<Entity, Added<Game>>,
+    mut game_entity_ready: EventWriter<GameEntityReady>,
 ) {
     for game_entity in game.iter() {
-        game_ready.send(GameReady::new(game_entity));
+        game_entity_ready.send(GameEntityReady::new(game_entity));
     }
 }
 
-/// Watch network game entity creation, initialize game session and
-/// insert it to a game entity.
-/// Send [`GameReady`] event upon success.
-pub fn handle_network_game_creation<T>(
+/// Receive the [`GameEntityReady`] event and in case of a local game send [`GameReady`] event.
+pub fn handle_local_game_creation(
+    local_game: Query<(), (With<Game>, Without<NetworkGame>)>,
+    mut game_entity_ready: EventReader<GameEntityReady>,
+    mut game_ready: EventWriter<GameReady>,
+) {
+    for event in game_entity_ready.read() {
+        if local_game.contains(**event) {
+            game_ready.send(GameReady::new(**event));
+        }
+    }
+}
+
+/// Receive the [`GameEntityReady`] event and in case of a network game
+/// initialize game session and send [`GameReady`] event.
+pub fn initialize_game_session<T>(
     mut commands: Commands,
-    game: Query<(Entity, &NetworkGame), Added<LocalGame<T>>>,
+    game: Query<&NetworkGame, With<Game>>,
+    mut game_entity_ready: EventReader<GameEntityReady>,
     mut game_ready: EventWriter<GameReady>,
     client: Res<grpc::GrpcClient>,
     settings: Res<Settings>,
-)
-where
+) where
     T: core::Game + proto::GetGameType + Send + Sync + 'static,
     T::TurnData: Send,
 {
     let Some(user) = settings.user_id() else {
         return;
     };
-    for (game_entity, &network_game) in game.iter() {
-        match client.game_session::<T>(*network_game, user) {
+    for event in game_entity_ready.read() {
+        let Ok(network_game) = game.get(**event) else {
+            continue;
+        };
+        match client.game_session::<T>(**network_game, user) {
             Ok(session) => {
-                commands.entity(game_entity).insert(session);
-                game_ready.send(GameReady::new(game_entity));
+                commands.entity(**event).insert(session);
+                game_ready.send(GameReady::new(**event));
             }
             Err(err) => println!("game_session call failed: {}", err),
         }
@@ -329,13 +343,13 @@ pub fn clear_game_on_exit(
     }
 }
 
-/// Whenever [`ActiveGame`] component is removed from entity, trigger the [`CloseSession`] event.
+/// Whenever [`ActiveGame`] component is removed from entity, trigger the [`grpc::CloseSession`] event.
 pub fn close_session(
     mut deactivated_game: RemovedComponents<ActiveGame>,
-    mut close_session: EventWriter<CloseSession>,
+    mut close_session: EventWriter<grpc::CloseSession>,
 ) {
     for entity in deactivated_game.read() {
-        close_session.send(CloseSession::new(entity));
+        close_session.send(grpc::CloseSession::new(entity));
     }
 }
 

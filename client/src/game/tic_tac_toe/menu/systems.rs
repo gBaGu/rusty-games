@@ -11,7 +11,8 @@ use crate::game::tic_tac_toe::menu::components::{
     NetworkGameSettings, NetworkGameSettingsBundle,
 };
 use crate::game::{
-    BotDifficulty, GameDataReady, NetworkGame, PendingExistingGameBundle, PendingNewGameBundle,
+    BotDifficulty, GameDataReady, GameEntityReady, NetworkGame, PendingExistingGameBundle,
+    PendingNewGameBundle,
 };
 use crate::grpc::GrpcClient;
 use crate::interface;
@@ -362,19 +363,19 @@ pub fn save_opponent(
     }
 }
 
-/// Whenever [`JoinPressed`] event is received:
-/// if the game is already in memory or send [`GameReady`] event,
+/// Whenever [`interface::JoinPressed`] event is received:
+/// if the game is already in memory send [`GameEntityReady`] event,
 /// otherwise send GetGame request.
 pub fn join_game(
     mut commands: Commands,
     game: Query<(Entity, &NetworkGame)>,
     mut join_pressed: EventReader<interface::JoinPressed>,
-    mut game_ready: EventWriter<interface::GameReady>,
+    mut game_entity_ready: EventWriter<GameEntityReady>,
     client: Option<Res<GrpcClient>>,
 ) {
     for event in join_pressed.read() {
         if let Some((game_entity, _)) = game.iter().find(|(_, &game)| *game == event.game_id()) {
-            game_ready.send(interface::GameReady::new(game_entity));
+            game_entity_ready.send(GameEntityReady::new(game_entity));
             return;
         }
         if let Some(client) = client.as_ref() {

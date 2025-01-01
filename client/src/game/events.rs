@@ -39,6 +39,18 @@ impl GameDataReady {
     }
 }
 
+/// Event that signals that game [`Entity`] is ready for interaction.
+/// Triggered during game creation process when the game entity is spawned or
+/// found within existing game entities.
+#[derive(Debug, Deref, Event)]
+pub struct GameEntityReady(Entity);
+
+impl GameEntityReady {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 /// Event that signals that particular bot is ready to make some action in a game.
 #[derive(Clone, Copy, Debug, Event)]
 pub struct BotReady {

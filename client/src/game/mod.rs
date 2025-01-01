@@ -25,7 +25,8 @@ pub use components::{
     Winner,
 };
 pub use events::{
-    BotReady, Draw, GameDataReady, PlayerWon, ServerActionReceived, StateUpdated, TurnStart,
+    BotReady, Draw, GameDataReady, GameEntityReady, PlayerWon, ServerActionReceived, StateUpdated,
+    TurnStart,
 };
 pub use game_info::{FullGameInfo, GameInfo};
 pub use pending_action::PendingAction;
@@ -47,6 +48,7 @@ impl Plugin for GamePlugin {
         app.add_plugins(tic_tac_toe::TicTacToePlugin)
             .add_event::<ServerActionReceived<core::GridIndex>>()
             .add_event::<GameDataReady>()
+            .add_event::<GameEntityReady>()
             .add_event::<ActionConfirmationFailed>()
             .add_event::<BotReady>()
             .add_event::<StateUpdated>()
@@ -57,8 +59,9 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
+                    handle_game_spawn,
                     handle_local_game_creation,
-                    handle_network_game_creation::<TicTacToe>.in_set(NetworkSystems),
+                    initialize_game_session::<TicTacToe>.in_set(NetworkSystems),
                     handle_state_updated,
                     update_current_player,
                     handle_draw,
