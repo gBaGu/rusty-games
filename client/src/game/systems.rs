@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use game_server::core;
 use game_server::proto;
 
-use super::components::{FinishedGame, Game, LocalGame};
+use super::components::{FinishedGame, Game};
 use super::pending_action::ConfirmationStatus;
 use super::{
     ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
@@ -11,7 +11,7 @@ use super::{
 };
 use crate::grpc;
 use crate::interface::{GameLeft, GameReady, GameReadyToExit};
-use crate::{Settings, UserIdChanged};
+use crate::UserIdChanged;
 
 /// Watch the game entity creation and send [`GameEntityReady`] event.
 pub fn handle_game_spawn(
@@ -37,31 +37,33 @@ pub fn handle_local_game_creation(
 }
 
 /// Receive the [`GameEntityReady`] event and in case of a network game
-/// initialize game session and send [`GameReady`] event.
+/// trigger session initialization.
 pub fn initialize_game_session<T>(
-    mut commands: Commands,
-    game: Query<&NetworkGame, With<Game>>,
+    network_game: Query<(), With<NetworkGame>>,
     mut game_entity_ready: EventReader<GameEntityReady>,
-    mut game_ready: EventWriter<GameReady>,
-    client: Res<grpc::GrpcClient>,
-    settings: Res<Settings>,
+    mut open_session: EventWriter<grpc::OpenSession>,
 ) where
     T: core::Game + proto::GetGameType + Send + Sync + 'static,
     T::TurnData: Send,
 {
-    let Some(user) = settings.user_id() else {
-        return;
-    };
     for event in game_entity_ready.read() {
-        let Ok(network_game) = game.get(**event) else {
-            continue;
-        };
-        match client.game_session::<T>(**network_game, user) {
-            Ok(session) => {
-                commands.entity(**event).insert(session);
-                game_ready.send(GameReady::new(**event));
-            }
-            Err(err) => println!("game_session call failed: {}", err),
+        if network_game.contains(**event) {
+            open_session.send(grpc::OpenSession::new(**event));
+        }
+    }
+}
+
+/// Receive the [`grpc::SessionOpened`] event and in case if entity it contains
+/// is a network game and is not active (which means this game is being initialized)
+/// send [`GameReady`] event.
+pub fn network_game_initialization_finished(
+    network_game: Query<(), (With<NetworkGame>, Without<ActiveGame>)>,
+    mut session_opened: EventReader<grpc::SessionOpened>,
+    mut game_ready: EventWriter<GameReady>,
+) {
+    for event in session_opened.read() {
+        if network_game.contains(**event) {
+            game_ready.send(GameReady::new(**event));
         }
     }
 }
@@ -109,7 +111,7 @@ pub fn revert_action_status<T: Send + Sync + 'static>(
 
 /// For every [`grpc::SessionFinished`] or [`grpc::SendSessionActionFailed`] event
 /// send the [`ActionConfirmationFailed`].
-pub fn handle_game_session_finished(
+pub fn action_confirmation_failed(
     mut session_finished: EventReader<grpc::SessionFinished>,
     mut send_action_failed: EventReader<grpc::SendSessionActionFailed>,
     mut confirmation_failed: EventWriter<ActionConfirmationFailed>,

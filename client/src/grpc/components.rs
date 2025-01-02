@@ -72,12 +72,12 @@ impl<G, T> GameSession<G, T> {
     }
 }
 
-/// Component that indicates that reconnect process is started.
+/// Component that indicates that game session connect process is started.
 /// `T` is the type of the game (required for grpc requests).
 #[derive(Debug, Component)]
-pub struct ReconnectSession<T>(PhantomData<T>);
+pub struct ConnectingGameSession<T>(PhantomData<T>);
 
-impl<T> Default for ReconnectSession<T> {
+impl<T> Default for ConnectingGameSession<T> {
     fn default() -> Self {
         Self(Default::default())
     }
@@ -100,7 +100,7 @@ impl Default for ReconnectSessionTimer {
 #[derive(Debug, Bundle)]
 pub struct ReconnectSessionBundle<T: Send + Sync + 'static> {
     pub timer: ReconnectSessionTimer,
-    tag: ReconnectSession<T>,
+    tag: ConnectingGameSession<T>,
 }
 
 impl<T: Send + Sync + 'static> Default for ReconnectSessionBundle<T> {

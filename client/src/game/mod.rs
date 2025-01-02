@@ -62,6 +62,7 @@ impl Plugin for GamePlugin {
                     handle_game_spawn,
                     handle_local_game_creation,
                     initialize_game_session::<TicTacToe>.in_set(NetworkSystems),
+                    network_game_initialization_finished,
                     handle_state_updated,
                     update_current_player,
                     handle_draw,
@@ -75,7 +76,7 @@ impl Plugin for GamePlugin {
                     revert_action_status::<core::GridIndex>,
                     handle_game_session_update::<core::GridIndex>,
                     handle_action_from_server::<core::GridIndex>,
-                    handle_game_session_finished,
+                    action_confirmation_failed,
                 ),
             );
     }

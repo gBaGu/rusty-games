@@ -32,12 +32,55 @@ impl<T> RpcResultReady<T> {
     }
 }
 
+/// Event that is required to initialize game session opening process.
+/// When `delayed` is set to `true` opening will be delayed.
+#[derive(Debug, Event)]
+pub struct OpenSession {
+    game: Entity,
+    delayed: bool,
+}
+
+impl OpenSession {
+    pub fn new(game: Entity) -> Self {
+        Self {
+            game,
+            delayed: false,
+        }
+    }
+
+    pub fn new_delayed(game: Entity) -> Self {
+        Self {
+            game,
+            delayed: true,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn delayed(&self) -> bool {
+        self.delayed
+    }
+}
+
 /// Event that is required to trigger game session to be closed.
 /// Contains an [`Entity`] of a game session.
 #[derive(Debug, Deref, Event)]
 pub struct CloseSession(Entity);
 
 impl CloseSession {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
+/// Event that indicates that session initialization is finished.
+/// Contains an [`Entity`] of a game session.
+#[derive(Debug, Deref, Event)]
+pub struct SessionOpened(Entity);
+
+impl SessionOpened {
     pub fn new(entity: Entity) -> Self {
         Self(entity)
     }

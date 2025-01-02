@@ -7,16 +7,16 @@ use game_server::{core, proto};
 use tonic::transport;
 
 use super::components::{
-    CallTask, ConnectClientTask, ReceiveConnectionStatusTask, ReceiveSessionUpdateTask,
-    ReconnectSession, ReconnectSessionBundle, ReconnectSessionTimer,
+    CallTask, ConnectClientTask, ConnectingGameSession, ReceiveConnectionStatusTask,
+    ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer,
 };
 use super::events::{RpcResultReady, SessionUpdateReceived};
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use super::task_entity::TaskEntity;
 use super::{
     CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
-    SendActionTask, SendSessionAction, SendSessionActionFailed, SessionFinished,
-    DEFAULT_GRPC_SERVER_ADDRESS,
+    OpenSession, SendActionTask, SendSessionAction, SendSessionActionFailed, SessionFinished,
+    SessionOpened, DEFAULT_GRPC_SERVER_ADDRESS,
 };
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
@@ -145,6 +145,7 @@ pub fn session_finished<T>(
     )>,
     mut timer: ResMut<SessionCheckTimer>,
     mut session_finished: EventWriter<SessionFinished>,
+    mut open_session: EventWriter<OpenSession>,
     time: Res<Time>,
 ) where
     T: core::Game + Send + Sync + 'static,
@@ -158,55 +159,80 @@ pub fn session_finished<T>(
                     .remove::<GameSession<T, T::TurnData>>();
                 session_finished.send(SessionFinished::new(session_entity));
                 if active.is_some() {
-                    commands
-                        .entity(session_entity)
-                        .insert(ReconnectSessionBundle::<T>::default());
+                    open_session.send(OpenSession::new_delayed(session_entity));
                 }
             }
         }
     }
 }
 
+/// Receive the [`OpenSession`] event and insert components required for session initialization
+/// into the entity contained in the event.
+pub fn init_open_session<T>(mut commands: Commands, mut open_session: EventReader<OpenSession>)
+where
+    T: Send + Sync + 'static,
+{
+    for event in open_session.read() {
+        let mut session_cmds = commands.entity(event.game());
+        if event.delayed() {
+            session_cmds.insert(ReconnectSessionBundle::<T>::default());
+        } else {
+            session_cmds.insert(ConnectingGameSession::<T>::default());
+        }
+    }
+}
+
 /// Wait till the [`ReconnectSessionTimer`] is finished and send `GetGame` request.
-pub fn send_get_game_before_reconnect<T>(
+pub fn send_get_game_before_connect<T>(
     mut commands: Commands,
-    mut reconnect: Query<
-        (Entity, &mut ReconnectSessionTimer, &NetworkGame),
-        With<ReconnectSession<T>>,
+    mut connecting_session: Query<
+        // FIXME: in case when other part of logic will send GetGame request the timer will be ignored
+        (Entity, &NetworkGame, Option<&mut ReconnectSessionTimer>),
+        (
+            With<ConnectingGameSession<T>>,
+            Without<CallTask<proto::GetGameReply>>,
+        ),
     >,
     client: Option<Res<GrpcClient>>,
     time: Res<Time>,
 ) where
     T: proto::GetGameType + Send + Sync + 'static,
 {
-    for (game_entity, mut timer, network_game) in reconnect.iter_mut() {
-        if timer.tick(time.delta()).just_finished() {
-            let Some(ref client) = client else {
-                println!("unable to reconnect session: grpc client is not connected");
+    for (game_entity, network_game, timer) in connecting_session.iter_mut() {
+        // if there is a timer, advance it and skip the rest if not finished
+        if let Some(mut timer) = timer {
+            if !timer.tick(time.delta()).just_finished() {
+                continue;
+            }
+        }
+        let Some(ref client) = client else {
+            println!("unable to reconnect session: grpc client is not connected");
+            commands
+                .entity(game_entity)
+                .remove::<ReconnectSessionBundle<T>>();
+            continue;
+        };
+        match client.get_game::<T>(**network_game) {
+            Ok(task) => {
+                commands.entity(game_entity).insert(task);
+            }
+            Err(err) => {
+                println!("unable to reconnect session: GetGame call failed: {}", err);
                 commands
                     .entity(game_entity)
                     .remove::<ReconnectSessionBundle<T>>();
-                continue;
-            };
-            match client.get_game::<T>(**network_game) {
-                Ok(task) => {
-                    commands.entity(game_entity).insert(task);
-                }
-                Err(err) => {
-                    println!("unable to reconnect session: GetGame call failed: {}", err);
-                    commands
-                        .entity(game_entity)
-                        .remove::<ReconnectSessionBundle<T>>();
-                }
             }
         }
     }
 }
 
-pub fn reconnect_session<T>(
+/// Receive `GetGameReply` and start game session by sending grpc request.
+/// On success insert game session component into the game entity and send [`SessionOpened`] event.
+pub fn connect_session<T>(
     mut commands: Commands,
-    reconnect: Query<&NetworkGame, With<ReconnectSession<T>>>,
+    connecting_session: Query<&NetworkGame, With<ConnectingGameSession<T>>>,
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
+    mut session_opened: EventWriter<SessionOpened>,
     client: Option<Res<GrpcClient>>,
     settings: Res<Settings>,
 ) where
@@ -214,7 +240,7 @@ pub fn reconnect_session<T>(
     T::TurnData: Send + 'static,
 {
     for event in get_game_reply.read() {
-        let Ok(network_game) = reconnect.get(event.entity()) else {
+        let Ok(network_game) = connecting_session.get(event.entity()) else {
             continue;
         };
         commands
@@ -232,6 +258,7 @@ pub fn reconnect_session<T>(
             Ok(_) => match client.game_session::<T>(**network_game, user) {
                 Ok(session) => {
                     commands.entity(event.entity()).insert(session);
+                    session_opened.send(SessionOpened::new(event.entity()));
                 }
                 Err(err) => println!(
                     "unable to reconnect session: GameSession call failed: {}",
@@ -249,17 +276,19 @@ pub fn init_session_action_send_task<T>(
     mut commands: Commands,
     session: Query<&GameSession<T, T::TurnData>>,
     mut send_session_action: EventReader<SendSessionAction<T::TurnData>>,
+    mut send_action_failed: EventWriter<SendSessionActionFailed>,
 ) where
     T: core::Game + Send + Sync + 'static,
     T::TurnData: Copy + Send + Sync + 'static,
 {
     for event in send_session_action.read() {
         let Ok(session) = session.get(event.session_entity()) else {
+            println!("failed to send session action: session component not found");
+            send_action_failed.send(SendSessionActionFailed::new(event.session_entity()));
             continue;
         };
         let sender = session.action_sender();
         let action = *event.action();
-        println!("send session action");
         let task = IoTaskPool::get().spawn(async move { sender.send(action).await });
         commands
             .entity(event.session_entity())
@@ -326,8 +355,6 @@ pub fn handle_session_update_receive<T>(
         }) {
             match res {
                 Ok(res) => {
-                    // TODO: this means successful read from channel, not an action received
-                    println!("GameSessionReply is received");
                     update_received.send(SessionUpdateReceived::<T>::new(session_entity, res));
                 }
                 Err(err) => {
