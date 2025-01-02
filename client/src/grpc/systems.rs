@@ -182,34 +182,42 @@ where
     }
 }
 
-/// Wait till the [`ReconnectSessionTimer`] is finished and send `GetGame` request.
+/// Update [`ReconnectSessionTimer`] component and remove it once finished.
+pub fn delay_session_connection(
+    mut commands: Commands,
+    mut timer: Query<(Entity, &mut ReconnectSessionTimer)>,
+    time: Res<Time>,
+) {
+    for (session_entity, mut timer) in timer.iter_mut() {
+        if timer.tick(time.delta()).just_finished() {
+            commands
+                .entity(session_entity)
+                .remove::<ReconnectSessionTimer>();
+        }
+    }
+}
+
+/// If session entity doesn't have [`ReconnectSessionTimer`] component send `GetGame` request.
 pub fn send_get_game_before_connect<T>(
     mut commands: Commands,
     mut connecting_session: Query<
-        // FIXME: in case when other part of logic will send GetGame request the timer will be ignored
-        (Entity, &NetworkGame, Option<&mut ReconnectSessionTimer>),
+        (Entity, &NetworkGame),
         (
             With<ConnectingGameSession<T>>,
+            Without<ReconnectSessionTimer>,
             Without<CallTask<proto::GetGameReply>>,
         ),
     >,
     client: Option<Res<GrpcClient>>,
-    time: Res<Time>,
 ) where
     T: proto::GetGameType + Send + Sync + 'static,
 {
-    for (game_entity, network_game, timer) in connecting_session.iter_mut() {
-        // if there is a timer, advance it and skip the rest if not finished
-        if let Some(mut timer) = timer {
-            if !timer.tick(time.delta()).just_finished() {
-                continue;
-            }
-        }
+    for (game_entity, network_game) in connecting_session.iter_mut() {
         let Some(ref client) = client else {
             println!("unable to reconnect session: grpc client is not connected");
             commands
                 .entity(game_entity)
-                .remove::<ReconnectSessionBundle<T>>();
+                .remove::<ConnectingGameSession<T>>();
             continue;
         };
         match client.get_game::<T>(**network_game) {
@@ -220,17 +228,24 @@ pub fn send_get_game_before_connect<T>(
                 println!("unable to reconnect session: GetGame call failed: {}", err);
                 commands
                     .entity(game_entity)
-                    .remove::<ReconnectSessionBundle<T>>();
+                    .remove::<ConnectingGameSession<T>>();
             }
         }
     }
 }
 
-/// Receive `GetGameReply` and start game session by sending grpc request.
+/// Receive `GetGameReply` and if session entity doesn't have [`ReconnectSessionTimer`] component
+/// start game session by sending grpc request.
 /// On success insert game session component into the game entity and send [`SessionOpened`] event.
 pub fn connect_session<T>(
     mut commands: Commands,
-    connecting_session: Query<&NetworkGame, With<ConnectingGameSession<T>>>,
+    connecting_session: Query<
+        &NetworkGame,
+        (
+            With<ConnectingGameSession<T>>,
+            Without<ReconnectSessionTimer>,
+        ),
+    >,
     mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
     mut session_opened: EventWriter<SessionOpened>,
     client: Option<Res<GrpcClient>>,
@@ -245,7 +260,7 @@ pub fn connect_session<T>(
         };
         commands
             .entity(event.entity())
-            .remove::<ReconnectSessionBundle<T>>();
+            .remove::<ConnectingGameSession<T>>();
         let Some(user) = settings.user_id() else {
             println!("unable to reconnect session: user is not logged in");
             continue;

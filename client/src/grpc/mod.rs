@@ -105,8 +105,11 @@ impl Plugin for GrpcPlugin {
                     init_open_session::<core::tic_tac_toe::TicTacToe>,
                     close_session::<core::tic_tac_toe::TicTacToe>,
                     session_finished::<core::tic_tac_toe::TicTacToe>,
-                    connect_session::<core::tic_tac_toe::TicTacToe>,
-                    send_get_game_before_connect::<core::tic_tac_toe::TicTacToe>,
+                    delay_session_connection,
+                    send_get_game_before_connect::<core::tic_tac_toe::TicTacToe>
+                        .before(handle_response::<proto::GetGameReply>),
+                    connect_session::<core::tic_tac_toe::TicTacToe>
+                        .after(handle_response::<proto::GetGameReply>),
                     init_session_action_send_task::<core::tic_tac_toe::TicTacToe>,
                     init_session_update_receive_task::<core::tic_tac_toe::TicTacToe>,
                     handle_session_action_send::<core::GridIndex>,
