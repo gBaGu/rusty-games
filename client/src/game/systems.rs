@@ -75,7 +75,7 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
         (Entity, &mut PendingActionQueue<T>),
         (With<ActiveGame>, Without<grpc::SendActionTask<T>>),
     >,
-    mut send_action: EventWriter<grpc::SendSessionAction<T>>,
+    mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
 ) {
     for (game_entity, mut queue) in game.iter_mut() {
         let Some(next_action) = queue.first_mut() else {
@@ -83,7 +83,7 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
         };
         if next_action.is_not_confirmed() {
             next_action.set_status(ConfirmationStatus::WaitingConfirmation);
-            send_action.send(grpc::SendSessionAction::new(
+            action_ready.send(grpc::SessionActionReadyToSend::new(
                 game_entity,
                 *next_action.action(),
             ));
@@ -109,17 +109,17 @@ pub fn revert_action_status<T: Send + Sync + 'static>(
     }
 }
 
-/// For every [`grpc::SessionFinished`] or [`grpc::SendSessionActionFailed`] event
+/// For every [`grpc::SessionClosed`] or [`grpc::SessionActionSendFailed`] event
 /// send the [`ActionConfirmationFailed`].
 pub fn action_confirmation_failed(
-    mut session_finished: EventReader<grpc::SessionFinished>,
-    mut send_action_failed: EventReader<grpc::SendSessionActionFailed>,
+    mut session_closed: EventReader<grpc::SessionClosed>,
+    mut action_send_failed: EventReader<grpc::SessionActionSendFailed>,
     mut confirmation_failed: EventWriter<ActionConfirmationFailed>,
 ) {
-    for game_entity in session_finished
+    for game_entity in session_closed
         .read()
         .map(|e| **e)
-        .chain(send_action_failed.read().map(|e| **e))
+        .chain(action_send_failed.read().map(|e| **e))
     {
         confirmation_failed.send(ActionConfirmationFailed::new(game_entity));
     }

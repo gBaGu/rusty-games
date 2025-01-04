@@ -17,8 +17,8 @@ use systems::*;
 
 pub use components::{GameSession, SendActionTask};
 pub use events::{
-    CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SendSessionAction,
-    SendSessionActionFailed, SessionFinished, SessionOpened, SessionUpdateReceived,
+    CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
+    SessionActionSendFailed, SessionClosed, SessionOpened, SessionUpdateReceived,
 };
 pub use resources::GrpcClient;
 
@@ -77,9 +77,9 @@ impl Plugin for GrpcPlugin {
             .add_event::<OpenSession>()
             .add_event::<CloseSession>()
             .add_event::<SessionOpened>()
-            .add_event::<SessionFinished>()
-            .add_event::<SendSessionActionFailed>()
-            .add_event::<SendSessionAction<core::GridIndex>>()
+            .add_event::<SessionClosed>()
+            .add_event::<SessionActionSendFailed>()
+            .add_event::<SessionActionReadyToSend<core::GridIndex>>()
             .add_event::<SessionUpdateReceived<core::GridIndex>>()
             .add_systems(
                 Update,
@@ -104,7 +104,7 @@ impl Plugin for GrpcPlugin {
                         .run_if(any_with_component::<CallTask<proto::GetPlayerGamesReply>>),
                     init_open_session::<core::tic_tac_toe::TicTacToe>,
                     close_session::<core::tic_tac_toe::TicTacToe>,
-                    session_finished::<core::tic_tac_toe::TicTacToe>,
+                    session_closed::<core::tic_tac_toe::TicTacToe>,
                     delay_session_connection,
                     send_get_game_before_connect::<core::tic_tac_toe::TicTacToe>
                         .before(handle_response::<proto::GetGameReply>),

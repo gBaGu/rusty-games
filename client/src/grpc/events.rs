@@ -89,9 +89,9 @@ impl SessionOpened {
 /// Event that indicates that game session task is finished.
 /// Contains an [`Entity`] of a game session.
 #[derive(Debug, Deref, Event)]
-pub struct SessionFinished(Entity);
+pub struct SessionClosed(Entity);
 
-impl SessionFinished {
+impl SessionClosed {
     pub fn new(entity: Entity) -> Self {
         Self(entity)
     }
@@ -100,21 +100,23 @@ impl SessionFinished {
 /// Event that indicates that an error occurred during action send attempt.  
 /// Contains an [`Entity`] of a game session.
 #[derive(Copy, Clone, Debug, Deref, Event)]
-pub struct SendSessionActionFailed(Entity);
+pub struct SessionActionSendFailed(Entity);
 
-impl SendSessionActionFailed {
+impl SessionActionSendFailed {
     pub fn new(entity: Entity) -> Self {
         Self(entity)
     }
 }
 
+/// Event that indicates that an action is ready to be sent to the server over the game session.
+/// Contains an [`Entity`] that has the game session component and an action that needs to be sent.
 #[derive(Debug, Event)]
-pub struct SendSessionAction<T> { // TODO: rename OutgoingSessionActionReady
+pub struct SessionActionReadyToSend<T> {
     session_entity: Entity,
     action: T,
 }
 
-impl<T> SendSessionAction<T> {
+impl<T> SessionActionReadyToSend<T> {
     pub fn new(entity: Entity, action: T) -> Self {
         Self {
             session_entity: entity,

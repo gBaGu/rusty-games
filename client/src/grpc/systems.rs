@@ -15,8 +15,8 @@ use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer}
 use super::task_entity::TaskEntity;
 use super::{
     CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
-    OpenSession, SendActionTask, SendSessionAction, SendSessionActionFailed, SessionFinished,
-    SessionOpened, DEFAULT_GRPC_SERVER_ADDRESS,
+    OpenSession, SendActionTask, SessionActionSendFailed, SessionActionReadyToSend,
+    SessionClosed, SessionOpened, DEFAULT_GRPC_SERVER_ADDRESS,
 };
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
@@ -135,8 +135,8 @@ pub fn close_session<T>(
 }
 
 /// Polls unfinished session tasks and if the task is ready remove [`GameSession`] from the entity
-/// and send [`SessionFinished`] event.
-pub fn session_finished<T>(
+/// and send [`SessionClosed`] event.
+pub fn session_closed<T>(
     mut commands: Commands,
     mut session: Query<(
         Entity,
@@ -144,7 +144,7 @@ pub fn session_finished<T>(
         Option<&ActiveGame>,
     )>,
     mut timer: ResMut<SessionCheckTimer>,
-    mut session_finished: EventWriter<SessionFinished>,
+    mut session_closed: EventWriter<SessionClosed>,
     mut open_session: EventWriter<OpenSession>,
     time: Res<Time>,
 ) where
@@ -157,7 +157,7 @@ pub fn session_finished<T>(
                 commands
                     .entity(session_entity)
                     .remove::<GameSession<T, T::TurnData>>();
-                session_finished.send(SessionFinished::new(session_entity));
+                session_closed.send(SessionClosed::new(session_entity));
                 if active.is_some() {
                     open_session.send(OpenSession::new_delayed(session_entity));
                 }
@@ -287,19 +287,22 @@ pub fn connect_session<T>(
     }
 }
 
+/// Receive the [`SessionActionReadyToSend`] event, find [`GameSession`] entity and
+/// create a task that will send the action from event into session sender.
+/// Send the [`SessionActionSendFailed`] event if there is no [`GameSession`] entity.
 pub fn init_session_action_send_task<T>(
     mut commands: Commands,
     session: Query<&GameSession<T, T::TurnData>>,
-    mut send_session_action: EventReader<SendSessionAction<T::TurnData>>,
-    mut send_action_failed: EventWriter<SendSessionActionFailed>,
+    mut action_ready: EventReader<SessionActionReadyToSend<T::TurnData>>,
+    mut action_send_failed: EventWriter<SessionActionSendFailed>,
 ) where
     T: core::Game + Send + Sync + 'static,
     T::TurnData: Copy + Send + Sync + 'static,
 {
-    for event in send_session_action.read() {
+    for event in action_ready.read() {
         let Ok(session) = session.get(event.session_entity()) else {
             println!("failed to send session action: session component not found");
-            send_action_failed.send(SendSessionActionFailed::new(event.session_entity()));
+            action_send_failed.send(SessionActionSendFailed::new(event.session_entity()));
             continue;
         };
         let sender = session.action_sender();
@@ -311,10 +314,11 @@ pub fn init_session_action_send_task<T>(
     }
 }
 
+/// Poll channel send task. If it returned with error, send the [`SessionActionSendFailed`] event.
 pub fn handle_session_action_send<T>(
     mut commands: Commands,
     mut task: Query<(Entity, &mut SendActionTask<T>)>,
-    mut send_action_failed: EventWriter<SendSessionActionFailed>,
+    mut action_send_failed: EventWriter<SessionActionSendFailed>,
 ) where
     T: Send + Sync + 'static,
 {
@@ -325,7 +329,7 @@ pub fn handle_session_action_send<T>(
         }) {
             if let Err(err) = res {
                 println!("send session action task failed: {}", err);
-                send_action_failed.send(SendSessionActionFailed::new(task_entity));
+                action_send_failed.send(SessionActionSendFailed::new(task_entity));
             }
         }
     }
@@ -341,7 +345,6 @@ pub fn init_session_update_receive_task<T>(
     T: core::Game + Send + Sync + 'static,
     T::TurnData: Send,
 {
-    // TODO: make this system run by some timer
     for (session_entity, session) in session.iter() {
         let receiver = session.update_receiver();
         if !receiver.is_closed() {
