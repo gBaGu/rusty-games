@@ -11,14 +11,15 @@ use game_server::proto;
 use tonic::transport;
 use tonic_health::pb::health_client;
 
-use components::{CallTask, ConnectClientTask, ReceiveConnectionStatusTask};
+use components::{CallTask, ConnectClientTask, GameSession, ReceiveConnectionStatusTask};
 use resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use systems::*;
 
-pub use components::{GameSession, SendActionTask};
+pub use components::SendActionTask; // TODO: hide this from outside logic
 pub use events::{
     CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
-    SessionActionSendFailed, SessionClosed, SessionOpened, SessionUpdateReceived,
+    SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,
+    SessionUpdateReceived,
 };
 pub use resources::GrpcClient;
 
@@ -81,6 +82,7 @@ impl Plugin for GrpcPlugin {
             .add_event::<SessionActionSendFailed>()
             .add_event::<SessionActionReadyToSend<core::GridIndex>>()
             .add_event::<SessionUpdateReceived<core::GridIndex>>()
+            .add_event::<SessionErrorReceived>()
             .add_systems(
                 Update,
                 (
@@ -114,6 +116,7 @@ impl Plugin for GrpcPlugin {
                     init_session_update_receive_task::<core::tic_tac_toe::TicTacToe>,
                     handle_session_action_send::<core::GridIndex>,
                     handle_session_update_receive::<core::GridIndex>,
+                    log_session_error,
                 ),
             );
     }

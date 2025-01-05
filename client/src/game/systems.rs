@@ -7,7 +7,7 @@ use super::pending_action::ConfirmationStatus;
 use super::{
     ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
     NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon,
-    ServerActionReceived, StateUpdated, TurnStart, UserAuthority, Winner,
+    StateUpdated, TurnStart, UserAuthority, Winner,
 };
 use crate::grpc;
 use crate::interface::{GameLeft, GameReady, GameReadyToExit};
@@ -125,40 +125,18 @@ pub fn action_confirmation_failed(
     }
 }
 
-pub fn handle_game_session_update<T: Copy + Send + Sync + 'static>(
-    mut update_received: EventReader<grpc::SessionUpdateReceived<T>>,
-    mut server_action_received: EventWriter<ServerActionReceived<T>>,
-    // mut game_session_error: EventWriter<>,
-) {
-    for event in update_received.read() {
-        match event.update() {
-            Ok(update) => {
-                server_action_received.send(ServerActionReceived::new(
-                    event.session_entity(),
-                    update.player(),
-                    *update.action(),
-                ));
-            }
-            Err(err) => {
-                // TODO: handle game session errors
-                println!("game session error received: {}", err);
-            }
-        }
-    }
-}
-
 pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
     mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
     player: Query<(&PlayerPosition, &Parent), With<CurrentUser>>,
-    mut server_action_received: EventReader<ServerActionReceived<T>>,
+    mut update_received: EventReader<grpc::SessionUpdateReceived<T>>,
 ) {
-    for event in server_action_received.read() {
-        let Ok(mut queue) = action_queue.get_mut(event.game()) else {
+    for event in update_received.read() {
+        let Ok(mut queue) = action_queue.get_mut(event.session_entity()) else {
             continue;
         };
         if player
             .iter()
-            .filter(|(_, p)| p.get() == event.game())
+            .filter(|(_, p)| p.get() == event.session_entity())
             .find(|(&pos, _)| *pos == event.player())
             .is_some()
         {

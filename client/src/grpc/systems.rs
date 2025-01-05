@@ -10,13 +10,13 @@ use super::components::{
     CallTask, ConnectClientTask, ConnectingGameSession, ReceiveConnectionStatusTask,
     ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer,
 };
-use super::events::{RpcResultReady, SessionUpdateReceived};
+use super::events::{RpcResultReady, SessionErrorReceived, SessionUpdateReceived};
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use super::task_entity::TaskEntity;
 use super::{
     CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
-    OpenSession, SendActionTask, SessionActionSendFailed, SessionActionReadyToSend,
-    SessionClosed, SessionOpened, DEFAULT_GRPC_SERVER_ADDRESS,
+    OpenSession, SendActionTask, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
+    SessionOpened, DEFAULT_GRPC_SERVER_ADDRESS,
 };
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
@@ -335,6 +335,8 @@ pub fn handle_session_action_send<T>(
     }
 }
 
+/// Find [`GameSession`] entity that has no [`ReceiveSessionUpdateTask`] component and
+/// create a task that will receive update from session update receiver.
 pub fn init_session_update_receive_task<T>(
     mut commands: Commands,
     session: Query<
@@ -357,12 +359,16 @@ pub fn init_session_update_receive_task<T>(
     }
 }
 
+/// Poll channel receive task. If it returned with error, just print a message, otherwise
+/// send [`SessionUpdateReceived`] event in case of successful update or
+/// [`SessionErrorReceived`] event in case of session error.
 pub fn handle_session_update_receive<T>(
     mut commands: Commands,
     mut session: Query<(Entity, &mut ReceiveSessionUpdateTask<T>)>,
     mut update_received: EventWriter<SessionUpdateReceived<T>>,
+    mut error_received: EventWriter<SessionErrorReceived>,
 ) where
-    T: Send + Sync + 'static,
+    T: Copy + Send + Sync + 'static,
 {
     for (session_entity, mut task) in session.iter_mut() {
         if let Some(res) = tasks::block_on(future::poll_once(&mut task.0)).and_then(|res| {
@@ -372,13 +378,28 @@ pub fn handle_session_update_receive<T>(
             Some(res)
         }) {
             match res {
-                Ok(res) => {
-                    update_received.send(SessionUpdateReceived::<T>::new(session_entity, res));
+                Ok(Ok(update)) => {
+                    update_received.send(SessionUpdateReceived::<T>::new(
+                        session_entity,
+                        update.player(),
+                        *update.action(),
+                    ));
+                }
+                Ok(Err(err)) => {
+                    error_received.send(SessionErrorReceived::new(session_entity, err));
                 }
                 Err(err) => {
+                    // channel is closed, print and do nothing
                     println!("failed to read from session update channel: {}", err);
                 }
             };
         }
+    }
+}
+
+/// Print game session errors.
+pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) {
+    for event in error_received.read() {
+        println!("game session ({}) error received: {}", event.session_entity(), event.error());
     }
 }

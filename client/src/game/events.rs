@@ -122,36 +122,6 @@ impl ActionConfirmationFailed {
     }
 }
 
-/// Event that indicates that an action
-#[derive(Clone, Copy, Debug, Event)]
-pub struct ServerActionReceived<T> {
-    game: Entity,
-    player: core::PlayerPosition,
-    action: T,
-}
-
-impl<T> ServerActionReceived<T> {
-    pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
-        Self {
-            game,
-            player,
-            action,
-        }
-    }
-
-    pub fn game(&self) -> Entity {
-        self.game
-    }
-
-    pub fn player(&self) -> core::PlayerPosition {
-        self.player
-    }
-
-    pub fn action(&self) -> &T {
-        &self.action
-    }
-}
-
 /// Event that signals that `action` created by `player` is applied.
 #[derive(Clone, Copy, Debug, Event)]
 pub struct PlayerActionApplied<T> {

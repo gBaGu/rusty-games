@@ -25,8 +25,7 @@ pub use components::{
     Winner,
 };
 pub use events::{
-    BotReady, Draw, GameDataReady, GameEntityReady, PlayerWon, ServerActionReceived, StateUpdated,
-    TurnStart,
+    BotReady, Draw, GameDataReady, GameEntityReady, PlayerWon, StateUpdated, TurnStart,
 };
 pub use game_info::{FullGameInfo, GameInfo};
 pub use pending_action::PendingAction;
@@ -46,7 +45,6 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(tic_tac_toe::TicTacToePlugin)
-            .add_event::<ServerActionReceived<core::GridIndex>>()
             .add_event::<GameDataReady>()
             .add_event::<GameEntityReady>()
             .add_event::<ActionConfirmationFailed>()
@@ -74,7 +72,6 @@ impl Plugin for GamePlugin {
                     close_session,
                     send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
                     revert_action_status::<core::GridIndex>,
-                    handle_game_session_update::<core::GridIndex>,
                     handle_action_from_server::<core::GridIndex>,
                     action_confirmation_failed,
                 ),

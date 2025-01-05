@@ -1,7 +1,8 @@
 use bevy::prelude::*;
+use game_server::core;
 use game_server::rpc_server::rpc::RpcResult;
 
-use super::{GameSessionUpdate, GrpcResult};
+use super::error::GrpcError;
 
 #[derive(Event)]
 pub struct Connected;
@@ -133,17 +134,20 @@ impl<T> SessionActionReadyToSend<T> {
     }
 }
 
+/// Event that indicates that an action was receiver from the server.
 #[derive(Debug, Event)]
 pub struct SessionUpdateReceived<T> {
     session_entity: Entity,
-    update: GrpcResult<GameSessionUpdate<T>>,
+    player: core::PlayerPosition,
+    action: T,
 }
 
 impl<T> SessionUpdateReceived<T> {
-    pub fn new(entity: Entity, update: GrpcResult<GameSessionUpdate<T>>) -> Self {
+    pub fn new(entity: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             session_entity: entity,
-            update,
+            player,
+            action,
         }
     }
 
@@ -151,7 +155,35 @@ impl<T> SessionUpdateReceived<T> {
         self.session_entity
     }
 
-    pub fn update(&self) -> &GrpcResult<GameSessionUpdate<T>> {
-        &self.update
+    pub fn player(&self) -> core::PlayerPosition {
+        self.player
+    }
+
+    pub fn action(&self) -> &T {
+        &self.action
+    }
+}
+
+/// Event that indicates that an error was receiver from the server.
+#[derive(Debug, Event)]
+pub struct SessionErrorReceived {
+    session_entity: Entity,
+    error: GrpcError,
+}
+
+impl SessionErrorReceived {
+    pub fn new(entity: Entity, error: GrpcError) -> Self {
+        Self {
+            session_entity: entity,
+            error,
+        }
+    }
+
+    pub fn session_entity(&self) -> Entity {
+        self.session_entity
+    }
+
+    pub fn error(&self) -> &GrpcError {
+        &self.error
     }
 }
