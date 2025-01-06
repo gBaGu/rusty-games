@@ -314,7 +314,8 @@ pub fn init_session_action_send_task<T>(
     }
 }
 
-/// Poll channel send task. If it returned with error, send the [`SessionActionSendFailed`] event.
+/// Poll channel send task. If it returns with error, send the [`SessionActionSendFailed`] event.  
+/// `T` is a type of action.
 pub fn handle_session_action_send<T>(
     mut commands: Commands,
     mut task: Query<(Entity, &mut SendActionTask<T>)>,
@@ -361,7 +362,8 @@ pub fn init_session_update_receive_task<T>(
 
 /// Poll channel receive task. If it returned with error, just print a message, otherwise
 /// send [`SessionUpdateReceived`] event in case of successful update or
-/// [`SessionErrorReceived`] event in case of session error.
+/// [`SessionErrorReceived`] event in case of session error.  
+/// `T` is a type of action.
 pub fn handle_session_update_receive<T>(
     mut commands: Commands,
     mut session: Query<(Entity, &mut ReceiveSessionUpdateTask<T>)>,
@@ -400,6 +402,292 @@ pub fn handle_session_update_receive<T>(
 /// Print game session errors.
 pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) {
     for event in error_received.read() {
-        println!("game session ({}) error received: {}", event.session_entity(), event.error());
+        println!(
+            "game session ({}) error received: {}",
+            event.session_entity(),
+            event.error()
+        );
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bevy::tasks::TaskPool;
+
+    use super::*;
+    use crate::grpc::error::GrpcError;
+    use crate::grpc::GameSessionUpdate;
+
+    struct DummyGame {
+        players: core::PlayerIdQueue<core::PlayerPosition>,
+        board: core::Grid<(), typenum::U0, typenum::U0>,
+    }
+
+    impl core::Game for DummyGame {
+        const NUM_PLAYERS: u8 = 1;
+        type TurnData = ();
+        type Players = core::PlayerIdQueue<core::PlayerPosition>;
+        type Board = core::Grid<(), typenum::U0, typenum::U0>;
+
+        fn new() -> Self {
+            Self {
+                players: Self::Players::new(vec![0]),
+                board: Self::Board::default(),
+            }
+        }
+
+        fn update(
+            &mut self,
+            _id: core::PlayerPosition,
+            _data: Self::TurnData,
+        ) -> core::GameResult<core::GameState> {
+            Ok(core::GameState::Turn(0))
+        }
+
+        fn board(&self) -> &Self::Board {
+            &self.board
+        }
+
+        fn board_mut(&mut self) -> &mut Self::Board {
+            &mut self.board
+        }
+
+        fn set_board(&mut self, board: Self::Board) {
+            self.board = board;
+        }
+
+        fn players(&self) -> &Self::Players {
+            &self.players
+        }
+
+        fn players_mut(&mut self) -> &mut Self::Players {
+            &mut self.players
+        }
+
+        fn state(&self) -> core::GameState {
+            core::GameState::Turn(0)
+        }
+
+        fn set_state(&mut self, _state: core::GameState) {}
+    }
+
+    /// Initialize action send by SessionActionReadyToSend event.
+    /// Check that send task is deleted after [`handle_session_action_send`].
+    /// Check that [`SessionActionSendFailed`] event is triggered correctly.
+    #[test]
+    fn session_send_action() {
+        IoTaskPool::get_or_init(|| TaskPool::default());
+        let mut app = App::new();
+        app.add_event::<SessionActionReadyToSend<()>>();
+        app.add_event::<SessionActionSendFailed>();
+        app.add_systems(
+            Update,
+            (
+                // handle before init so the send task stay after update
+                init_session_action_send_task::<DummyGame>.after(handle_session_action_send::<()>),
+                handle_session_action_send::<()>,
+            ),
+        );
+
+        let session = app.world_mut().spawn_empty().id();
+        app.world_mut()
+            .resource_mut::<Events<SessionActionReadyToSend<()>>>()
+            .send(SessionActionReadyToSend::<()>::new(session, ()));
+
+        // this should trigger send error because there's no session component
+        app.update();
+        let error_events = app.world().resource::<Events<SessionActionSendFailed>>();
+        let mut error_event_reader = error_events.get_reader();
+        assert_eq!(
+            **error_event_reader.read(error_events).next().unwrap(),
+            session
+        ); // got error event
+        assert!(error_event_reader.read(error_events).next().is_none());
+
+        let (s, r) = async_channel::unbounded();
+        let r_cloned = r.clone();
+        app.world_mut()
+            .entity_mut(session)
+            .insert(GameSession::<DummyGame, ()>::new(
+                IoTaskPool::get().spawn(async move {
+                    while let Ok(_) = r_cloned.recv().await {
+                        println!("action is sent!");
+                    }
+                }),
+                s,
+                async_channel::unbounded().1,
+            ));
+        app.world_mut()
+            .resource_mut::<Events<SessionActionReadyToSend<()>>>()
+            .send(SessionActionReadyToSend::<()>::new(session, ()));
+        // this should create send task
+        app.update();
+        assert!(app.world().entity(session).contains::<SendActionTask<()>>());
+
+        // this should remove send task
+        app.update();
+        assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
+
+        r.close();
+        app.world_mut()
+            .resource_mut::<Events<SessionActionReadyToSend<()>>>()
+            .send(SessionActionReadyToSend::<()>::new(session, ()));
+        // this should create send task
+        app.update();
+        assert!(app.world().entity(session).contains::<SendActionTask<()>>());
+
+        // this should remove send task and trigger error event because the channel is closed
+        app.update();
+        assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
+        let error_events = app.world().resource::<Events<SessionActionSendFailed>>();
+        let mut error_event_reader = error_events.get_reader();
+        assert_eq!(
+            **error_event_reader.read(error_events).next().unwrap(),
+            session
+        ); // got error event
+        assert!(error_event_reader.read(error_events).next().is_none());
+    }
+
+    /// Spawn game session with receiver that will receive some predefined updates.
+    /// Check that all updates are received and in the end one more receive task remains waiting.
+    #[test]
+    fn session_receive_update() {
+        IoTaskPool::get_or_init(|| TaskPool::default());
+        let mut app = App::new();
+        app.add_event::<SessionUpdateReceived<()>>();
+        app.add_event::<SessionErrorReceived>();
+        app.add_systems(
+            Update,
+            (
+                init_session_update_receive_task::<DummyGame>
+                    .before(handle_session_update_receive::<()>),
+                handle_session_update_receive::<()>,
+            ),
+        );
+
+        type ReceiveUpdateTask = ReceiveSessionUpdateTask<()>;
+        let (s, r) = async_channel::unbounded();
+        let session = app
+            .world_mut()
+            .spawn(GameSession::<DummyGame, _>::new(
+                IoTaskPool::get().spawn(future::ready(())),
+                async_channel::unbounded().0,
+                r,
+            ))
+            .id();
+
+        // this should spawn receive task
+        app.update();
+        assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
+
+        let s_cloned = s.clone();
+        tasks::block_on(IoTaskPool::get().spawn(async move {
+            s_cloned
+                .send(Ok(GameSessionUpdate::new(0, ())))
+                .await
+                .unwrap();
+        }));
+
+        // this should trigger session update event and remove receive task
+        app.update();
+        assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
+        let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        let mut update_event_reader = update_events.get_reader();
+        assert!(update_event_reader.read(update_events).next().is_some()); // got update event
+        assert!(update_event_reader.read(update_events).next().is_none());
+        assert!(error_events
+            .get_reader()
+            .read(error_events)
+            .next()
+            .is_none());
+
+        // this should spawn receive task
+        app.update();
+        assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
+
+        let s_cloned = s.clone();
+        tasks::block_on(IoTaskPool::get().spawn(async move {
+            s_cloned
+                .send(Ok(GameSessionUpdate::new(0, ())))
+                .await
+                .unwrap();
+        }));
+
+        // this should trigger session update event and remove receive task
+        app.update();
+        assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
+        let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        let mut update_event_reader = update_events.get_reader();
+        assert!(update_event_reader.read(update_events).next().is_some()); // got update event
+        assert!(update_event_reader.read(update_events).next().is_none());
+        assert!(error_events
+            .get_reader()
+            .read(error_events)
+            .next()
+            .is_none());
+
+        // this should spawn receive task
+        app.update();
+        assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
+
+        let s_cloned = s.clone();
+        tasks::block_on(IoTaskPool::get().spawn(async move {
+            s_cloned
+                .send(Err(GrpcError::GameSessionUpdateFailed("".into())))
+                .await
+                .unwrap();
+        }));
+
+        // this should trigger session error event and remove receive task
+        app.update();
+        assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
+        let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        assert!(update_events
+            .get_reader()
+            .read(update_events)
+            .next()
+            .is_none());
+        let mut error_event_reader = error_events.get_reader();
+        assert!(error_event_reader.read(error_events).next().is_some()); // got error event
+        assert!(error_event_reader.read(error_events).next().is_none());
+
+        // this should spawn receive task
+        app.update();
+        assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
+
+        // this should do nothing
+        app.update();
+        assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
+        let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        assert!(update_events
+            .get_reader()
+            .read(update_events)
+            .next()
+            .is_none());
+        assert!(error_events
+            .get_reader()
+            .read(error_events)
+            .next()
+            .is_none());
+
+        s.close();
+        // this should just print a message
+        app.update();
+        let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        assert!(update_events
+            .get_reader()
+            .read(update_events)
+            .next()
+            .is_none());
+        assert!(error_events
+            .get_reader()
+            .read(error_events)
+            .next()
+            .is_none());
     }
 }
