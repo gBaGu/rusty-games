@@ -168,6 +168,7 @@ pub fn session_closed<T>(
 
 /// Receive the [`OpenSession`] event and insert components required for session initialization
 /// into the entity contained in the event.
+/// `T` is a game type.
 pub fn init_open_session<T>(mut commands: Commands, mut open_session: EventReader<OpenSession>)
 where
     T: Send + Sync + 'static,
@@ -418,6 +419,8 @@ mod test {
     use crate::grpc::error::GrpcError;
     use crate::grpc::GameSessionUpdate;
 
+    type DummySession = GameSession<DummyGame, ()>;
+
     struct DummyGame {
         players: core::PlayerIdQueue<core::PlayerPosition>,
         board: core::Grid<(), typenum::U0, typenum::U0>,
@@ -471,6 +474,159 @@ mod test {
         fn set_state(&mut self, _state: core::GameState) {}
     }
 
+    /// Send [`OpenSession`] event and check that all required components were inserted.
+    #[test]
+    fn start_session_initialization() {
+        let mut app = App::new();
+        app.add_event::<OpenSession>();
+        app.add_systems(Update, init_open_session::<DummyGame>);
+
+        let session1 = app.world_mut().spawn_empty().id();
+        let session2 = app.world_mut().spawn_empty().id();
+
+        app.world_mut()
+            .resource_mut::<Events<OpenSession>>()
+            .send(OpenSession::new(session1));
+        app.world_mut()
+            .resource_mut::<Events<OpenSession>>()
+            .send(OpenSession::new_delayed(session2));
+        // this should insert ConnectingGameSession into both sessions and ReconnectSessionTimer into session2
+        app.update();
+        assert!(app.world().entity(session1).contains::<ConnectingGameSession<DummyGame>>());
+        assert!(app.world().entity(session2).contains::<ConnectingGameSession<DummyGame>>());
+        assert!(app.world().entity(session2).contains::<ReconnectSessionTimer>());
+    }
+
+    /// Spawn two session entities: one with [`ActiveGame`] component and one without;
+    /// trigger [`CloseSession`].  
+    /// Check that [`SessionClosed`] event is triggered for both entities.  
+    /// Check that for the session without [`ActiveGame`] component
+    /// [`OpenSession`] event is triggered after session is closed.
+    #[test]
+    fn session_close() {
+        IoTaskPool::get_or_init(|| TaskPool::default());
+        let mut app = App::new();
+        let mut timer = SessionCheckTimer::default();
+        timer.pause();
+        app.init_resource::<Time>();
+        app.insert_resource(timer);
+        app.add_event::<CloseSession>();
+        app.add_event::<SessionClosed>();
+        app.add_event::<OpenSession>();
+        app.add_systems(
+            Update,
+            (close_session::<DummyGame>, session_closed::<DummyGame>),
+        );
+
+        let (s_action, r_action) = async_channel::unbounded();
+        let (s_update, r_update) = async_channel::unbounded();
+        let session_active = app
+            .world_mut()
+            .spawn((
+                DummySession::new(
+                    IoTaskPool::get().spawn(async move {
+                        let _s_update = s_update; // move it here
+                        while let Ok(_) = r_action.recv().await {}
+                        println!("active session is closed");
+                    }),
+                    s_action,
+                    r_update,
+                ),
+                ActiveGame,
+            ))
+            .id();
+        let (s_action, r_action) = async_channel::unbounded();
+        let (s_update, r_update) = async_channel::unbounded();
+        let session_inactive = app
+            .world_mut()
+            .spawn(DummySession::new(
+                IoTaskPool::get().spawn(async move {
+                    let _s_update = s_update; // move it here
+                    while let Ok(_) = r_action.recv().await {}
+                    println!("inactive session is closed");
+                }),
+                s_action,
+                r_update,
+            ))
+            .id();
+
+        app.world_mut()
+            .resource_mut::<Events<CloseSession>>()
+            .send(CloseSession::new(session_active));
+        app.world_mut()
+            .resource_mut::<Events<CloseSession>>()
+            .send(CloseSession::new(session_inactive));
+        // this should just close action sender for each session
+        app.update();
+        assert!(app
+            .world()
+            .entity(session_active)
+            .contains::<DummySession>());
+        assert!(app
+            .world()
+            .entity(session_inactive)
+            .contains::<DummySession>());
+
+        while !(app
+            .world()
+            .entity(session_active)
+            .get::<DummySession>()
+            .unwrap()
+            .update_receiver()
+            .is_closed()
+            && app
+                .world()
+                .entity(session_inactive)
+                .get::<DummySession>()
+                .unwrap()
+                .update_receiver()
+                .is_closed())
+        {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
+        let mut timer = app.world_mut().resource_mut::<SessionCheckTimer>();
+        let duration = timer.duration();
+        timer.set_elapsed(duration);
+        timer.unpause();
+        // this should remove game session component and trigger SessionClosed
+        app.update();
+        assert!(!app
+            .world()
+            .entity(session_active)
+            .contains::<DummySession>());
+        assert!(!app
+            .world()
+            .entity(session_inactive)
+            .contains::<DummySession>());
+        let session_closed_events = app.world().resource::<Events<SessionClosed>>();
+        let mut session_closed_event_reader = session_closed_events.get_reader();
+        assert_eq!(
+            **session_closed_event_reader
+                .read(session_closed_events)
+                .next()
+                .unwrap(),
+            session_active
+        );
+        assert_eq!(
+            **session_closed_event_reader
+                .read(session_closed_events)
+                .next()
+                .unwrap(),
+            session_inactive
+        );
+        let open_session_events = app.world().resource::<Events<OpenSession>>();
+        let mut open_session_event_reader = open_session_events.get_reader();
+        assert_eq!(
+            open_session_event_reader
+                .read(open_session_events)
+                .next()
+                .unwrap()
+                .game(),
+            session_active
+        );
+    }
+
     /// Initialize action send by SessionActionReadyToSend event.
     /// Check that send task is deleted after [`handle_session_action_send`].
     /// Check that [`SessionActionSendFailed`] event is triggered correctly.
@@ -508,7 +664,7 @@ mod test {
         let r_cloned = r.clone();
         app.world_mut()
             .entity_mut(session)
-            .insert(GameSession::<DummyGame, ()>::new(
+            .insert(DummySession::new(
                 IoTaskPool::get().spawn(async move {
                     while let Ok(_) = r_cloned.recv().await {
                         println!("action is sent!");
@@ -552,6 +708,8 @@ mod test {
     /// Check that all updates are received and in the end one more receive task remains waiting.
     #[test]
     fn session_receive_update() {
+        type ReceiveUpdateTask = ReceiveSessionUpdateTask<()>;
+
         IoTaskPool::get_or_init(|| TaskPool::default());
         let mut app = App::new();
         app.add_event::<SessionUpdateReceived<()>>();
@@ -565,11 +723,10 @@ mod test {
             ),
         );
 
-        type ReceiveUpdateTask = ReceiveSessionUpdateTask<()>;
         let (s, r) = async_channel::unbounded();
         let session = app
             .world_mut()
-            .spawn(GameSession::<DummyGame, _>::new(
+            .spawn(DummySession::new(
                 IoTaskPool::get().spawn(future::ready(())),
                 async_channel::unbounded().0,
                 r,
