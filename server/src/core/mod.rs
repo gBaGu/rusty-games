@@ -11,12 +11,12 @@ use std::ops::{Deref, DerefMut};
 
 use generic_array::ArrayLength;
 
-use grid::Grid;
 use player_pool::{Player, PlayerQueue};
 
 pub use encoding::{FromProtobuf, ProtobufError, ProtobufResult, ToProtobuf};
 pub use error::GameError;
-pub use grid::GridIndex;
+pub use grid::{Grid, GridIndex};
+pub use player_pool::PlayerIdQueue;
 
 pub type GameResult<T> = Result<T, GameError>;
 pub type PlayerPosition = u32; // TODO: change to u8
@@ -113,7 +113,7 @@ where
 
 pub trait Game: Sized {
     const NUM_PLAYERS: u8;
-    type TurnData: FromProtobuf;
+    type TurnData: FromProtobuf + ToProtobuf;
     type Players: PlayerQueue<Id = PlayerPosition>;
     type Board: GameBoard;
 

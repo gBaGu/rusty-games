@@ -39,6 +39,18 @@ impl GameDataReady {
     }
 }
 
+/// Event that signals that game [`Entity`] is ready for interaction.
+/// Triggered during game creation process when the game entity is spawned or
+/// found within existing game entities.
+#[derive(Debug, Deref, Event)]
+pub struct GameEntityReady(Entity);
+
+impl GameEntityReady {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 /// Event that signals that particular bot is ready to make some action in a game.
 #[derive(Clone, Copy, Debug, Event)]
 pub struct BotReady {
@@ -77,7 +89,7 @@ pub struct PlayerActionInitialized<T> {
     action: T,
 }
 
-impl<T: Clone + Copy> PlayerActionInitialized<T> {
+impl<T: Copy> PlayerActionInitialized<T> {
     pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,
@@ -96,6 +108,17 @@ impl<T: Clone + Copy> PlayerActionInitialized<T> {
 
     pub fn action(&self) -> T {
         self.action
+    }
+}
+
+/// Event that indicates that an action cannot be confirmed by a server.
+/// Contains game [`Entity`].
+#[derive(Clone, Copy, Debug, Deref, Event)]
+pub struct ActionConfirmationFailed(Entity);
+
+impl ActionConfirmationFailed {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
     }
 }
 

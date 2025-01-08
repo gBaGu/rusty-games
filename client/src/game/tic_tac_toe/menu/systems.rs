@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputSubmitEvent, TextInputValue};
 use game_server::core::tic_tac_toe::TicTacToe;
-use game_server::proto;
 
 use crate::commands::EntityCommandsExt;
 use crate::game::components::BotDifficultyButtonBundle;
@@ -12,11 +11,11 @@ use crate::game::tic_tac_toe::menu::components::{
     NetworkGameSettings, NetworkGameSettingsBundle,
 };
 use crate::game::{
-    BotDifficulty, GameDataReady, NetworkGame, PendingExistingGameBundle, PendingNewGameBundle,
+    BotDifficulty, GameDataReady, GameEntityReady, NetworkGame, PendingExistingGameBundle,
+    PendingNewGameBundle,
 };
-use crate::grpc::GrpcClient;
-use crate::interface;
 use crate::Settings;
+use crate::{grpc, interface};
 
 /// Whenever [`interface::GameSettings`] is added to a page layout fill it
 /// with bot game settings interface.
@@ -120,23 +119,23 @@ pub fn init_network_settings_menu(
 /// fill it with a status message.
 pub fn init_game_list(
     mut commands: Commands,
-    mut game_list: Query<&mut interface::GameList, Added<interface::GameList>>,
+    mut game_list: Query<(Entity, &mut interface::GameList), Added<interface::GameList>>,
     settings: Res<Settings>,
-    client: Option<Res<GrpcClient>>,
+    client: Option<Res<grpc::GrpcClient>>,
 ) {
-    for mut game_list in game_list.iter_mut() {
+    for (game_list_entity, mut game_list) in game_list.iter_mut() {
         if let Some(id) = settings.user_id() {
             match client.as_ref() {
                 Some(client) if client.connected() => {
-                    match client.get_player_games(proto::GameType::TicTacToe, id) {
+                    match client.get_player_games::<TicTacToe>(id) {
                         Ok(task) => {
-                            commands.spawn(task);
+                            commands.entity(game_list_entity).insert(task);
                         }
                         Err(err) => {
                             println!("get_player_games call failed: {}", err);
                             *game_list = interface::GameList::Message("Server is down".into());
                         }
-                    }
+                    };
                 }
                 _ => *game_list = interface::GameList::Message("Server is down".into()),
             };
@@ -148,15 +147,15 @@ pub fn init_game_list(
 
 /// Whenever timer is finished send GetPlayerGames request or fill game list with a status message.
 pub fn send_get_player_games(
-    mut game_list: Query<&mut interface::GameList>,
+    mut game_list: Query<(Entity, &mut interface::GameList)>,
     mut commands: Commands,
     mut timer: ResMut<interface::RefreshGamesTimer>,
-    client: Res<GrpcClient>,
+    client: Res<grpc::GrpcClient>,
     settings: Res<Settings>,
     time: Res<Time>,
 ) {
     if timer.tick(time.delta()).just_finished() {
-        let Ok(mut list) = game_list.get_single_mut() else {
+        let Ok((game_list_entity, mut list)) = game_list.get_single_mut() else {
             println!("no game list found to refresh");
             return;
         };
@@ -164,9 +163,9 @@ pub fn send_get_player_games(
             *list = interface::GameList::Message("No user id provided".into());
             return;
         };
-        match client.get_player_games(proto::GameType::TicTacToe, id) {
+        match client.get_player_games::<TicTacToe>(id) {
             Ok(task) => {
-                commands.spawn(task);
+                commands.entity(game_list_entity).insert(task);
                 timer.reset();
                 timer.pause();
             }
@@ -297,7 +296,7 @@ pub fn create_network_game(
         (Changed<Interaction>, With<interface::CreateGame>),
     >,
     game_settings: Query<(&CommonGameSettings, &NetworkGameSettings)>,
-    client: Option<Res<GrpcClient>>,
+    client: Option<Res<grpc::GrpcClient>>,
     settings: Res<Settings>,
 ) {
     for (interaction, settings_link) in button.iter() {
@@ -316,10 +315,11 @@ pub fn create_network_game(
                 println!("grpc client is not connected");
                 continue;
             };
-            match client.create_game(proto::GameType::TicTacToe, user, opponent) {
+            match client.create_game::<TicTacToe>(user, opponent) {
                 Ok(task) => {
-                    commands.spawn(task);
-                    commands.spawn(PendingNewGameBundle::<TicTacToe>::new());
+                    commands
+                        .spawn(PendingNewGameBundle::<TicTacToe>::new())
+                        .insert(task);
                     return;
                 }
                 Err(err) => println!("create_game call failed: {}", err),
@@ -362,26 +362,27 @@ pub fn save_opponent(
     }
 }
 
-/// Whenever [`JoinPressed`] event is received:
-/// if the game is already in memory or send [`GameReady`] event,
+/// Whenever [`interface::JoinPressed`] event is received:
+/// if the game is already in memory send [`GameEntityReady`] event,
 /// otherwise send GetGame request.
 pub fn join_game(
     mut commands: Commands,
     game: Query<(Entity, &NetworkGame)>,
     mut join_pressed: EventReader<interface::JoinPressed>,
-    mut game_ready: EventWriter<interface::GameReady>,
-    client: Option<Res<GrpcClient>>,
+    mut game_entity_ready: EventWriter<GameEntityReady>,
+    client: Option<Res<grpc::GrpcClient>>,
 ) {
     for event in join_pressed.read() {
         if let Some((game_entity, _)) = game.iter().find(|(_, &game)| *game == event.game_id()) {
-            game_ready.send(interface::GameReady::new(game_entity));
+            game_entity_ready.send(GameEntityReady::new(game_entity));
             return;
         }
         if let Some(client) = client.as_ref() {
-            match client.get_game(proto::GameType::TicTacToe, event.game_id()) {
+            match client.get_game::<TicTacToe>(event.game_id()) {
                 Ok(task) => {
-                    commands.spawn(task);
-                    commands.spawn(PendingExistingGameBundle::<TicTacToe>::new(event.game_id()));
+                    commands
+                        .spawn(PendingExistingGameBundle::<TicTacToe>::new(event.game_id()))
+                        .insert(task);
                 }
                 Err(err) => println!("get_game call failed: {}", err),
             };

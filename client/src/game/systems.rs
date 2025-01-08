@@ -1,52 +1,165 @@
-use std::ops::Deref;
-
 use bevy::prelude::*;
 use game_server::{core, proto};
 
+use super::components::{FinishedGame, Game};
+use super::pending_action::ConfirmationStatus;
 use super::{
-    ActiveGame, CurrentPlayer, CurrentUser, Draw, NetworkGame, PlayerPosition, PlayerWon,
-    StateUpdated, TurnStart, UserAuthority, Winner,
+    ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
+    NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, StateUpdated,
+    TurnStart, UserAuthority, Winner,
 };
-use crate::game::components::{FinishedGame, Game, PendingActionStatus};
-use crate::grpc::RpcResultReady;
-use crate::interface::{GameLeft, GameReadyToExit};
 use crate::UserIdChanged;
+use crate::{grpc, interface};
 
-/// Receive reply for MakeTurn rpc and if it's successful update [`PendingActionStatus`] component.
-/// Does not depend on specific game type.
-pub fn confirm_pending_action(
-    mut game: Query<&mut PendingActionStatus, (With<NetworkGame>, With<ActiveGame>)>,
-    mut make_turn_reply: EventReader<RpcResultReady<proto::MakeTurnReply>>,
+/// Watch the game entity creation and send [`GameEntityReady`] event.
+pub fn handle_game_spawn(
+    game: Query<Entity, Added<Game>>,
+    mut game_entity_ready: EventWriter<GameEntityReady>,
 ) {
-    let Ok(mut status) = game.get_single_mut() else {
-        return;
-    };
-    for event in make_turn_reply.read() {
-        if status.is_confirmed() {
-            return;
+    for game_entity in game.iter() {
+        game_entity_ready.send(GameEntityReady::new(game_entity));
+    }
+}
+
+/// Receive the [`GameEntityReady`] event and in case of a local game
+/// send [`interface::GameReady`] event.
+pub fn handle_local_game_creation(
+    local_game: Query<(), (With<Game>, Without<NetworkGame>)>,
+    mut game_entity_ready: EventReader<GameEntityReady>,
+    mut game_ready: EventWriter<interface::GameReady>,
+) {
+    for event in game_entity_ready.read() {
+        if local_game.contains(**event) {
+            game_ready.send(interface::GameReady::new(**event));
         }
-        *status = PendingActionStatus::NotConfirmed;
-        let _ = match event.deref() {
-            Ok(response) => {
-                if let Some(new_state) = &response.get_ref().game_state {
-                    match core::GameState::try_from(new_state.clone()) {
-                        Ok(state) => state,
-                        Err(err) => {
-                            println!("failed to convert game state: {}", err);
-                            continue;
-                        }
-                    }
-                } else {
-                    println!("MakeTurn returned empty response");
-                    continue;
-                }
-            }
-            Err(err) => {
-                println!("MakeTurn request failed: {}", err);
+    }
+}
+
+/// Receive the [`GameEntityReady`] event and in case of a network game
+/// trigger session initialization.
+pub fn initialize_game_session<T>(
+    network_game: Query<(), With<NetworkGame>>,
+    mut game_entity_ready: EventReader<GameEntityReady>,
+    mut open_session: EventWriter<grpc::OpenSession>,
+) where
+    T: core::Game + proto::GetGameType + Send + Sync + 'static,
+    T::TurnData: Send,
+{
+    for event in game_entity_ready.read() {
+        if network_game.contains(**event) {
+            open_session.send(grpc::OpenSession::new(**event));
+        }
+    }
+}
+
+/// Receive the [`grpc::SessionOpened`] event and in case if entity it contains
+/// is a network game and is not active (which means this game is being initialized)
+/// send [`interface::GameReady`] event.
+pub fn network_game_initialization_finished(
+    network_game: Query<(), (With<NetworkGame>, Without<ActiveGame>)>,
+    mut session_opened: EventReader<grpc::SessionOpened>,
+    mut game_ready: EventWriter<interface::GameReady>,
+) {
+    for event in session_opened.read() {
+        if network_game.contains(**event) {
+            game_ready.send(interface::GameReady::new(**event));
+        }
+    }
+}
+
+/// If the game has [`PendingAction`] and it is not confirmed, send [`grpc::SendActionTask`] event
+/// and change action status to `ConfirmationStatus::WaitingConfirmation`.
+pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
+    mut game: Query<
+        (Entity, &mut PendingActionQueue<T>),
+        (With<ActiveGame>, Without<grpc::SendActionTask<T>>),
+    >,
+    mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
+) {
+    for (game_entity, mut queue) in game.iter_mut() {
+        let Some(next_action) = queue.first_mut() else {
+            continue;
+        };
+        if next_action.is_not_confirmed() {
+            next_action.set_status(ConfirmationStatus::WaitingConfirmation);
+            action_ready.send(grpc::SessionActionReadyToSend::new(
+                game_entity,
+                *next_action.action(),
+            ));
+        }
+    }
+}
+
+/// For all actions that are waiting for confirmation at the beginning of the [`PendingActionQueue`]
+/// set the status to `ConfirmationStatus::NotConfirmed`.
+pub fn revert_action_status<T: Send + Sync + 'static>(
+    mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    mut confirmation_failed: EventReader<ActionConfirmationFailed>,
+) {
+    for event in confirmation_failed.read() {
+        let Ok(mut queue) = action_queue.get_mut(**event) else {
+            continue;
+        };
+        println!("unable to confirm actions, set status to 'not confirmed'");
+        // revert status for all actions for now
+        for action in queue.iter_mut().take_while(|a| a.is_waiting_confirmation()) {
+            action.set_status(ConfirmationStatus::NotConfirmed);
+        }
+    }
+}
+
+/// For every [`grpc::SessionClosed`] or [`grpc::SessionActionSendFailed`] event
+/// send the [`ActionConfirmationFailed`].
+pub fn action_confirmation_failed(
+    mut session_closed: EventReader<grpc::SessionClosed>,
+    mut action_send_failed: EventReader<grpc::SessionActionSendFailed>,
+    mut confirmation_failed: EventWriter<ActionConfirmationFailed>,
+) {
+    for game_entity in session_closed
+        .read()
+        .map(|e| **e)
+        .chain(action_send_failed.read().map(|e| **e))
+    {
+        confirmation_failed.send(ActionConfirmationFailed::new(game_entity));
+    }
+}
+
+/// Receive [`grpc::SessionUpdateReceived`] event and if it's a current player action
+/// then update action status in [`PendingActionQueue`], otherwise just push it to the end with
+/// its status set to `ConfirmationStatus::Confirmed`.
+pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
+    mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    player: Query<(&PlayerPosition, &Parent), With<CurrentUser>>,
+    mut update_received: EventReader<grpc::SessionUpdateReceived<T>>,
+) {
+    for event in update_received.read() {
+        let Ok(mut queue) = action_queue.get_mut(event.session_entity()) else {
+            continue;
+        };
+        if player
+            .iter()
+            .filter(|(_, p)| p.get() == event.session_entity())
+            .find(|(&pos, _)| *pos == event.player())
+            .is_some()
+        {
+            let Some(next_action) = queue.first_mut() else {
+                continue;
+            };
+            if !next_action.is_waiting_confirmation() {
+                println!("unexpected pending action status: {}", next_action.status());
                 continue;
             }
-        };
-        *status = PendingActionStatus::Confirmed;
+            if next_action.player() != event.player() {
+                println!("unexpected pending action player: {}", next_action.player());
+                continue;
+            }
+            next_action.set_status(ConfirmationStatus::Confirmed);
+        } else {
+            queue.push(PendingAction::new_confirmed(
+                event.player(),
+                *event.action(),
+            ));
+        }
     }
 }
 
@@ -99,20 +212,20 @@ pub fn update_current_player(
 }
 
 /// Receives [`Draw`] event, clears [`CurrentPlayer`] tag for players
-/// and sends [`GameReadyToExit`] event because currently
+/// and sends [`interface::GameReadyToExit`] event because currently
 /// there is nothing to do after the game is ended with a draw.
 pub fn handle_draw(
     mut commands: Commands,
     player: Query<(Entity, &Parent), With<CurrentPlayer>>,
     mut draw: EventReader<Draw>,
-    mut ready_to_exit: EventWriter<GameReadyToExit>,
+    mut ready_to_exit: EventWriter<interface::GameReadyToExit>,
 ) {
     for event in draw.read() {
         for (player_entity, _) in player.iter().filter(|(.., p)| p.get() == event.game()) {
             let mut player_cmds = commands.entity(player_entity);
             player_cmds.remove::<CurrentPlayer>();
         }
-        ready_to_exit.send(GameReadyToExit::new(event.game()));
+        ready_to_exit.send(interface::GameReadyToExit::new(event.game()));
     }
 }
 
@@ -192,14 +305,14 @@ pub fn clear_foreign_network_games(
     }
 }
 
-/// Listen to [`GameLeft`] event and despawn game entity and its descendants
+/// Listen to [`interface::GameLeft`] event and despawn game entity and its descendants
 /// if one of the next conditions is met for a game:
 /// - it is local (bot game);
 /// - it is a network game and is finished.
 pub fn clear_game_on_exit(
     mut commands: Commands,
     game: Query<(Option<&FinishedGame>, Option<&NetworkGame>), With<Game>>,
-    mut game_left: EventReader<GameLeft>,
+    mut game_left: EventReader<interface::GameLeft>,
 ) {
     for event in game_left.read() {
         let Ok((finished_game, network_game)) = game.get(event.get()) else {
@@ -213,6 +326,17 @@ pub fn clear_game_on_exit(
     }
 }
 
+/// Whenever [`ActiveGame`] component is removed from entity,
+/// trigger the [`grpc::CloseSession`] event.
+pub fn close_session(
+    mut deactivated_game: RemovedComponents<ActiveGame>,
+    mut close_session: EventWriter<grpc::CloseSession>,
+) {
+    for entity in deactivated_game.read() {
+        close_session.send(grpc::CloseSession::new(entity));
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -220,10 +344,11 @@ mod test {
         CurrentUserPlayerBundle, LocalGameBundle, NetworkGameBundle, NetworkPlayerBundle,
     };
     use crate::Settings;
+    use game_server::core;
     use game_server::core::tic_tac_toe::TicTacToe;
 
-    type TTTLocalGameBundle = LocalGameBundle<TicTacToe>;
-    type TTTNetworkGameBundle = NetworkGameBundle<TicTacToe>;
+    type TTTLocalGameBundle = LocalGameBundle<TicTacToe, <TicTacToe as core::Game>::TurnData>;
+    type TTTNetworkGameBundle = NetworkGameBundle<TicTacToe, <TicTacToe as core::Game>::TurnData>;
 
     #[test]
     fn game_entity_updated_on_finish() {
@@ -312,11 +437,11 @@ mod test {
         assert!(app.world().get::<Game>(game3_user2).is_none());
     }
 
-    // GameLeft clears every local game and every finished network game
+    /// GameLeft clears every local game and every finished network game
     #[test]
     fn game_left_event_clears_games() {
         let mut app = App::new();
-        app.add_event::<GameLeft>();
+        app.add_event::<interface::GameLeft>();
         app.add_systems(Update, clear_game_on_exit);
 
         let game1 = app.world_mut().spawn(TTTLocalGameBundle::default()).id();
@@ -333,14 +458,14 @@ mod test {
 
         // emit GameLeft events for games 1, 3, 4
         app.world_mut()
-            .resource_mut::<Events<GameLeft>>()
-            .send(GameLeft::new(game1));
+            .resource_mut::<Events<interface::GameLeft>>()
+            .send(interface::GameLeft::new(game1));
         app.world_mut()
-            .resource_mut::<Events<GameLeft>>()
-            .send(GameLeft::new(game3));
+            .resource_mut::<Events<interface::GameLeft>>()
+            .send(interface::GameLeft::new(game3));
         app.world_mut()
-            .resource_mut::<Events<GameLeft>>()
-            .send(GameLeft::new(game4));
+            .resource_mut::<Events<interface::GameLeft>>()
+            .send(interface::GameLeft::new(game4));
         app.update();
 
         // games 1, 3 are despawned, 2 and 4 remain in the world
