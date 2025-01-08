@@ -16,7 +16,7 @@ use crate::game::{
     ActiveGame, CurrentPlayer, CurrentUserPlayerBundle, FullGameInfo, GameDataReady, GameInfo,
     NetworkGame, NetworkPlayerBundle, StateUpdated, Winner,
 };
-use crate::grpc::RpcResultReady;
+use crate::grpc;
 use crate::Settings;
 
 /// Load X and O images and initialize [`Images`] resource.
@@ -31,7 +31,7 @@ pub fn init(mut commands: Commands, asset_server: Res<AssetServer>) {
 pub fn handle_create_game_reply(
     mut commands: Commands,
     pending_game: Query<Entity, With<PendingGame<TicTacToe>>>,
-    mut create_game_reply: EventReader<RpcResultReady<proto::CreateGameReply>>,
+    mut create_game_reply: EventReader<grpc::RpcResultReady<proto::CreateGameReply>>,
     mut game_data_ready: EventWriter<GameDataReady>,
     settings: Res<Settings>,
 ) {
@@ -78,7 +78,7 @@ pub fn handle_create_game_reply(
 pub fn handle_get_game_reply_on_join(
     mut commands: Commands,
     pending_game: Query<&NetworkGame, With<PendingGame<TicTacToe>>>,
-    mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
+    mut get_game_reply: EventReader<grpc::RpcResultReady<proto::GetGameReply>>,
     mut game_data_ready: EventWriter<GameDataReady>,
     settings: Res<Settings>,
 ) {
@@ -125,7 +125,7 @@ pub fn handle_get_game_reply_on_join(
 /// the state has changed and [`PlayerActionApplied`] event for every new action.
 pub fn handle_get_game(
     mut game: Query<(&NetworkGame, &mut LocalGame), With<ActiveGame>>,
-    mut get_game_reply: EventReader<RpcResultReady<proto::GetGameReply>>,
+    mut get_game_reply: EventReader<grpc::RpcResultReady<proto::GetGameReply>>,
     mut action_applied: EventWriter<PlayerActionApplied>,
     mut state_updated: EventWriter<StateUpdated>,
     mut timer: ResMut<RefreshGameTimer>,
@@ -247,9 +247,9 @@ pub fn create(
     }
 }
 
-/// Receive [`PlayerActionInitialized`] event and if the game has no [`PendingAction`]
-/// insert [`PendingActionBundle`] into a game entity.
-/// If game entity contains [`NetworkGame`] component pending action will be
+/// Receive [`PlayerActionInitialized`] event and insert [`PendingAction`]
+/// into a [`PendingActionQueue`] of a game entity received in the event.
+/// If game entity contains [`NetworkGame`] component the status of created action will be
 /// `PendingActionStatus::NotConfirmed`, otherwise `PendingActionStatus::Confirmed`.
 pub fn create_pending_action(
     mut game: Query<(Option<&NetworkGame>, &mut PendingActionQueue), With<ActiveGame>>,
@@ -274,7 +274,7 @@ pub fn create_pending_action(
     }
 }
 
-/// If the game has [`PendingAction`] and it is confirmed, apply it and send
+/// Take all consecutive confirmed actions from [`PendingActionQueue`], apply them and send
 /// [`PlayerActionApplied`] and [`StateUpdated`] events.
 pub fn apply_confirmed(
     mut game: Query<(Entity, &mut LocalGame, &mut PendingActionQueue), With<ActiveGame>>,

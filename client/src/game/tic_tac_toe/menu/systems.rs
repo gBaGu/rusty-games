@@ -14,9 +14,8 @@ use crate::game::{
     BotDifficulty, GameDataReady, GameEntityReady, NetworkGame, PendingExistingGameBundle,
     PendingNewGameBundle,
 };
-use crate::grpc::GrpcClient;
-use crate::interface;
 use crate::Settings;
+use crate::{grpc, interface};
 
 /// Whenever [`interface::GameSettings`] is added to a page layout fill it
 /// with bot game settings interface.
@@ -122,7 +121,7 @@ pub fn init_game_list(
     mut commands: Commands,
     mut game_list: Query<(Entity, &mut interface::GameList), Added<interface::GameList>>,
     settings: Res<Settings>,
-    client: Option<Res<GrpcClient>>,
+    client: Option<Res<grpc::GrpcClient>>,
 ) {
     for (game_list_entity, mut game_list) in game_list.iter_mut() {
         if let Some(id) = settings.user_id() {
@@ -151,7 +150,7 @@ pub fn send_get_player_games(
     mut game_list: Query<(Entity, &mut interface::GameList)>,
     mut commands: Commands,
     mut timer: ResMut<interface::RefreshGamesTimer>,
-    client: Res<GrpcClient>,
+    client: Res<grpc::GrpcClient>,
     settings: Res<Settings>,
     time: Res<Time>,
 ) {
@@ -297,7 +296,7 @@ pub fn create_network_game(
         (Changed<Interaction>, With<interface::CreateGame>),
     >,
     game_settings: Query<(&CommonGameSettings, &NetworkGameSettings)>,
-    client: Option<Res<GrpcClient>>,
+    client: Option<Res<grpc::GrpcClient>>,
     settings: Res<Settings>,
 ) {
     for (interaction, settings_link) in button.iter() {
@@ -371,7 +370,7 @@ pub fn join_game(
     game: Query<(Entity, &NetworkGame)>,
     mut join_pressed: EventReader<interface::JoinPressed>,
     mut game_entity_ready: EventWriter<GameEntityReady>,
-    client: Option<Res<GrpcClient>>,
+    client: Option<Res<grpc::GrpcClient>>,
 ) {
     for event in join_pressed.read() {
         if let Some((game_entity, _)) = game.iter().find(|(_, &game)| *game == event.game_id()) {

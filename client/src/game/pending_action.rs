@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy::prelude::*;
 use game_server::core;
 
@@ -10,6 +12,12 @@ pub enum ConfirmationStatus {
     NotConfirmed,
     WaitingConfirmation,
     Confirmed,
+}
+
+impl fmt::Display for ConfirmationStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 /// Player action that is waiting to be applied.

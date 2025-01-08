@@ -1,17 +1,15 @@
 use bevy::prelude::*;
-use game_server::core;
-use game_server::proto;
+use game_server::{core, proto};
 
 use super::components::{FinishedGame, Game};
 use super::pending_action::ConfirmationStatus;
 use super::{
     ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
-    NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon,
-    StateUpdated, TurnStart, UserAuthority, Winner,
+    NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, StateUpdated,
+    TurnStart, UserAuthority, Winner,
 };
-use crate::grpc;
-use crate::interface::{GameLeft, GameReady, GameReadyToExit};
 use crate::UserIdChanged;
+use crate::{grpc, interface};
 
 /// Watch the game entity creation and send [`GameEntityReady`] event.
 pub fn handle_game_spawn(
@@ -23,15 +21,16 @@ pub fn handle_game_spawn(
     }
 }
 
-/// Receive the [`GameEntityReady`] event and in case of a local game send [`GameReady`] event.
+/// Receive the [`GameEntityReady`] event and in case of a local game
+/// send [`interface::GameReady`] event.
 pub fn handle_local_game_creation(
     local_game: Query<(), (With<Game>, Without<NetworkGame>)>,
     mut game_entity_ready: EventReader<GameEntityReady>,
-    mut game_ready: EventWriter<GameReady>,
+    mut game_ready: EventWriter<interface::GameReady>,
 ) {
     for event in game_entity_ready.read() {
         if local_game.contains(**event) {
-            game_ready.send(GameReady::new(**event));
+            game_ready.send(interface::GameReady::new(**event));
         }
     }
 }
@@ -55,15 +54,15 @@ pub fn initialize_game_session<T>(
 
 /// Receive the [`grpc::SessionOpened`] event and in case if entity it contains
 /// is a network game and is not active (which means this game is being initialized)
-/// send [`GameReady`] event.
+/// send [`interface::GameReady`] event.
 pub fn network_game_initialization_finished(
     network_game: Query<(), (With<NetworkGame>, Without<ActiveGame>)>,
     mut session_opened: EventReader<grpc::SessionOpened>,
-    mut game_ready: EventWriter<GameReady>,
+    mut game_ready: EventWriter<interface::GameReady>,
 ) {
     for event in session_opened.read() {
         if network_game.contains(**event) {
-            game_ready.send(GameReady::new(**event));
+            game_ready.send(interface::GameReady::new(**event));
         }
     }
 }
@@ -125,6 +124,9 @@ pub fn action_confirmation_failed(
     }
 }
 
+/// Receive [`grpc::SessionUpdateReceived`] event and if it's a current player action
+/// then update action status in [`PendingActionQueue`], otherwise just push it to the end with
+/// its status set to `ConfirmationStatus::Confirmed`.
 pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
     mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
     player: Query<(&PlayerPosition, &Parent), With<CurrentUser>>,
@@ -144,10 +146,11 @@ pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
                 continue;
             };
             if !next_action.is_waiting_confirmation() {
-                println!(
-                    "unexpected action status in a game queue: {:?}",
-                    next_action.status()
-                );
+                println!("unexpected pending action status: {}", next_action.status());
+                continue;
+            }
+            if next_action.player() != event.player() {
+                println!("unexpected pending action player: {}", next_action.player());
                 continue;
             }
             next_action.set_status(ConfirmationStatus::Confirmed);
@@ -209,20 +212,20 @@ pub fn update_current_player(
 }
 
 /// Receives [`Draw`] event, clears [`CurrentPlayer`] tag for players
-/// and sends [`GameReadyToExit`] event because currently
+/// and sends [`interface::GameReadyToExit`] event because currently
 /// there is nothing to do after the game is ended with a draw.
 pub fn handle_draw(
     mut commands: Commands,
     player: Query<(Entity, &Parent), With<CurrentPlayer>>,
     mut draw: EventReader<Draw>,
-    mut ready_to_exit: EventWriter<GameReadyToExit>,
+    mut ready_to_exit: EventWriter<interface::GameReadyToExit>,
 ) {
     for event in draw.read() {
         for (player_entity, _) in player.iter().filter(|(.., p)| p.get() == event.game()) {
             let mut player_cmds = commands.entity(player_entity);
             player_cmds.remove::<CurrentPlayer>();
         }
-        ready_to_exit.send(GameReadyToExit::new(event.game()));
+        ready_to_exit.send(interface::GameReadyToExit::new(event.game()));
     }
 }
 
@@ -302,14 +305,14 @@ pub fn clear_foreign_network_games(
     }
 }
 
-/// Listen to [`GameLeft`] event and despawn game entity and its descendants
+/// Listen to [`interface::GameLeft`] event and despawn game entity and its descendants
 /// if one of the next conditions is met for a game:
 /// - it is local (bot game);
 /// - it is a network game and is finished.
 pub fn clear_game_on_exit(
     mut commands: Commands,
     game: Query<(Option<&FinishedGame>, Option<&NetworkGame>), With<Game>>,
-    mut game_left: EventReader<GameLeft>,
+    mut game_left: EventReader<interface::GameLeft>,
 ) {
     for event in game_left.read() {
         let Ok((finished_game, network_game)) = game.get(event.get()) else {
@@ -323,7 +326,8 @@ pub fn clear_game_on_exit(
     }
 }
 
-/// Whenever [`ActiveGame`] component is removed from entity, trigger the [`grpc::CloseSession`] event.
+/// Whenever [`ActiveGame`] component is removed from entity,
+/// trigger the [`grpc::CloseSession`] event.
 pub fn close_session(
     mut deactivated_game: RemovedComponents<ActiveGame>,
     mut close_session: EventWriter<grpc::CloseSession>,
@@ -433,11 +437,11 @@ mod test {
         assert!(app.world().get::<Game>(game3_user2).is_none());
     }
 
-    // GameLeft clears every local game and every finished network game
+    /// GameLeft clears every local game and every finished network game
     #[test]
     fn game_left_event_clears_games() {
         let mut app = App::new();
-        app.add_event::<GameLeft>();
+        app.add_event::<interface::GameLeft>();
         app.add_systems(Update, clear_game_on_exit);
 
         let game1 = app.world_mut().spawn(TTTLocalGameBundle::default()).id();
@@ -454,14 +458,14 @@ mod test {
 
         // emit GameLeft events for games 1, 3, 4
         app.world_mut()
-            .resource_mut::<Events<GameLeft>>()
-            .send(GameLeft::new(game1));
+            .resource_mut::<Events<interface::GameLeft>>()
+            .send(interface::GameLeft::new(game1));
         app.world_mut()
-            .resource_mut::<Events<GameLeft>>()
-            .send(GameLeft::new(game3));
+            .resource_mut::<Events<interface::GameLeft>>()
+            .send(interface::GameLeft::new(game3));
         app.world_mut()
-            .resource_mut::<Events<GameLeft>>()
-            .send(GameLeft::new(game4));
+            .resource_mut::<Events<interface::GameLeft>>()
+            .send(interface::GameLeft::new(game4));
         app.update();
 
         // games 1, 3 are despawned, 2 and 4 remain in the world

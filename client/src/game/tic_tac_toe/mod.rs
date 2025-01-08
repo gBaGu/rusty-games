@@ -13,11 +13,11 @@ use game_server::core::tic_tac_toe::TicTacToe;
 use resources::Images;
 use systems::*;
 
-pub const X_SPRITE_PATH: &str = "sprites/X.png";
-pub const O_SPRITE_PATH: &str = "sprites/O.png";
+const X_SPRITE_PATH: &str = "sprites/X.png";
+const O_SPRITE_PATH: &str = "sprites/O.png";
 
-pub type TTTBoard = <TicTacToe as core::Game>::Board;
-pub type Action = <TicTacToe as core::Game>::TurnData;
+type TTTBoard = <TicTacToe as core::Game>::Board;
+type Action = <TicTacToe as core::Game>::TurnData;
 
 type LocalGame = super::LocalGame<TicTacToe>;
 type LocalGameBundle = super::LocalGameBundle<TicTacToe, Action>;
