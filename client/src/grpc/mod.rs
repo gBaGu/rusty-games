@@ -3,7 +3,6 @@ mod error;
 mod events;
 mod resources;
 mod systems;
-mod task_entity;
 
 use bevy::prelude::*;
 use game_server::core;

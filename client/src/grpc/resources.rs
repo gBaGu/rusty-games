@@ -54,7 +54,7 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Ok(CallTask::new(task))
+        Ok(task.into())
     }
 
     pub fn _make_turn<T>(
@@ -81,7 +81,7 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Ok(CallTask::new(task))
+        Ok(task.into())
     }
 
     pub fn game_session<T>(
@@ -162,7 +162,7 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Ok(CallTask::new(task))
+        Ok(task.into())
     }
 
     pub fn get_player_games<T: proto::GetGameType>(
@@ -181,7 +181,7 @@ impl GrpcClient {
                 }))
                 .await
         });
-        Ok(CallTask::new(task))
+        Ok(task.into())
     }
 }
 

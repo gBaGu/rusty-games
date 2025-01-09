@@ -12,12 +12,12 @@ use super::components::{
 };
 use super::events::{RpcResultReady, SessionErrorReceived, SessionUpdateReceived};
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
-use super::task_entity::TaskEntity;
 use super::{
     CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
     OpenSession, SendActionTask, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
     SessionOpened, DEFAULT_GRPC_SERVER_ADDRESS,
 };
+use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
 
@@ -30,7 +30,7 @@ pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Re
                 .compat()
                 .await
         });
-        commands.spawn(ConnectClientTask(task));
+        commands.spawn(ConnectClientTask::from(task));
     }
 }
 
@@ -44,8 +44,7 @@ pub fn handle_connect(
         println!("unable to get a single connect task");
         return;
     };
-    let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task);
-    if let Some(res) = task.poll_once() {
+    if let Some(res) = task.poll_once(commands.entity(entity)) {
         if client.is_some() {
             return;
         }
@@ -69,7 +68,7 @@ pub fn receive_status(mut commands: Commands, watcher: Res<ConnectionStatusWatch
     let receiver = watcher.update_receiver();
     if !receiver.is_closed() {
         let task = IoTaskPool::get().spawn(async move { receiver.recv().await });
-        commands.spawn(ReceiveConnectionStatusTask(task));
+        commands.spawn(ReceiveConnectionStatusTask::from(task));
     } else {
         println!("ConnectStatusWatcher is finished");
         commands.remove_resource::<ConnectionStatusWatcher>();
@@ -87,8 +86,7 @@ pub fn handle_receive_status(
         println!("unable to get a single connect task");
         return;
     };
-    let mut task = TaskEntity::new(commands.reborrow(), entity, &mut task);
-    if let Some(res) = task.poll_once() {
+    if let Some(res) = task.poll_once(commands.entity(entity)) {
         if let Some(mut client) = client {
             let updated_status = res.unwrap_or_else(|err| {
                 println!("failed to get connection status: {}", err);
@@ -112,8 +110,7 @@ pub fn handle_response<T: Send + Sync + 'static>(
     mut response_ready: EventWriter<RpcResultReady<T>>,
 ) {
     for (entity, mut task) in task.iter_mut() {
-        if let Some(res) = tasks::block_on(future::poll_once(&mut **task)) {
-            commands.entity(entity).remove::<CallTask<T>>();
+        if let Some(res) = task.poll_once(commands.entity(entity)) {
             response_ready.send(RpcResultReady::new(entity, res));
         }
     }
@@ -311,7 +308,7 @@ pub fn init_session_action_send_task<T>(
         let task = IoTaskPool::get().spawn(async move { sender.send(action).await });
         commands
             .entity(event.session_entity())
-            .insert(SendActionTask(task));
+            .insert(SendActionTask::from(task));
     }
 }
 
@@ -325,10 +322,7 @@ pub fn handle_session_action_send<T>(
     T: Send + Sync + 'static,
 {
     for (task_entity, mut task) in task.iter_mut() {
-        if let Some(res) = tasks::block_on(future::poll_once(&mut task.0)).and_then(|res| {
-            commands.entity(task_entity).remove::<SendActionTask<T>>();
-            Some(res)
-        }) {
+        if let Some(res) = task.poll_once(commands.entity(task_entity)) {
             if let Err(err) = res {
                 println!("send session action task failed: {}", err);
                 action_send_failed.send(SessionActionSendFailed::new(task_entity));
@@ -356,7 +350,7 @@ pub fn init_session_update_receive_task<T>(
             let task = IoTaskPool::get().spawn(async move { receiver.recv().await });
             commands
                 .entity(session_entity)
-                .insert(ReceiveSessionUpdateTask(task));
+                .insert(ReceiveSessionUpdateTask::from(task));
         }
     }
 }
@@ -374,12 +368,7 @@ pub fn handle_session_update_receive<T>(
     T: Copy + Send + Sync + 'static,
 {
     for (session_entity, mut task) in session.iter_mut() {
-        if let Some(res) = tasks::block_on(future::poll_once(&mut task.0)).and_then(|res| {
-            commands
-                .entity(session_entity)
-                .remove::<ReceiveSessionUpdateTask<T>>();
-            Some(res)
-        }) {
+        if let Some(res) = task.poll_once(commands.entity(session_entity)) {
             match res {
                 Ok(Ok(update)) => {
                     update_received.send(SessionUpdateReceived::<T>::new(

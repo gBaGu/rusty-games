@@ -1,5 +1,6 @@
 mod app_state;
 mod commands;
+mod common;
 mod events;
 mod game;
 mod grpc;
