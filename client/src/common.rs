@@ -5,6 +5,9 @@ use bevy::ecs::system::EntityCommands;
 use bevy::tasks;
 use bevy::tasks::futures_lite::future;
 
+/// Enum that controls how to clean task components.  
+/// `RemoveComponent` means task component will be removed from its entity;  
+/// `Despawn` means the whole entity will be despawned.
 pub enum TaskCleaningStrategy {
     RemoveComponent,
     Despawn,
