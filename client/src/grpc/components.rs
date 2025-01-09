@@ -6,34 +6,86 @@ use game_server::rpc_server::rpc::RpcResult;
 use tonic::transport;
 
 use super::{GameSessionUpdate, GrpcResult, GAME_SESSION_RECONNECT_INTERVAL_SEC};
+use crate::common::{PollOnce, TaskCleaningStrategy};
 
 /// Task component for connecting to grpc server
 #[derive(Component, Deref, DerefMut)]
-pub struct ConnectClientTask(pub Task<Result<transport::Channel, transport::Error>>);
+pub struct ConnectClientTask(Task<Result<transport::Channel, transport::Error>>);
+
+impl From<Task<Result<transport::Channel, transport::Error>>> for ConnectClientTask {
+    fn from(value: Task<Result<transport::Channel, transport::Error>>) -> Self {
+        Self(value)
+    }
+}
+
+impl PollOnce for ConnectClientTask {
+    type Output = Result<transport::Channel, transport::Error>;
+}
 
 /// Component for grpc call task
 #[derive(Component, Deref, DerefMut)]
 pub struct CallTask<T>(Task<RpcResult<T>>);
 
-impl<T> CallTask<T> {
-    pub fn new(task: Task<RpcResult<T>>) -> Self {
-        Self(task)
+impl<T> From<Task<RpcResult<T>>> for CallTask<T> {
+    fn from(value: Task<RpcResult<T>>) -> Self {
+        Self(value)
     }
+}
+
+impl<T: Send + 'static> PollOnce for CallTask<T> {
+    type Output = RpcResult<T>;
+    const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
 }
 
 /// Task component for receiving grpc connection status
 #[derive(Component, Deref, DerefMut)]
-pub struct ReceiveConnectionStatusTask(pub Task<Result<bool, async_channel::RecvError>>);
+pub struct ReceiveConnectionStatusTask(Task<Result<bool, async_channel::RecvError>>);
+
+impl From<Task<Result<bool, async_channel::RecvError>>> for ReceiveConnectionStatusTask {
+    fn from(value: Task<Result<bool, async_channel::RecvError>>) -> Self {
+        Self(value)
+    }
+}
+
+impl PollOnce for ReceiveConnectionStatusTask {
+    type Output = Result<bool, async_channel::RecvError>;
+}
 
 /// Task component for sending actions of type `T` into the game session input channel.
 #[derive(Component, Deref, DerefMut)]
-pub struct SendActionTask<T>(pub Task<Result<(), async_channel::SendError<T>>>);
+pub struct SendActionTask<T>(Task<Result<(), async_channel::SendError<T>>>);
+
+impl<T> From<Task<Result<(), async_channel::SendError<T>>>> for SendActionTask<T> {
+    fn from(value: Task<Result<(), async_channel::SendError<T>>>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: Send + 'static> PollOnce for SendActionTask<T> {
+    type Output = Result<(), async_channel::SendError<T>>;
+    const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
+}
 
 /// Task component for receiving actions of type `T` from the game session output channel.
 #[derive(Component, Deref, DerefMut)]
 pub struct ReceiveSessionUpdateTask<T>(
-    pub Task<Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>>,
+    Task<Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>>,
 );
+
+impl<T> From<Task<Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>>>
+    for ReceiveSessionUpdateTask<T>
+{
+    fn from(
+        value: Task<Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>>,
+    ) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: Send + 'static> PollOnce for ReceiveSessionUpdateTask<T> {
+    type Output = Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>;
+    const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
+}
 
 /// Component that contains task with `GameSession` streaming call and
 /// channels to send/receive action data of type `T` to/from the server.
