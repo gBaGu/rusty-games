@@ -47,7 +47,7 @@ impl Plugin for GamePlugin {
         app.add_plugins(tic_tac_toe::TicTacToePlugin)
             .add_event::<GameDataReady>()
             .add_event::<GameEntityReady>()
-            .add_event::<ActionConfirmationFailed>()
+            .add_event::<ActionConfirmationFailed<core::GridIndex>>()
             .add_event::<BotReady>()
             .add_event::<StateUpdated>()
             .add_event::<TurnStart>()
@@ -73,7 +73,7 @@ impl Plugin for GamePlugin {
                     send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
                     revert_action_status::<core::GridIndex>,
                     handle_action_from_server::<core::GridIndex>,
-                    action_confirmation_failed,
+                    action_confirmation_failed::<core::GridIndex>,
                 ),
             );
     }

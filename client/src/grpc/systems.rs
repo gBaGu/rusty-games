@@ -292,22 +292,23 @@ pub fn init_session_action_send_task<T>(
     mut commands: Commands,
     session: Query<&GameSession<T, T::TurnData>>,
     mut action_ready: EventReader<SessionActionReadyToSend<T::TurnData>>,
-    mut action_send_failed: EventWriter<SessionActionSendFailed>,
+    mut action_send_failed: EventWriter<SessionActionSendFailed<T::TurnData>>,
 ) where
     T: core::Game + Send + Sync + 'static,
     T::TurnData: Copy + Send + Sync + 'static,
 {
     for event in action_ready.read() {
-        let Ok(session) = session.get(event.session_entity()) else {
+        let session_entity = event.session_entity();
+        let action = *event.action();
+        let Ok(session) = session.get(session_entity) else {
             println!("failed to send session action: session component not found");
-            action_send_failed.send(SessionActionSendFailed::new(event.session_entity()));
+            action_send_failed.send(SessionActionSendFailed::new(session_entity, action));
             continue;
         };
         let sender = session.action_sender();
-        let action = *event.action();
         let task = IoTaskPool::get().spawn(async move { sender.send(action).await });
         commands
-            .entity(event.session_entity())
+            .entity(session_entity)
             .insert(SendActionTask::from(task));
     }
 }
@@ -317,7 +318,7 @@ pub fn init_session_action_send_task<T>(
 pub fn handle_session_action_send<T>(
     mut commands: Commands,
     mut task: Query<(Entity, &mut SendActionTask<T>)>,
-    mut action_send_failed: EventWriter<SessionActionSendFailed>,
+    mut action_send_failed: EventWriter<SessionActionSendFailed<T>>,
 ) where
     T: Send + Sync + 'static,
 {
@@ -325,7 +326,8 @@ pub fn handle_session_action_send<T>(
         if let Some(res) = task.poll_once(commands.entity(task_entity)) {
             if let Err(err) = res {
                 println!("send session action task failed: {}", err);
-                action_send_failed.send(SessionActionSendFailed::new(task_entity));
+                action_send_failed
+                    .send(SessionActionSendFailed::new(task_entity, err.into_inner()));
             }
         }
     }
@@ -481,9 +483,18 @@ mod test {
             .send(OpenSession::new_delayed(session2));
         // this should insert ConnectingGameSession into both sessions and ReconnectSessionTimer into session2
         app.update();
-        assert!(app.world().entity(session1).contains::<ConnectingGameSession<DummyGame>>());
-        assert!(app.world().entity(session2).contains::<ConnectingGameSession<DummyGame>>());
-        assert!(app.world().entity(session2).contains::<ReconnectSessionTimer>());
+        assert!(app
+            .world()
+            .entity(session1)
+            .contains::<ConnectingGameSession<DummyGame>>());
+        assert!(app
+            .world()
+            .entity(session2)
+            .contains::<ConnectingGameSession<DummyGame>>());
+        assert!(app
+            .world()
+            .entity(session2)
+            .contains::<ReconnectSessionTimer>());
     }
 
     /// Spawn two session entities: one with [`ActiveGame`] component and one without;
@@ -624,7 +635,7 @@ mod test {
         IoTaskPool::get_or_init(|| TaskPool::default());
         let mut app = App::new();
         app.add_event::<SessionActionReadyToSend<()>>();
-        app.add_event::<SessionActionSendFailed>();
+        app.add_event::<SessionActionSendFailed<()>>();
         app.add_systems(
             Update,
             (
@@ -641,7 +652,9 @@ mod test {
 
         // this should trigger send error because there's no session component
         app.update();
-        let error_events = app.world().resource::<Events<SessionActionSendFailed>>();
+        let error_events = app
+            .world()
+            .resource::<Events<SessionActionSendFailed<()>>>();
         let mut error_event_reader = error_events.get_reader();
         assert_eq!(
             **error_event_reader.read(error_events).next().unwrap(),
@@ -684,7 +697,9 @@ mod test {
         // this should remove send task and trigger error event because the channel is closed
         app.update();
         assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
-        let error_events = app.world().resource::<Events<SessionActionSendFailed>>();
+        let error_events = app
+            .world()
+            .resource::<Events<SessionActionSendFailed<()>>>();
         let mut error_event_reader = error_events.get_reader();
         assert_eq!(
             **error_event_reader.read(error_events).next().unwrap(),

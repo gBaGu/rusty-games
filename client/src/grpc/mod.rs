@@ -78,7 +78,7 @@ impl Plugin for GrpcPlugin {
             .add_event::<CloseSession>()
             .add_event::<SessionOpened>()
             .add_event::<SessionClosed>()
-            .add_event::<SessionActionSendFailed>()
+            .add_event::<SessionActionSendFailed<core::GridIndex>>()
             .add_event::<SessionActionReadyToSend<core::GridIndex>>()
             .add_event::<SessionUpdateReceived<core::GridIndex>>()
             .add_event::<SessionErrorReceived>()

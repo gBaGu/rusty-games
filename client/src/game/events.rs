@@ -52,7 +52,7 @@ impl GameEntityReady {
 }
 
 /// Event that signals that particular bot is ready to make some action in a game.
-#[derive(Clone, Copy, Debug, Event)]
+#[derive(Debug, Event)]
 pub struct BotReady {
     bot: Entity,
     game: Entity,
@@ -82,7 +82,7 @@ impl BotReady {
 }
 
 /// Event that signals that `player` wants to make game action.
-#[derive(Clone, Copy, Debug, Event)]
+#[derive(Debug, Event)]
 pub struct PlayerActionInitialized<T> {
     game: Entity,
     player: core::PlayerPosition,
@@ -111,26 +111,55 @@ impl<T: Copy> PlayerActionInitialized<T> {
     }
 }
 
-/// Event that indicates that an action cannot be confirmed by a server.
-/// Contains game [`Entity`].
-#[derive(Clone, Copy, Debug, Deref, Event)]
-pub struct ActionConfirmationFailed(Entity);
+/// Defines what actions should have their status reverted.
+#[derive(Debug)]
+pub enum ActionStatusRevertPolicy<T> {
+    All,
+    Single(T),
+}
 
-impl ActionConfirmationFailed {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
+/// Event that indicates that an action(s) cannot be confirmed by a server.
+/// Contains game [`Entity`] and [`ActionStatusRevertPolicy`].
+#[derive(Debug, Event)]
+pub struct ActionConfirmationFailed<T> {
+    game: Entity,
+    revert_policy: ActionStatusRevertPolicy<T>
+}
+
+impl<T> ActionConfirmationFailed<T> {
+    fn new(game: Entity, revert_policy: ActionStatusRevertPolicy<T>) -> Self {
+        Self {
+            game,
+            revert_policy,
+        }
+    }
+
+    pub fn revert_all(game: Entity) -> Self {
+        Self::new(game, ActionStatusRevertPolicy::All)
+    }
+
+    pub fn revert_single(game: Entity, action: T) -> Self {
+        Self::new(game, ActionStatusRevertPolicy::Single(action))
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn revert_policy(&self) -> &ActionStatusRevertPolicy<T> {
+        &self.revert_policy
     }
 }
 
 /// Event that signals that `action` created by `player` is applied.
-#[derive(Clone, Copy, Debug, Event)]
+#[derive(Debug, Event)]
 pub struct PlayerActionApplied<T> {
     game: Entity,
     player: core::PlayerPosition,
     action: T,
 }
 
-impl<T: Clone + Copy> PlayerActionApplied<T> {
+impl<T: Copy> PlayerActionApplied<T> {
     pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,

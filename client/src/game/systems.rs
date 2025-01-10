@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use bevy::prelude::*;
 use game_server::{core, proto};
 
@@ -8,6 +10,7 @@ use super::{
     NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, StateUpdated,
     TurnStart, UserAuthority, Winner,
 };
+use crate::game::events::ActionStatusRevertPolicy;
 use crate::UserIdChanged;
 use crate::{grpc, interface};
 
@@ -90,37 +93,59 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
     }
 }
 
-/// For all actions that are waiting for confirmation at the beginning of the [`PendingActionQueue`]
-/// set the status to `ConfirmationStatus::NotConfirmed`.
-pub fn revert_action_status<T: Send + Sync + 'static>(
+/// For every [`ActionConfirmationFailed`] event
+/// set the status to `ConfirmationStatus::NotConfirmed` for action or actions
+/// depending on the [`ActionStatusRevertPolicy`] value in the event.
+pub fn revert_action_status<T: PartialEq + Send + Sync + 'static>(
     mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
-    mut confirmation_failed: EventReader<ActionConfirmationFailed>,
+    mut confirmation_failed: EventReader<ActionConfirmationFailed<T>>,
 ) {
     for event in confirmation_failed.read() {
-        let Ok(mut queue) = action_queue.get_mut(**event) else {
+        let Ok(mut queue) = action_queue.get_mut(event.game()) else {
             continue;
         };
-        println!("unable to confirm actions, set status to 'not confirmed'");
-        // revert status for all actions for now
-        for action in queue.iter_mut().take_while(|a| a.is_waiting_confirmation()) {
-            action.set_status(ConfirmationStatus::NotConfirmed);
+        println!("unable to confirm actions for game {}", event.game());
+        match event.revert_policy() {
+            ActionStatusRevertPolicy::All => {
+                for action in queue.iter_mut().take_while(|a| a.is_waiting_confirmation()) {
+                    action.set_status(ConfirmationStatus::NotConfirmed);
+                }
+            }
+            ActionStatusRevertPolicy::Single(action) => {
+                if let Some(action) = queue
+                    .iter_mut()
+                    .find(|a| a.is_waiting_confirmation() && a.action() == action)
+                {
+                    action.set_status(ConfirmationStatus::NotConfirmed);
+                }
+            }
         }
     }
 }
 
-/// For every [`grpc::SessionClosed`] or [`grpc::SessionActionSendFailed`] event
-/// send the [`ActionConfirmationFailed`].
-pub fn action_confirmation_failed(
+/// For every [`grpc::SessionClosed`] event trigger status revert for all actions that
+/// are waiting for confirmation.
+/// For every [`grpc::SessionActionSendFailed`] event trigger status revert for
+/// the action contained in the event.
+/// In case when one entity will have both events [`grpc::SessionActionSendFailed`] will be ignored.
+pub fn action_confirmation_failed<T: Copy + Send + Sync + 'static>(
     mut session_closed: EventReader<grpc::SessionClosed>,
-    mut action_send_failed: EventReader<grpc::SessionActionSendFailed>,
-    mut confirmation_failed: EventWriter<ActionConfirmationFailed>,
+    mut action_send_failed: EventReader<grpc::SessionActionSendFailed<T>>,
+    mut confirmation_failed: EventWriter<ActionConfirmationFailed<T>>,
 ) {
-    for game_entity in session_closed
-        .read()
-        .map(|e| **e)
-        .chain(action_send_failed.read().map(|e| **e))
-    {
-        confirmation_failed.send(ActionConfirmationFailed::new(game_entity));
+    let mut closed_sessions = HashSet::new();
+    for event in session_closed.read() {
+        closed_sessions.insert(**event);
+        confirmation_failed.send(ActionConfirmationFailed::revert_all(**event));
+    }
+    for event in action_send_failed.read() {
+        if closed_sessions.contains(&event.session_entity()) {
+            continue;
+        }
+        confirmation_failed.send(ActionConfirmationFailed::revert_single(
+            event.session_entity(),
+            *event.action(),
+        ));
     }
 }
 
