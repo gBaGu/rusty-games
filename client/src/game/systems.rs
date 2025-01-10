@@ -70,13 +70,11 @@ pub fn network_game_initialization_finished(
     }
 }
 
-/// If the game has [`PendingAction`] and it is not confirmed, send [`grpc::SendActionTask`] event
+/// If the game has [`PendingAction`] and it is not confirmed,
+/// send [`grpc::SessionActionReadyToSend`] event
 /// and change action status to `ConfirmationStatus::WaitingConfirmation`.
 pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
-    mut game: Query<
-        (Entity, &mut PendingActionQueue<T>),
-        (With<ActiveGame>, Without<grpc::SendActionTask<T>>),
-    >,
+    mut game: Query<(Entity, &mut PendingActionQueue<T>), With<ActiveGame>>,
     mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
 ) {
     for (game_entity, mut queue) in game.iter_mut() {

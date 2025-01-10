@@ -14,7 +14,6 @@ use components::{CallTask, ConnectClientTask, GameSession, ReceiveConnectionStat
 use resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use systems::*;
 
-pub use components::SendActionTask; // TODO: hide this from outside logic
 pub use events::{
     CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
     SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,

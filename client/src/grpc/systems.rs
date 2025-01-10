@@ -8,14 +8,14 @@ use tonic::transport;
 
 use super::components::{
     CallTask, ConnectClientTask, ConnectingGameSession, ReceiveConnectionStatusTask,
-    ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer,
+    ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer, SendActionTask,
 };
 use super::events::{RpcResultReady, SessionErrorReceived, SessionUpdateReceived};
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use super::{
     CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
-    OpenSession, SendActionTask, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
-    SessionOpened, DEFAULT_GRPC_SERVER_ADDRESS,
+    OpenSession, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed, SessionOpened,
+    DEFAULT_GRPC_SERVER_ADDRESS,
 };
 use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
@@ -290,7 +290,10 @@ pub fn connect_session<T>(
 /// Send the [`SessionActionSendFailed`] event if there is no [`GameSession`] entity.
 pub fn init_session_action_send_task<T>(
     mut commands: Commands,
-    session: Query<&GameSession<T, T::TurnData>>,
+    session: Query<(
+        &GameSession<T, T::TurnData>,
+        Option<&SendActionTask<T::TurnData>>,
+    )>,
     mut action_ready: EventReader<SessionActionReadyToSend<T::TurnData>>,
     mut action_send_failed: EventWriter<SessionActionSendFailed<T::TurnData>>,
 ) where
@@ -300,11 +303,15 @@ pub fn init_session_action_send_task<T>(
     for event in action_ready.read() {
         let session_entity = event.session_entity();
         let action = *event.action();
-        let Ok(session) = session.get(session_entity) else {
+        let Ok((session, send_action_task)) = session.get(session_entity) else {
             println!("failed to send session action: session component not found");
             action_send_failed.send(SessionActionSendFailed::new(session_entity, action));
             continue;
         };
+        if send_action_task.is_some() {
+            action_send_failed.send(SessionActionSendFailed::new(session_entity, action));
+            continue;
+        }
         let sender = session.action_sender();
         let task = IoTaskPool::get().spawn(async move { sender.send(action).await });
         commands
@@ -463,6 +470,15 @@ mod test {
         }
 
         fn set_state(&mut self, _state: core::GameState) {}
+    }
+
+    fn send_action_ready_to_send<T>(world: &mut World, session: Entity, action: T)
+    where
+        T: Send + Sync + 'static,
+    {
+        world
+            .resource_mut::<Events<SessionActionReadyToSend<T>>>()
+            .send(SessionActionReadyToSend::new(session, action));
     }
 
     /// Send [`OpenSession`] event and check that all required components were inserted.
@@ -629,9 +645,14 @@ mod test {
 
     /// Initialize action send by SessionActionReadyToSend event.
     /// Check that send task is deleted after [`handle_session_action_send`].
-    /// Check that [`SessionActionSendFailed`] event is triggered correctly.
+    /// Check that [`SessionActionSendFailed`] event is triggered when:  
+    ///  - [`GameSession`] component is missing;  
+    ///  - [`SendActionTask`] component is present;  
+    ///  - the actions channel is closed.
     #[test]
     fn session_send_action() {
+        type SendFailedEvents = Events<SessionActionSendFailed<()>>;
+
         IoTaskPool::get_or_init(|| TaskPool::default());
         let mut app = App::new();
         app.add_event::<SessionActionReadyToSend<()>>();
@@ -646,23 +667,26 @@ mod test {
         );
 
         let session = app.world_mut().spawn_empty().id();
-        app.world_mut()
-            .resource_mut::<Events<SessionActionReadyToSend<()>>>()
-            .send(SessionActionReadyToSend::<()>::new(session, ()));
+        send_action_ready_to_send(app.world_mut(), session, ());
 
         // this should trigger send error because there's no session component
         app.update();
-        let error_events = app
-            .world()
-            .resource::<Events<SessionActionSendFailed<()>>>();
+        let error_events = app.world().resource::<SendFailedEvents>();
         let mut error_event_reader = error_events.get_reader();
         assert_eq!(
-            **error_event_reader.read(error_events).next().unwrap(),
+            error_event_reader
+                .read(error_events)
+                .next()
+                .unwrap()
+                .session_entity(),
             session
         ); // got error event
         assert!(error_event_reader.read(error_events).next().is_none());
+        // ensure old events are dropped
+        app.world_mut().resource_mut::<SendFailedEvents>().clear();
 
         let (s, r) = async_channel::unbounded();
+        let (notify_sender, notify_receiver) = async_channel::unbounded();
         let r_cloned = r.clone();
         app.world_mut()
             .entity_mut(session)
@@ -670,26 +694,50 @@ mod test {
                 IoTaskPool::get().spawn(async move {
                     while let Ok(_) = r_cloned.recv().await {
                         println!("action is sent!");
+                        notify_sender.send(()).await.expect("notification failed");
                     }
                 }),
                 s,
                 async_channel::unbounded().1,
             ));
+
+        // insert send action task and check that another one cannot be created
+        let pending_task: SendActionTask<()> = IoTaskPool::get().spawn(future::pending()).into();
+        app.world_mut().entity_mut(session).insert(pending_task);
+        send_action_ready_to_send(app.world_mut(), session, ());
+        // this should trigger send error because previous SendActionTask isn't completed
+        app.update();
+        let error_events = app.world().resource::<SendFailedEvents>();
+        let mut error_event_reader = error_events.get_reader();
+        assert_eq!(
+            error_event_reader
+                .read(error_events)
+                .next()
+                .unwrap()
+                .session_entity(),
+            session
+        ); // got error event
+        assert!(error_event_reader.read(error_events).next().is_none());
+        // remove infinite task
         app.world_mut()
-            .resource_mut::<Events<SessionActionReadyToSend<()>>>()
-            .send(SessionActionReadyToSend::<()>::new(session, ()));
+            .entity_mut(session)
+            .remove::<SendActionTask<()>>();
+
+        send_action_ready_to_send(app.world_mut(), session, ());
         // this should create send task
         app.update();
         assert!(app.world().entity(session).contains::<SendActionTask<()>>());
 
+        // this is needed in order to ensure that the send task has completed
+        tasks::block_on(IoTaskPool::get().spawn(async move {
+            notify_receiver.recv().await.unwrap();
+        }));
         // this should remove send task
         app.update();
         assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
 
         r.close();
-        app.world_mut()
-            .resource_mut::<Events<SessionActionReadyToSend<()>>>()
-            .send(SessionActionReadyToSend::<()>::new(session, ()));
+        send_action_ready_to_send(app.world_mut(), session, ());
         // this should create send task
         app.update();
         assert!(app.world().entity(session).contains::<SendActionTask<()>>());
@@ -697,12 +745,14 @@ mod test {
         // this should remove send task and trigger error event because the channel is closed
         app.update();
         assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
-        let error_events = app
-            .world()
-            .resource::<Events<SessionActionSendFailed<()>>>();
+        let error_events = app.world().resource::<SendFailedEvents>();
         let mut error_event_reader = error_events.get_reader();
         assert_eq!(
-            **error_event_reader.read(error_events).next().unwrap(),
+            error_event_reader
+                .read(error_events)
+                .next()
+                .unwrap()
+                .session_entity(),
             session
         ); // got error event
         assert!(error_event_reader.read(error_events).next().is_none());
