@@ -112,7 +112,7 @@ impl<T: Copy> PlayerActionInitialized<T> {
 }
 
 /// Defines what actions should have their status reverted.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ActionStatusRevertPolicy<T> {
     All,
     Single(T),

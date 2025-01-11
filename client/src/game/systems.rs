@@ -105,7 +105,7 @@ pub fn revert_action_status<T: PartialEq + Send + Sync + 'static>(
         println!("unable to confirm actions for game {}", event.game());
         match event.revert_policy() {
             ActionStatusRevertPolicy::All => {
-                for action in queue.iter_mut().take_while(|a| a.is_waiting_confirmation()) {
+                for action in queue.iter_mut().filter(|a| a.is_waiting_confirmation()) {
                     action.set_status(ConfirmationStatus::NotConfirmed);
                 }
             }
@@ -373,6 +373,14 @@ mod test {
     type TTTLocalGameBundle = LocalGameBundle<TicTacToe, <TicTacToe as core::Game>::TurnData>;
     type TTTNetworkGameBundle = NetworkGameBundle<TicTacToe, <TicTacToe as core::Game>::TurnData>;
 
+    fn clear_events<E: Event>(w: &mut World) {
+        w.resource_mut::<Events<E>>().clear();
+    }
+
+    fn get_component<T: Component>(w: &World, e: Entity) -> &T {
+        w.entity(e).get::<T>().unwrap()
+    }
+
     #[test]
     fn game_entity_updated_on_finish() {
         let mut app = App::new();
@@ -498,5 +506,170 @@ mod test {
         assert!(app.world().get::<Game>(game2).is_some());
         assert!(app.world().get::<Game>(game3).is_none());
         assert!(app.world().get::<Game>(game4).is_some());
+    }
+
+    /// Check that revert single action finds the action and sets the status to `NotConfirmed`;
+    /// Check that status cannot be reverted for `Confirmed` actions;
+    /// Check that revert all reverts all actions with status `WaitingConfirmation`.
+    #[test]
+    fn revert_pending_action_status() {
+        let mut app = App::new();
+        app.add_event::<ActionConfirmationFailed<u64>>();
+        app.add_systems(Update, revert_action_status::<u64>);
+
+        let initial_pending_actions = smallvec::smallvec![
+            PendingAction::new(0, 0u64, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 1u64, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 2u64, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 3u64, ConfirmationStatus::Confirmed),
+            PendingAction::new(0, 4u64, ConfirmationStatus::Confirmed),
+        ];
+
+        let action_queue = app
+            .world_mut()
+            .spawn((
+                PendingActionQueue::from(initial_pending_actions.clone()),
+                ActiveGame,
+            ))
+            .id();
+
+        // revert second action
+        app.world_mut()
+            .resource_mut::<Events<ActionConfirmationFailed<u64>>>()
+            .send(ActionConfirmationFailed::revert_single(action_queue, 1u64));
+        app.update();
+
+        let initial_statuses_with_second_reverted = [
+            ConfirmationStatus::WaitingConfirmation,
+            ConfirmationStatus::NotConfirmed,
+            ConfirmationStatus::WaitingConfirmation,
+            ConfirmationStatus::Confirmed,
+            ConfirmationStatus::Confirmed,
+        ];
+        // status changed to NotConfirmed
+        itertools::assert_equal(
+            get_component::<PendingActionQueue<u64>>(app.world(), action_queue)
+                .iter()
+                .map(|v| v.status()),
+            initial_statuses_with_second_reverted,
+        );
+
+        // try to revert the last action
+        app.world_mut()
+            .resource_mut::<Events<ActionConfirmationFailed<u64>>>()
+            .send(ActionConfirmationFailed::revert_single(action_queue, 4u64));
+        app.update();
+
+        // statuses hasn't been changed
+        itertools::assert_equal(
+            get_component::<PendingActionQueue<u64>>(app.world(), action_queue)
+                .iter()
+                .map(|v| v.status()),
+            initial_statuses_with_second_reverted,
+        );
+
+        // revert all
+        app.world_mut()
+            .resource_mut::<Events<ActionConfirmationFailed<u64>>>()
+            .send(ActionConfirmationFailed::revert_all(action_queue));
+        app.update();
+        itertools::assert_equal(
+            get_component::<PendingActionQueue<u64>>(app.world(), action_queue)
+                .iter()
+                .map(|v| v.status()),
+            [
+                ConfirmationStatus::NotConfirmed,
+                ConfirmationStatus::NotConfirmed,
+                ConfirmationStatus::NotConfirmed,
+                ConfirmationStatus::Confirmed,
+                ConfirmationStatus::Confirmed,
+            ],
+        );
+    }
+
+    /// Check that SessionClosed creates ActionConfirmationFailed (all);
+    /// Check that SessionActionSendFailed creates ActionConfirmationFailed (single);
+    /// Check that SessionClosed for one entity and SessionActionSendFailed for another
+    /// create ActionConfirmationFailed (all) and ActionConfirmationFailed (single) respectively;  
+    /// Check that SessionClosed and SessionActionSendFailed for the same entity
+    /// only create ActionConfirmationFailed (all).
+    #[test]
+    fn action_confirmation_failed_event() {
+        let mut app = App::new();
+        app.add_event::<grpc::SessionClosed>();
+        app.add_event::<grpc::SessionActionSendFailed<u64>>();
+        app.add_event::<ActionConfirmationFailed<u64>>();
+        app.add_systems(Update, action_confirmation_failed::<u64>);
+
+        let entity1 = app.world_mut().spawn_empty().id();
+        let entity2 = app.world_mut().spawn_empty().id();
+
+        app.world_mut()
+            .resource_mut::<Events<grpc::SessionClosed>>()
+            .send(grpc::SessionClosed::new(entity1));
+        app.update();
+
+        let confirmation_failed_events = app
+            .world()
+            .resource::<Events<ActionConfirmationFailed<u64>>>();
+        let mut reader = confirmation_failed_events.get_reader();
+        let event = reader.read(confirmation_failed_events).next().unwrap();
+        assert_eq!(event.game(), entity1);
+        assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
+        assert!(reader.read(confirmation_failed_events).next().is_none());
+
+        clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
+        app.world_mut()
+            .resource_mut::<Events<grpc::SessionActionSendFailed<u64>>>()
+            .send(grpc::SessionActionSendFailed::new(entity1, 0));
+        app.update();
+
+        let confirmation_failed_events = app
+            .world()
+            .resource::<Events<ActionConfirmationFailed<u64>>>();
+        let mut reader = confirmation_failed_events.get_reader();
+        let event = reader.read(confirmation_failed_events).next().unwrap();
+        assert_eq!(event.game(), entity1);
+        assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::Single(0));
+        assert!(reader.read(confirmation_failed_events).next().is_none());
+
+        clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
+        app.world_mut()
+            .resource_mut::<Events<grpc::SessionActionSendFailed<u64>>>()
+            .send(grpc::SessionActionSendFailed::new(entity1, 1));
+        app.world_mut()
+            .resource_mut::<Events<grpc::SessionClosed>>()
+            .send(grpc::SessionClosed::new(entity2));
+        app.update();
+
+        let confirmation_failed_events = app
+            .world()
+            .resource::<Events<ActionConfirmationFailed<u64>>>();
+        let mut reader = confirmation_failed_events.get_reader();
+        let event = reader.read(confirmation_failed_events).next().unwrap();
+        assert_eq!(event.game(), entity2);
+        assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
+        let event = reader.read(confirmation_failed_events).next().unwrap();
+        assert_eq!(event.game(), entity1);
+        assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::Single(1));
+        assert!(reader.read(confirmation_failed_events).next().is_none());
+
+        clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
+        app.world_mut()
+            .resource_mut::<Events<grpc::SessionActionSendFailed<u64>>>()
+            .send(grpc::SessionActionSendFailed::new(entity2, 1));
+        app.world_mut()
+            .resource_mut::<Events<grpc::SessionClosed>>()
+            .send(grpc::SessionClosed::new(entity2));
+        app.update();
+
+        let confirmation_failed_events = app
+            .world()
+            .resource::<Events<ActionConfirmationFailed<u64>>>();
+        let mut reader = confirmation_failed_events.get_reader();
+        let event = reader.read(confirmation_failed_events).next().unwrap();
+        assert_eq!(event.game(), entity2);
+        assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
+        assert!(reader.read(confirmation_failed_events).next().is_none());
     }
 }
