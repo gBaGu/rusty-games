@@ -287,7 +287,8 @@ pub fn connect_session<T>(
 
 /// Receive the [`SessionActionReadyToSend`] event, find [`GameSession`] entity and
 /// create a task that will send the action from event into session sender.
-/// Send the [`SessionActionSendFailed`] event if there is no [`GameSession`] entity.
+/// Send the [`SessionActionSendFailed`] event if there is no [`GameSession`] entity or
+/// another [`SendActionTask`] is present.
 pub fn init_session_action_send_task<T>(
     mut commands: Commands,
     session: Query<(
