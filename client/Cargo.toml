@@ -24,4 +24,5 @@ tonic-health = "0.12"
 tonic-build = "0.12"
 
 [dev-dependencies]
+itertools = "0.14.0"
 typenum = "1.17.0"

@@ -99,13 +99,27 @@ impl SessionClosed {
 }
 
 /// Event that indicates that an error occurred during action send attempt.  
-/// Contains an [`Entity`] of a game session.
-#[derive(Copy, Clone, Debug, Deref, Event)]
-pub struct SessionActionSendFailed(Entity);
+/// Contains an [`Entity`] of a game session and an action of type `T` that is failed to send.
+#[derive(Debug, Event)]
+pub struct SessionActionSendFailed<T> {
+    session_entity: Entity,
+    action: T,
+}
 
-impl SessionActionSendFailed {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
+impl<T> SessionActionSendFailed<T> {
+    pub fn new(entity: Entity, action: T) -> Self {
+        Self {
+            session_entity: entity,
+            action,
+        }
+    }
+
+    pub fn session_entity(&self) -> Entity {
+        self.session_entity
+    }
+
+    pub fn action(&self) -> &T {
+        &self.action
     }
 }
 

@@ -14,7 +14,6 @@ use components::{CallTask, ConnectClientTask, GameSession, ReceiveConnectionStat
 use resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
 use systems::*;
 
-pub use components::SendActionTask; // TODO: hide this from outside logic
 pub use events::{
     CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
     SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,
@@ -78,7 +77,7 @@ impl Plugin for GrpcPlugin {
             .add_event::<CloseSession>()
             .add_event::<SessionOpened>()
             .add_event::<SessionClosed>()
-            .add_event::<SessionActionSendFailed>()
+            .add_event::<SessionActionSendFailed<core::GridIndex>>()
             .add_event::<SessionActionReadyToSend<core::GridIndex>>()
             .add_event::<SessionUpdateReceived<core::GridIndex>>()
             .add_event::<SessionErrorReceived>()
