@@ -5,15 +5,14 @@ use super::{
     GameStateBox, GameStateInfoBundle, NextPlayer, NextPlayerImageBundle, PlayerActionApplied,
     PlayerImageBundle, PlayerInfoBundle, ENEMY_COLOR, FONT_SIZE, FRIENDLY_COLOR,
 };
-use crate::commands::{CommandsExt, EntityCommandsExt};
+use crate::commands::CommandsExt;
 use crate::game::components::Winner;
 use crate::game::tic_tac_toe::Images;
 use crate::game::{
     BotAuthority, CurrentPlayer, CurrentUser, Draw, GameLink, PlayerPosition, PlayerWon, TurnStart,
     UserAuthority,
 };
-use crate::interface::common::{FONT_PATH, SECONDARY_COLOR, TURN_SOUND_PATH};
-use crate::interface::{PlayerColor, Playground};
+use crate::interface;
 
 fn create_player_info_bundle(
     game: Entity,
@@ -31,7 +30,7 @@ fn create_player_info_bundle(
 /// Create in-game ui after [`Playground`] component had been added to a game entity.
 pub fn create(
     mut commands: Commands,
-    playground: Query<(Entity, &GameLink), Added<Playground>>,
+    playground: Query<(Entity, &GameLink), Added<interface::Playground>>,
     player: Query<(
         &Parent,
         &PlayerPosition,
@@ -47,10 +46,10 @@ pub fn create(
     if playground.is_empty() {
         return;
     }
-    let text_style = TextStyle {
-        font: asset_server.load(FONT_PATH),
+    let text_font = TextFont {
+        font: asset_server.load(interface::common::FONT_PATH),
         font_size: FONT_SIZE,
-        color: SECONDARY_COLOR,
+        ..default()
     };
     for (playground_entity, game_link) in playground.iter() {
         let mut player_iter = player
@@ -82,15 +81,12 @@ pub fn create(
             create_player_info_bundle(game_link.get(), **enemy.1, enemy_color, enemy.5.is_some());
         commands.entity(playground_entity).with_children(|builder| {
             builder
-                .spawn(NodeBundle {
-                    style: Style {
-                        display: Display::Flex,
-                        width: Val::Percent(100.0),
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        margin: UiRect::bottom(Val::Auto),
-                        ..default()
-                    },
+                .spawn(Node {
+                    display: Display::Flex,
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    margin: UiRect::bottom(Val::Auto),
                     ..default()
                 })
                 .with_children(|builder| {
@@ -101,35 +97,33 @@ pub fn create(
                             _ => "-".into(),
                         };
                         builder.spawn(PlayerImageBundle::new(player1_image.clone()));
-                        builder.spawn(TextBundle::from_section(text, text_style.clone()));
+                        builder.spawn(interface::TextBundle::new(text, text_font.clone()));
                     });
                     builder
                         .spawn(GameStateInfoBundle::new(game_link.get()))
                         .with_children(|builder| {
+                            let text = if user.5.is_some() || enemy.5.is_some() {
+                                "Next:"
+                            } else if user.6.is_some() || enemy.6.is_some() {
+                                "Winner:"
+                            } else {
+                                "Draw"
+                            };
+                            builder.spawn(interface::TextBundle::new(text, text_font.clone()));
                             if user.5.is_some() {
-                                builder
-                                    .spawn(TextBundle::from_section("Next:", text_style.clone()));
                                 builder.spawn(NextPlayerImageBundle::new(
                                     game_link.get(),
                                     player1_image,
                                 ));
                             } else if enemy.5.is_some() {
-                                builder
-                                    .spawn(TextBundle::from_section("Next:", text_style.clone()));
                                 builder.spawn(NextPlayerImageBundle::new(
                                     game_link.get(),
                                     player2_image.clone(),
                                 ));
                             } else if user.6.is_some() {
-                                builder
-                                    .spawn(TextBundle::from_section("Winner:", text_style.clone()));
                                 builder.spawn(PlayerImageBundle::new(player1_image));
                             } else if enemy.6.is_some() {
-                                builder
-                                    .spawn(TextBundle::from_section("Winner:", text_style.clone()));
                                 builder.spawn(PlayerImageBundle::new(player2_image.clone()));
-                            } else {
-                                builder.spawn(TextBundle::from_section("Draw", text_style.clone()));
                             }
                         });
                     builder.spawn(player2_info).with_children(|builder| {
@@ -138,7 +132,7 @@ pub fn create(
                             (None, Some(v)) => format!("{:?}", v),
                             _ => "-".into(),
                         };
-                        builder.spawn(TextBundle::from_section(text, text_style.clone()));
+                        builder.spawn(interface::TextBundle::new(text, text_font.clone()));
                         builder.spawn(PlayerImageBundle::new(player2_image));
                     });
                 });
@@ -149,7 +143,12 @@ pub fn create(
 /// Receive [`TurnStart`] event and set current player info border color to [`PlayerColor`],
 /// reset border color for others.
 pub fn update_player_info_border(
-    mut player_info: Query<(&mut BorderColor, &PlayerPosition, &PlayerColor, &GameLink)>,
+    mut player_info: Query<(
+        &mut BorderColor,
+        &PlayerPosition,
+        &interface::PlayerColor,
+        &GameLink,
+    )>,
     mut turn_start: EventReader<TurnStart>,
 ) {
     for event in turn_start.read() {
@@ -168,7 +167,7 @@ pub fn update_player_info_border(
 
 /// Receive [`TurnStart`] event and update next player image to an image (X/O) of a current player.
 pub fn update_next_player(
-    mut next_player: Query<(&mut UiImage, &GameLink), With<NextPlayer>>,
+    mut next_player: Query<(&mut ImageNode, &GameLink), With<NextPlayer>>,
     mut turn_start: EventReader<TurnStart>,
     images: Res<Images>,
 ) {
@@ -180,7 +179,7 @@ pub fn update_next_player(
             *next_player_image = images
                 .get(event.player())
                 .cloned()
-                .map(UiImage::new)
+                .map(ImageNode::new)
                 .unwrap_or_default();
         }
     }
@@ -201,16 +200,17 @@ pub fn set_winner(
         else {
             continue;
         };
-        let text_style = TextStyle {
-            font: asset_server.load(FONT_PATH),
+
+        let text_font = TextFont {
+            font: asset_server.load(interface::common::FONT_PATH),
             font_size: FONT_SIZE,
-            color: SECONDARY_COLOR,
+            ..default()
         };
         commands
             .entity(game_state_entity)
             .despawn_descendants()
             .with_children(|builder| {
-                builder.spawn(TextBundle::from_section("Winner:", text_style.clone()));
+                builder.spawn(interface::TextBundle::new("Winner:", text_font));
                 let player_image = images
                     .get(event.player())
                     .cloned()
@@ -235,15 +235,16 @@ pub fn set_draw(
         else {
             continue;
         };
-        let text_style = TextStyle {
-            font: asset_server.load(FONT_PATH),
+
+        let text_font = TextFont {
+            font: asset_server.load(interface::common::FONT_PATH),
             font_size: FONT_SIZE,
-            color: SECONDARY_COLOR,
+            ..default()
         };
         commands
             .entity(game_state_entity)
             .despawn_descendants()
-            .with_child(TextBundle::from_section("Draw", text_style.clone()));
+            .with_child(interface::TextBundle::new("Draw", text_font));
     }
 }
 
@@ -254,6 +255,6 @@ pub fn action_sound(
     asset_server: Res<AssetServer>,
 ) {
     for _ in action_applied.read() {
-        commands.play_sound(&asset_server, TURN_SOUND_PATH);
+        commands.play_sound(&asset_server, interface::common::TURN_SOUND_PATH);
     }
 }

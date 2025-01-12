@@ -2,34 +2,27 @@ use bevy::prelude::*;
 use game_server::core;
 
 use super::{GameList, HORIZONTAL_MARGIN};
-use crate::commands::EntityCommandsExt;
 use crate::grpc::{Connected, Disconnected};
-use crate::interface::common;
-use crate::interface::components::JoinGameButtonBundle;
+use crate::interface;
 
 pub fn update(
     game_list: Query<(Entity, &GameList), Changed<GameList>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
-    let style = common::menu_item_style();
-    let text_style = common::menu_text_style(&asset_server);
+    let text_font = interface::common::load_text_font(&asset_server);
     for (entity, list) in game_list.iter() {
         match list {
             GameList::Message(msg) => {
                 commands
                     .entity(entity)
                     .despawn_descendants()
-                    .with_child(TextBundle::from_section(msg, text_style.clone()));
+                    .with_child(interface::TextBundle::new(msg, text_font.clone()));
             }
             GameList::Games(games) if games.is_empty() => {
-                commands
-                    .entity(entity)
-                    .despawn_descendants()
-                    .with_child(TextBundle::from_section(
-                        "No games available",
-                        text_style.clone(),
-                    ));
+                commands.entity(entity).despawn_descendants().with_child(
+                    interface::TextBundle::new("No games available", text_font.clone()),
+                );
             }
             GameList::Games(games) => {
                 commands
@@ -57,26 +50,29 @@ pub fn update(
                                 }
                             };
                             builder
-                                .spawn(common::row_node_bundle())
+                                .spawn(interface::common::row_node())
                                 .with_children(|builder| {
+                                    let mut item_node_with_margin =
+                                        interface::common::menu_item_node();
+                                    item_node_with_margin.margin.left = Val::Px(HORIZONTAL_MARGIN);
+                                    item_node_with_margin.margin.right = Val::Px(HORIZONTAL_MARGIN);
                                     for s in [
                                         &format!("ID: {}", game.id),
                                         &state_text,
                                         &format!("Players: {:?}", game.players),
                                     ] {
-                                        let mut text =
-                                            TextBundle::from_section(s, text_style.clone());
-                                        text.style.margin.left = Val::Px(HORIZONTAL_MARGIN);
-                                        text.style.margin.right = Val::Px(HORIZONTAL_MARGIN);
-                                        builder.spawn(text);
+                                        builder.spawn(
+                                            interface::TextBundle::new(s, text_font.clone())
+                                                .with_node(item_node_with_margin.clone()),
+                                        );
                                     }
-                                    let mut join =
-                                        JoinGameButtonBundle::new(style.clone(), game.clone());
-                                    join.button.style.margin.left = Val::Px(HORIZONTAL_MARGIN);
-                                    join.button.style.margin.right = Val::Px(HORIZONTAL_MARGIN);
-                                    builder.spawn(join).with_child(TextBundle::from_section(
+                                    let join = interface::JoinGameButtonBundle::new(
+                                        item_node_with_margin,
+                                        game.clone(),
+                                    );
+                                    builder.spawn(join).with_child(interface::TextBundle::new(
                                         "Join",
-                                        text_style.clone(),
+                                        text_font.clone(),
                                     ));
                                 });
                         }

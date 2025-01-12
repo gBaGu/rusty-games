@@ -13,7 +13,6 @@ use super::{
     BORDER_WIDTH, WIN_ANIMATION_PATH, WIN_ANIMATION_SPRITE_COUNT, WIN_ANIMATION_SPRITE_SIZE,
     WIN_ANIMATION_TRANSITION_INTERVAL,
 };
-use crate::commands::EntityCommandsExt;
 use crate::game::components::{Board, BoardBundle};
 use crate::game::tic_tac_toe::resources::Images;
 use crate::game::tic_tac_toe::PlayerActionInitialized;
@@ -39,7 +38,7 @@ fn calculate_tile_size(board_size: Vec2) -> Vec2 {
 pub fn create(
     mut commands: Commands,
     window: Query<&Window, With<PrimaryWindow>>,
-    playground: Query<(&GameLink, &Node, &GlobalTransform), Added<Playground>>,
+    playground: Query<(&GameLink, &ComputedNode, &GlobalTransform), Added<Playground>>,
     game: Query<&LocalGame>,
     images: Res<Images>,
 ) {
@@ -146,7 +145,7 @@ pub fn handle_mouse_input(
         if event.state.is_pressed() {
             let cursor_position = window.cursor_position();
             if let Some(world_position) = cursor_position
-                .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+                .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor).ok())
                 .map(|ray| ray.origin.truncate())
             {
                 let tile = tiles.iter().find(|(gt, sprite, _, _)| {
@@ -199,7 +198,7 @@ pub fn initialize_action(
 }
 
 pub fn set_tile_image(
-    mut tile: Query<(&mut Visibility, &mut Handle<Image>, &Tile, &Parent)>,
+    mut tile: Query<(&mut Visibility, &mut Sprite, &Tile, &Parent)>,
     board: Query<(Entity, &GameLink), With<Board>>,
     mut action_applied: EventReader<PlayerActionApplied>,
     images: Res<Images>,
@@ -208,7 +207,7 @@ pub fn set_tile_image(
         let Some((board_entity, _)) = board.iter().find(|(_, g)| g.get() == event.game()) else {
             continue;
         };
-        let Some((mut visibility, mut texture, ..)) = tile
+        let Some((mut visibility, mut sprite, ..)) = tile
             .iter_mut()
             .find(|(.., &tile, parent)| parent.get() == board_entity && *tile == event.action())
         else {
@@ -216,7 +215,7 @@ pub fn set_tile_image(
         };
         if let Some(img) = images.get(event.player()) {
             *visibility = Visibility::Inherited;
-            *texture = img.clone();
+            sprite.image = img.clone();
         }
     }
 }
@@ -283,12 +282,15 @@ pub fn create_win_animation(
 pub fn update_win_animation(
     mut commands: Commands,
     board: Query<&GameLink, With<Board>>,
-    mut animation: Query<(Entity, &mut WinAnimation, &mut TextureAtlas, &Parent)>,
+    mut animation: Query<(Entity, &mut WinAnimation, &mut Sprite, &Parent)>,
     mut ready_to_exit: EventWriter<GameReadyToExit>,
     time: Res<Time>,
 ) {
-    for (animation_entity, mut animation, mut atlas, parent) in animation.iter_mut() {
+    for (animation_entity, mut animation, mut sprite, parent) in animation.iter_mut() {
         if animation.tick(time.delta()).just_finished() {
+            let Some(ref mut atlas) = sprite.texture_atlas else {
+                continue;
+            };
             if atlas.index < animation.last_sprite_index() {
                 atlas.index += 1;
                 continue;

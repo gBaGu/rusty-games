@@ -5,29 +5,23 @@ use super::ITEM_HEIGHT;
 use crate::game::{GameLink, PlayerPosition};
 use crate::interface::PlayerColor;
 
-pub fn ui_info_container() -> NodeBundle {
-    NodeBundle {
-        style: Style {
-            display: Display::Flex,
-            flex_basis: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            border: UiRect::all(Val::Px(2.0)),
-            ..default()
-        },
+pub fn ui_info_node() -> Node {
+    Node {
+        display: Display::Flex,
+        flex_basis: Val::Percent(100.0),
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        justify_content: JustifyContent::Center,
+        border: UiRect::all(Val::Px(2.0)),
         ..default()
     }
 }
 
-fn image_node_bundle() -> NodeBundle {
-    NodeBundle {
-        style: Style {
-            width: Val::Px(ITEM_HEIGHT),
-            height: Val::Px(ITEM_HEIGHT),
-            margin: UiRect::all(Val::Px(10.0)),
-            ..default()
-        },
+fn image_node() -> Node {
+    Node {
+        width: Val::Px(ITEM_HEIGHT),
+        height: Val::Px(ITEM_HEIGHT),
+        margin: UiRect::all(Val::Px(10.0)),
         ..default()
     }
 }
@@ -42,7 +36,7 @@ pub struct NextPlayer;
 
 #[derive(Debug, Bundle)]
 pub struct GameStateInfoBundle {
-    node: NodeBundle,
+    node: Node,
     game_link: GameLink,
     game_state_box: GameStateBox,
 }
@@ -50,7 +44,7 @@ pub struct GameStateInfoBundle {
 impl GameStateInfoBundle {
     pub fn new(game: Entity) -> Self {
         Self {
-            node: ui_info_container(),
+            node: ui_info_node(),
             game_link: GameLink::new(game),
             game_state_box: GameStateBox,
         }
@@ -59,7 +53,8 @@ impl GameStateInfoBundle {
 
 #[derive(Debug, Bundle)]
 pub struct PlayerInfoBundle {
-    node: NodeBundle,
+    node: Node,
+    border_color: BorderColor,
     game_link: GameLink,
     player: PlayerPosition,
     color: PlayerColor,
@@ -67,10 +62,9 @@ pub struct PlayerInfoBundle {
 
 impl PlayerInfoBundle {
     pub fn new_active(game: Entity, player: core::PlayerPosition, color: Color) -> Self {
-        let mut node = ui_info_container();
-        node.border_color = color.into();
         Self {
-            node,
+            node: ui_info_node(),
+            border_color: color.into(),
             game_link: GameLink::new(game),
             player: PlayerPosition::new(player),
             color: color.into(),
@@ -79,7 +73,8 @@ impl PlayerInfoBundle {
 
     pub fn new_inactive(game: Entity, player: core::PlayerPosition, color: Color) -> Self {
         Self {
-            node: ui_info_container(),
+            node: ui_info_node(),
+            border_color: Default::default(),
             game_link: GameLink::new(game),
             player: PlayerPosition::new(player),
             color: color.into(),
@@ -89,33 +84,33 @@ impl PlayerInfoBundle {
 
 #[derive(Debug, Default, Bundle)]
 pub struct PlayerImageBundle {
-    node: NodeBundle,
-    image: UiImage,
+    node: Node,
+    image: ImageNode,
 }
 
 impl PlayerImageBundle {
     pub fn new(image: Handle<Image>) -> Self {
         Self {
-            node: image_node_bundle(),
-            image: UiImage::new(image),
+            node: image_node(),
+            image: ImageNode::new(image),
         }
     }
 }
 
 #[derive(Debug, Bundle)]
 pub struct NextPlayerImageBundle {
-    node: NodeBundle,
+    node: Node,
     game_link: GameLink,
-    image: UiImage,
+    image: ImageNode,
     next_player: NextPlayer,
 }
 
 impl NextPlayerImageBundle {
     pub fn new(game: Entity, img: Handle<Image>) -> Self {
         Self {
-            node: image_node_bundle(),
+            node: image_node(),
             game_link: GameLink::new(game),
-            image: UiImage::new(img),
+            image: ImageNode::new(img),
             next_player: NextPlayer,
         }
     }

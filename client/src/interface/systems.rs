@@ -9,16 +9,16 @@ use super::common::{
     SECONDARY_COLOR,
 };
 use super::components::{
-    CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, JoinGame,
+    CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, ImageBundle, JoinGame,
     MenuNavigationButtonBundle, Overlay, OverlayNodeBundle, Playground, PlaygroundBundle, Setting,
-    SettingTextInputBundle, SubmitButton, SubmitButtonBundle, UiImageBundle,
+    SettingTextInputBundle, SubmitButton, SubmitButtonBundle, TextBundle,
 };
 use super::events::{GameLeft, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
 use super::game_list::{GameList, GameListBundle};
 use super::resources::RefreshGamesTimer;
 use super::{GameReady, GameReadyToExit, GameSettingsLink, GameTag, JoinPressed};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
-use crate::commands::{CommandsExt, EntityCommandsExt};
+use crate::commands::CommandsExt;
 use crate::game::{
     ActiveGame, Board, BotDifficulty, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner,
 };
@@ -51,11 +51,11 @@ pub fn remove_game_page_context<T: core::Game + Send + Sync + 'static>(
 }
 
 pub fn setup_game_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = common::menu_text_style(&asset_server);
-    let style = common::menu_item_style();
+    let text_font = common::load_text_font(&asset_server);
+    let node = common::menu_item_node();
 
     commands
-        .spawn(common::root_node_bundle())
+        .spawn(common::root_node())
         .with_children(|builder| {
             for (state, text) in [
                 (AppState::Menu(MenuState::PlayAgainstBot), "Against bot"),
@@ -63,8 +63,8 @@ pub fn setup_game_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 (AppState::Menu(MenuState::Main), "Back"),
             ] {
                 builder
-                    .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
-                    .with_child(TextBundle::from_section(text, text_style.clone()));
+                    .spawn(MenuNavigationButtonBundle::new(node.clone(), state))
+                    .with_child(TextBundle::new(text, text_font.clone()));
             }
         });
 }
@@ -211,14 +211,14 @@ pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<Node>>) {
 
 pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let logo = asset_server.load("sprites/logo.png");
-    let text_style = common::menu_text_style(&asset_server);
-    let style = common::menu_item_style();
+    let text_font = common::load_text_font(&asset_server);
+    let item_node = common::menu_item_node();
 
     commands
-        .spawn(common::root_node_bundle())
+        .spawn(common::root_node())
         .with_children(|builder| {
-            builder.spawn(UiImageBundle::new(
-                Style {
+            builder.spawn(ImageBundle::new(
+                Node {
                     height: Val::Px(LOGO_HEIGHT),
                     width: Val::Px(LOGO_WIDTH),
                     margin: UiRect::all(Val::Px(20.)),
@@ -227,107 +227,105 @@ pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 logo,
             ));
             builder
-                .spawn(GamePageButtonBundle::<TicTacToe>::new(style.clone()))
-                .with_child(TextBundle::from_section("Tic-Tac-Toe", text_style.clone()));
+                .spawn(GamePageButtonBundle::<TicTacToe>::new(item_node.clone()))
+                .with_child(TextBundle::new("Tic-Tac-Toe", text_font.clone()));
             builder
                 .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
+                    item_node.clone(),
                     AppState::Menu(MenuState::Settings),
                 ))
-                .with_child(TextBundle::from_section("Settings", text_style.clone()));
+                .with_child(TextBundle::new("Settings", text_font.clone()));
             builder
-                .spawn(MenuNavigationButtonBundle::exit(style))
-                .with_child(TextBundle::from_section("Exit", text_style));
+                .spawn(MenuNavigationButtonBundle::exit(item_node))
+                .with_child(TextBundle::new("Exit", text_font));
         });
 }
 
 pub fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = common::menu_text_style(&asset_server);
-    let style = common::menu_item_style();
+    let text_font = common::load_text_font(&asset_server);
+    let item_node = common::menu_item_node();
 
     commands
-        .spawn(common::root_node_bundle())
+        .spawn(common::root_node())
         .with_children(|builder| {
-            builder
-                .spawn(common::row_node_bundle())
-                .with_children(|builder| {
-                    builder.spawn(TextBundle::from_section("Set user id:", text_style.clone()));
-                    let input = builder
-                        .spawn(SettingTextInputBundle::new(
-                            style.clone(),
-                            text_style.clone(),
-                            Setting::UserId,
-                        ))
-                        .id();
-                    builder
-                        .spawn(SubmitButtonBundle::new(style.clone(), input))
-                        .with_child(TextBundle::from_section("Save", text_style.clone()));
-                });
+            builder.spawn(common::row_node()).with_children(|builder| {
+                builder.spawn(TextBundle::new("Set user id:", text_font.clone()));
+                let input = builder
+                    .spawn(SettingTextInputBundle::new(
+                        item_node.clone(),
+                        text_font.clone(),
+                        Setting::UserId,
+                    ))
+                    .id();
+                builder
+                    .spawn(SubmitButtonBundle::new(item_node.clone(), input))
+                    .with_child(TextBundle::new("Save", text_font.clone()));
+            });
             builder
                 .spawn(MenuNavigationButtonBundle::new(
-                    style,
+                    item_node,
                     AppState::Menu(MenuState::Main),
                 ))
-                .with_child(TextBundle::from_section("Back", text_style));
+                .with_child(TextBundle::new("Back", text_font));
         });
 }
 
 pub fn setup_play_against_bot_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = common::menu_text_style(&asset_server);
-    let style = common::menu_item_style();
+    let text_font = common::load_text_font(&asset_server);
+    let item_node = common::menu_item_node();
 
     commands
-        .spawn(common::root_node_bundle())
+        .spawn(common::root_node())
         .with_children(|builder| {
             let settings_id = builder.spawn(GameSettingsBundle::new()).id();
             builder
-                .spawn(CreateGameButtonBundle::new(style.clone(), settings_id))
-                .with_child(TextBundle::from_section("Play", text_style.clone()));
+                .spawn(CreateGameButtonBundle::new(item_node.clone(), settings_id))
+                .with_child(TextBundle::new("Play", text_font.clone()));
             builder
                 .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
+                    item_node.clone(),
                     AppState::Menu(MenuState::Game),
                 ))
-                .with_child(TextBundle::from_section("Back", text_style));
+                .with_child(TextBundle::new("Back", text_font));
         });
 }
 
 pub fn setup_play_over_network_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = common::menu_text_style(&asset_server);
-    let style = common::menu_item_style();
+    let text_font = common::load_text_font(&asset_server);
+    let item_node = common::menu_item_node();
 
     commands
-        .spawn(common::root_node_bundle())
+        .spawn(common::root_node())
         .with_children(|builder| {
             builder
-                .spawn(common::column_node_bundle())
+                .spawn(common::column_node())
                 .with_children(|builder| {
                     let settings_id = builder.spawn(GameSettingsBundle::new()).id();
                     builder
-                        .spawn(CreateGameButtonBundle::new(style.clone(), settings_id))
-                        .with_child(TextBundle::from_section("Create game", text_style.clone()));
+                        .spawn(CreateGameButtonBundle::new(item_node.clone(), settings_id))
+                        .with_child(TextBundle::new("Create game", text_font.clone()));
                 });
             let mut game_list = GameListBundle::default();
-            game_list.container.style.min_height = Val::Px(MENU_LIST_MIN_HEIGHT);
+            game_list.node_mut().min_height = Val::Px(MENU_LIST_MIN_HEIGHT);
             builder.spawn(game_list);
             builder
                 .spawn(MenuNavigationButtonBundle::new(
-                    style.clone(),
+                    item_node.clone(),
                     AppState::Menu(MenuState::Game),
                 ))
-                .with_child(TextBundle::from_section("Back", text_style));
+                .with_child(TextBundle::new("Back", text_font));
         });
 }
 
 pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let text_style = common::menu_text_style(&asset_server);
-    let style = common::menu_item_style();
+    let text_font = common::load_text_font(&asset_server);
+    let item_node = common::menu_item_node();
 
     commands
         .spawn(OverlayNodeBundle::default())
         .with_children(|builder| {
             builder
-                .spawn(common::column_node_bundle())
+                .spawn(common::column_node())
                 .with_children(|builder| {
                     for (state, text) in [
                         (AppState::Game, "Resume"),
@@ -335,8 +333,8 @@ pub fn setup_pause(mut commands: Commands, asset_server: Res<AssetServer>) {
                         (AppState::Menu(MenuState::Main), "Main menu"),
                     ] {
                         builder
-                            .spawn(MenuNavigationButtonBundle::new(style.clone(), state))
-                            .with_child(TextBundle::from_section(text, text_style.clone()));
+                            .spawn(MenuNavigationButtonBundle::new(item_node.clone(), state))
+                            .with_child(TextBundle::new(text, text_font.clone()));
                     }
                 });
         });
@@ -350,11 +348,7 @@ pub fn clear_pause_overlay(mut commands: Commands, overlay: Query<Entity, With<O
 
 pub fn setup_game(mut commands: Commands, game: Query<Entity, With<ActiveGame>>) {
     if let Ok(game_entity) = game.get_single() {
-        commands.spawn(PlaygroundBundle {
-            node: common::root_node_bundle(),
-            game_link: GameLink::new(game_entity),
-            playground: Playground,
-        });
+        commands.spawn(PlaygroundBundle::new(game_entity));
     } else {
         println!("multiple games found");
     }
@@ -432,8 +426,8 @@ pub fn create_game_over_overlay(
     asset_server: Res<AssetServer>,
 ) {
     for event in ready_to_exit.read() {
-        let text_style = common::menu_text_style(&asset_server);
-        let style = common::menu_item_style();
+        let text_font = common::load_text_font(&asset_server);
+        let item_node = common::menu_item_node();
         let winner = winner
             .iter()
             .find(|(_, parent)| parent.get() == event.get());
@@ -446,18 +440,18 @@ pub fn create_game_over_overlay(
             .spawn(OverlayNodeBundle::default())
             .with_children(|builder| {
                 builder
-                    .spawn(common::column_node_bundle())
+                    .spawn(common::column_node())
                     .with_children(|builder| {
-                        builder.spawn(TextBundle::from_section(
+                        builder.spawn(TextBundle::new(
                             &format!("Game over. {}", text),
-                            text_style.clone(),
+                            text_font.clone(),
                         ));
                         builder
                             .spawn(MenuNavigationButtonBundle::new(
-                                style.clone(),
+                                item_node.clone(),
                                 AppState::Menu(MenuState::Main),
                             ))
-                            .with_child(TextBundle::from_section("Main menu", text_style));
+                            .with_child(TextBundle::new("Main menu", text_font));
                     });
             });
     }

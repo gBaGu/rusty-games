@@ -2,7 +2,6 @@ use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputSubmitEvent, TextInputValue};
 use game_server::core::tic_tac_toe::TicTacToe;
 
-use crate::commands::EntityCommandsExt;
 use crate::game::components::BotDifficultyButtonBundle;
 use crate::game::tic_tac_toe::bot::Strategy;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
@@ -26,56 +25,56 @@ pub fn init_bot_settings_menu(
     asset_server: Res<AssetServer>,
 ) {
     for settings_entity in node.iter() {
-        let text_style = interface::common::menu_text_style(&asset_server);
-        let mut choosable_setting_style = interface::common::menu_item_style();
-        choosable_setting_style.border = UiRect::all(Val::Px(2.0));
+        let text_font = interface::common::load_text_font(&asset_server);
+        let mut choosable_setting_node = interface::common::menu_item_node();
+        choosable_setting_node.border = UiRect::all(Val::Px(2.0));
         commands
             .entity(settings_entity)
             .insert(BotGameSettingsBundle::default())
             .with_children(|builder| {
-                builder.spawn(TextBundle::from_section("Bot", text_style.clone()));
+                builder.spawn(interface::TextBundle::new("Bot", text_font.clone()));
                 builder
-                    .spawn(interface::common::row_node_bundle())
+                    .spawn(interface::common::row_node())
                     .with_children(|builder| {
                         builder
                             .spawn(BotStrategyButtonBundle::new(
-                                choosable_setting_style.clone(),
+                                choosable_setting_node.clone(),
                                 Strategy::Random,
                                 settings_entity,
                             ))
-                            .with_child(TextBundle::from_section("Random", text_style.clone()));
+                            .with_child(interface::TextBundle::new("Random", text_font.clone()));
                         builder
                             .spawn(BotStrategyButtonBundle::new(
-                                choosable_setting_style.clone(),
+                                choosable_setting_node.clone(),
                                 Strategy::QLearning,
                                 settings_entity,
                             ))
-                            .with_child(TextBundle::from_section("QLearning", text_style.clone()));
+                            .with_child(interface::TextBundle::new("QLearning", text_font.clone()));
                     });
                 builder
-                    .spawn(interface::common::row_node_bundle())
+                    .spawn(interface::common::row_node())
                     .with_children(|builder| {
                         builder
                             .spawn(BotDifficultyButtonBundle::new(
-                                choosable_setting_style.clone(),
+                                choosable_setting_node.clone(),
                                 BotDifficulty::Easy,
                                 settings_entity,
                             ))
-                            .with_child(TextBundle::from_section("Easy", text_style.clone()));
+                            .with_child(interface::TextBundle::new("Easy", text_font.clone()));
                         builder
                             .spawn(BotDifficultyButtonBundle::new(
-                                choosable_setting_style.clone(),
+                                choosable_setting_node.clone(),
                                 BotDifficulty::Medium,
                                 settings_entity,
                             ))
-                            .with_child(TextBundle::from_section("Medium", text_style.clone()));
+                            .with_child(interface::TextBundle::new("Medium", text_font.clone()));
                         builder
                             .spawn(BotDifficultyButtonBundle::new(
-                                choosable_setting_style.clone(),
+                                choosable_setting_node.clone(),
                                 BotDifficulty::Hard,
                                 settings_entity,
                             ))
-                            .with_child(TextBundle::from_section("Hard", text_style.clone()));
+                            .with_child(interface::TextBundle::new("Hard", text_font.clone()));
                     });
             });
     }
@@ -90,26 +89,29 @@ pub fn init_network_settings_menu(
     asset_server: Res<AssetServer>,
 ) {
     for settings_entity in node.iter() {
-        let text_style = interface::common::menu_text_style(&asset_server);
-        let style = interface::common::menu_item_style();
+        let text_font = interface::common::load_text_font(&asset_server);
+        let item_node = interface::common::menu_item_node();
         commands
             .entity(settings_entity)
             .insert(NetworkGameSettingsBundle::default())
             .with_children(|builder| {
                 builder
-                    .spawn(interface::common::row_node_bundle())
+                    .spawn(interface::common::row_node())
                     .with_children(|builder| {
-                        builder.spawn(TextBundle::from_section("Opponent id:", text_style.clone()));
+                        builder.spawn(interface::TextBundle::new(
+                            "Opponent id:",
+                            text_font.clone(),
+                        ));
                         let input_id = builder
                             .spawn(interface::UserIdTextInputBundle::new(
-                                style.clone(),
-                                text_style.clone(),
+                                item_node.clone(),
+                                text_font.clone(),
                             ))
                             .insert(interface::GameSettingsLink::new(settings_entity))
                             .id();
                         builder
-                            .spawn(interface::SubmitButtonBundle::new(style, input_id))
-                            .with_child(TextBundle::from_section("Save", text_style.clone()));
+                            .spawn(interface::SubmitButtonBundle::new(item_node, input_id))
+                            .with_child(interface::TextBundle::new("Save", text_font.clone()));
                     });
             });
     }

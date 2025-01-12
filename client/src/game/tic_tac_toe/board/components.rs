@@ -46,32 +46,32 @@ impl WinAnimation {
 
 #[derive(Bundle)]
 pub struct BorderBundle {
-    sprite: SpriteBundle,
+    sprite: Sprite,
+    transform: Transform,
     border: Border,
 }
 
 impl BorderBundle {
     pub fn new(color: Color, size: Vec2, translation: Vec3) -> Self {
         Self {
-            sprite: SpriteBundle {
-                sprite: Sprite {
-                    color,
-                    custom_size: Some(size),
-                    ..default()
-                },
-                transform: Transform::from_translation(translation),
+            sprite: Sprite {
+                color,
+                custom_size: Some(size),
                 ..default()
             },
+            transform: Transform::from_translation(translation),
             border: Border,
         }
     }
 }
 
 /// Bundle for a board tile.
-/// Contains [`SpriteBundle`] and a [`Tile`].
+/// Contains [`Sprite`], [`Transform`] and a [`Tile`].
 #[derive(Bundle)]
 pub struct TileBundle {
-    sprite: SpriteBundle,
+    sprite: Sprite,
+    transform: Transform,
+    visibility: Visibility,
     tile: Tile,
 }
 
@@ -83,17 +83,12 @@ impl TileBundle {
         img: Handle<Image>,
         visibility: Visibility,
     ) -> Self {
+        let mut sprite = Sprite::sized(size);
+        sprite.image = img;
         Self {
-            sprite: SpriteBundle {
-                sprite: Sprite {
-                    custom_size: Some(size),
-                    ..default()
-                },
-                transform: Transform::from_translation(translation),
-                texture: img,
-                visibility,
-                ..default()
-            },
+            sprite,
+            transform: Transform::from_translation(translation),
+            visibility,
             tile: position.into(),
         }
     }
@@ -121,9 +116,9 @@ impl TileBundle {
 /// A bundle for drawing win animation
 #[derive(Bundle)]
 pub struct WinAnimationBundle {
-    pub animation: WinAnimation,
-    pub sprite: SpriteBundle,
-    pub atlas: TextureAtlas,
+    animation: WinAnimation,
+    sprite: Sprite,
+    transform: Transform,
 }
 
 impl WinAnimationBundle {
@@ -136,12 +131,8 @@ impl WinAnimationBundle {
     ) -> Self {
         Self {
             animation: WinAnimation::new(last_sprite_index, transition_duration),
-            sprite: SpriteBundle {
-                texture,
-                transform,
-                ..default()
-            },
-            atlas: TextureAtlas { layout, index: 0 },
+            sprite: Sprite::from_atlas_image(texture, TextureAtlas { layout, index: 0 }),
+            transform,
         }
     }
 }

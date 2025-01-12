@@ -10,7 +10,7 @@ async-stream = "0.3"
 generic-array = "1"
 prost = "0.13"
 smallvec = "1.13.2"
-thiserror = "1.0"
+thiserror = "2.0"
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "signal"] }
 tokio-stream = "0.1"
 tokio-util = "0.7.11"
