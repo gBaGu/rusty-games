@@ -17,7 +17,7 @@ use crate::game::components::{Board, BoardBundle};
 use crate::game::tic_tac_toe::resources::Images;
 use crate::game::tic_tac_toe::PlayerActionInitialized;
 use crate::game::{ActiveGame, CurrentPlayer, CurrentUser, GameLink, PlayerPosition, PlayerWon};
-use crate::interface::{GameReadyToExit, Playground};
+use crate::interface;
 
 /// Returns center coordinates for a board tile with given `pos`.
 fn calculate_tile_center(board_size: Vec2, tile_size: Vec2, tile_pos: core::GridIndex) -> Vec2 {
@@ -38,32 +38,24 @@ fn calculate_tile_size(board_size: Vec2) -> Vec2 {
 pub fn create(
     mut commands: Commands,
     window: Query<&Window, With<PrimaryWindow>>,
-    playground: Query<(&GameLink, &ComputedNode, &GlobalTransform), Added<Playground>>,
+    playground: Query<&GameLink, Added<interface::Playground>>,
     game: Query<&LocalGame>,
     images: Res<Images>,
 ) {
     let Ok(window) = window.get_single() else {
         return;
     };
-    for (game_link, node, transform) in playground.iter() {
+    for game_link in playground.iter() {
         let Ok(game) = game.get(game_link.get()) else {
             continue;
         };
         println!("create board for game: {:?}", game_link.get());
-        let ui_node_center =
-            transform.compute_transform().translation.truncate() + (node.size() / 2.0);
-        let window_center = Vec2::new(window.width(), window.height()) / 2.0;
-        let board_size = Vec2::splat(node.size().min_element() * 0.7);
-        let board_translation = ui_node_center - window_center;
+        let board_size = Vec2::splat(window.width().min(window.height()) * 0.7);
         let tile_size = calculate_tile_size(board_size);
         let v_border_length = tile_size.y * 0.8;
         let h_border_length = tile_size.x * 0.8;
         commands
-            .spawn(BoardBundle::new(
-                game_link.get(),
-                board_size,
-                board_translation.extend(0.0),
-            ))
+            .spawn(BoardBundle::new(game_link.get(), board_size, Vec3::ZERO))
             .with_children(|builder| {
                 for row in 0..3 {
                     for col in 0..3 {
@@ -283,7 +275,7 @@ pub fn update_win_animation(
     mut commands: Commands,
     board: Query<&GameLink, With<Board>>,
     mut animation: Query<(Entity, &mut WinAnimation, &mut Sprite, &Parent)>,
-    mut ready_to_exit: EventWriter<GameReadyToExit>,
+    mut ready_to_exit: EventWriter<interface::GameReadyToExit>,
     time: Res<Time>,
 ) {
     for (animation_entity, mut animation, mut sprite, parent) in animation.iter_mut() {
@@ -301,7 +293,7 @@ pub fn update_win_animation(
             commands.entity(animation_entity).despawn();
             if let Ok(game_link) = board.get(parent.get()) {
                 println!("game is ready to exit: {:?}", game_link.get());
-                ready_to_exit.send(GameReadyToExit::new(game_link.get()));
+                ready_to_exit.send(interface::GameReadyToExit::new(game_link.get()));
             }
         }
     }
