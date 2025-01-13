@@ -111,6 +111,17 @@ impl<T: Copy> PlayerActionInitialized<T> {
     }
 }
 
+/// Event that signals that game might have an action to send for a confirmation.
+/// Contains game entity.
+#[derive(Debug, Deref, Event)]
+pub struct ReadyForConfirmation(Entity);
+
+impl ReadyForConfirmation {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 /// Defines what actions should have their status reverted.
 #[derive(Debug, PartialEq)]
 pub enum ActionStatusRevertPolicy<T> {

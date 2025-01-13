@@ -16,7 +16,9 @@ use components::{
     NetworkGameBundle, NetworkPlayerBundle, PendingExistingGameBundle, PendingNewGameBundle,
     PlayerPosition, UserAuthority,
 };
-use events::{ActionConfirmationFailed, PlayerActionApplied, PlayerActionInitialized};
+use events::{
+    ActionConfirmationFailed, PlayerActionApplied, PlayerActionInitialized, ReadyForConfirmation,
+};
 use resources::RefreshGameTimer;
 use systems::*;
 
@@ -31,6 +33,7 @@ pub use game_info::{FullGameInfo, GameInfo};
 pub use pending_action::PendingAction;
 pub use resources::GameMenuContext;
 
+pub const ACTION_RESEND_INTERVAL_SEC: f32 = 1.0;
 pub const GAME_REFRESH_INTERVAL_SEC: f32 = 1.0;
 
 pub const BOARD_SIZE: usize = 3;
@@ -47,6 +50,7 @@ impl Plugin for GamePlugin {
         app.add_plugins(tic_tac_toe::TicTacToePlugin)
             .add_event::<GameDataReady>()
             .add_event::<GameEntityReady>()
+            .add_event::<ReadyForConfirmation>()
             .add_event::<ActionConfirmationFailed<core::GridIndex>>()
             .add_event::<BotReady>()
             .add_event::<StateUpdated>()
@@ -71,6 +75,9 @@ impl Plugin for GamePlugin {
                     clear_game_on_exit,
                     close_session,
                     send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
+                    action_ready_for_confirmation::<core::GridIndex>,
+                    create_resend_action_timer::<core::GridIndex>,
+                    resend_action_timer_tick,
                     revert_action_status::<core::GridIndex>,
                     handle_action_from_server::<core::GridIndex>,
                     action_confirmation_failed::<core::GridIndex>,

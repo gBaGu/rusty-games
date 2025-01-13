@@ -3,14 +3,14 @@ use std::collections::HashSet;
 use bevy::prelude::*;
 use game_server::{core, proto};
 
-use super::components::{FinishedGame, Game};
+use super::components::{ActionResendTimer, FinishedGame, Game};
 use super::pending_action::ConfirmationStatus;
 use super::{
     ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
     NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, StateUpdated,
     TurnStart, UserAuthority, Winner,
 };
-use crate::game::events::ActionStatusRevertPolicy;
+use crate::game::events::{ActionStatusRevertPolicy, ReadyForConfirmation};
 use crate::UserIdChanged;
 use crate::{grpc, interface};
 
@@ -70,14 +70,19 @@ pub fn network_game_initialization_finished(
     }
 }
 
-/// If the game has [`PendingAction`] and it is not confirmed,
-/// send [`grpc::SessionActionReadyToSend`] event
-/// and change action status to `ConfirmationStatus::WaitingConfirmation`.
+/// Listen to [`ReadyForConfirmation`] event and is the first pending action is not confirmed
+/// send it in a [`grpc::SessionActionReadyToSend`] event
+/// and change status to `ConfirmationStatus::WaitingConfirmation`.
 pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
-    mut game: Query<(Entity, &mut PendingActionQueue<T>), With<ActiveGame>>,
+    mut game: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    mut ready_for_confirmation: EventReader<ReadyForConfirmation>,
     mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
 ) {
-    for (game_entity, mut queue) in game.iter_mut() {
+    for event in ready_for_confirmation.read() {
+        let game_entity = **event;
+        let Ok(mut queue) = game.get_mut(game_entity) else {
+            continue;
+        };
         let Some(next_action) = queue.first_mut() else {
             continue;
         };
@@ -87,6 +92,53 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
                 game_entity,
                 *next_action.action(),
             ));
+        }
+    }
+}
+
+/// Whenever [`PendingActionQueue`] is changed ([`ActionResendTimer`] must be absent) or
+/// [`ActionResendTimer`] is removed send [`ReadyForConfirmation`] event.
+pub fn action_ready_for_confirmation<T: Send + Sync + 'static>(
+    game: Query<
+        Entity,
+        (
+            With<ActiveGame>,
+            Without<ActionResendTimer>,
+            Changed<PendingActionQueue<T>>,
+        ),
+    >,
+    mut resend: RemovedComponents<ActionResendTimer>,
+    mut ready_for_confirmation: EventWriter<ReadyForConfirmation>,
+) {
+    for entity in game.iter().chain(resend.read()) {
+        ready_for_confirmation.send(ReadyForConfirmation::new(entity));
+    }
+}
+
+/// Insert [`ActionResendTimer`] into the entity when [`ActionConfirmationFailed`] is received.
+pub fn create_resend_action_timer<T: Send + Sync + 'static>(
+    mut commands: Commands,
+    game: Query<(), (With<ActiveGame>, Without<ActionResendTimer>)>,
+    mut confirmation_failed: EventReader<ActionConfirmationFailed<T>>,
+) {
+    for event in confirmation_failed.read() {
+        if game.contains(event.game()) {
+            commands
+                .entity(event.game())
+                .insert(ActionResendTimer::default());
+        }
+    }
+}
+
+/// Tick [`ActionResendTimer`] and remove it when it's finished.
+pub fn resend_action_timer_tick(
+    mut commands: Commands,
+    mut timer: Query<(Entity, &mut ActionResendTimer)>,
+    time: Res<Time>,
+) {
+    for (timer_entity, mut timer) in timer.iter_mut() {
+        if timer.tick(time.delta()).just_finished() {
+            commands.entity(timer_entity).remove::<ActionResendTimer>();
         }
     }
 }

@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use game_server::core;
 use smallvec::SmallVec;
 
-use super::PendingAction;
+use super::{PendingAction, ACTION_RESEND_INTERVAL_SEC};
 use crate::interface::common::{PRIMARY_COLOR, SECONDARY_COLOR};
 use crate::interface::GameSettingsLink;
 
@@ -83,6 +83,20 @@ impl<T> Default for PendingActionQueue<T> {
 impl<T> From<SmallVec<[PendingAction<T>; 8]>> for PendingActionQueue<T> {
     fn from(value: SmallVec<[PendingAction<T>; 8]>) -> Self {
         Self(value)
+    }
+}
+
+///  Prevents actions from being sent for confirmation.  
+/// Contains [`Timer`] that defines for how long actions cannot be sent for confirmation.
+#[derive(Debug, Component, Deref, DerefMut)]
+pub struct ActionResendTimer(Timer);
+
+impl Default for ActionResendTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(
+            ACTION_RESEND_INTERVAL_SEC,
+            TimerMode::Once,
+        ))
     }
 }
 
@@ -223,7 +237,7 @@ pub struct LocalGameBundle<G: Send + Sync + 'static, A: Send + Sync + 'static> {
 impl<G, A> Default for LocalGameBundle<G, A>
 where
     G: Default + Send + Sync + 'static,
-    A: Send + Sync + 'static
+    A: Send + Sync + 'static,
 {
     fn default() -> Self {
         Self {
@@ -237,7 +251,7 @@ where
 impl<G, A> From<G> for LocalGameBundle<G, A>
 where
     G: core::Game + Send + Sync + 'static,
-    A: Send + Sync + 'static
+    A: Send + Sync + 'static,
 {
     fn from(value: G) -> Self {
         Self {
@@ -259,7 +273,7 @@ pub struct NetworkGameBundle<G: Send + Sync + 'static, A: Send + Sync + 'static>
 impl<G, A> NetworkGameBundle<G, A>
 where
     G: Send + Sync + 'static,
-    A: Send + Sync + 'static
+    A: Send + Sync + 'static,
 {
     pub fn new(id: u64, game: G) -> Self {
         Self {
