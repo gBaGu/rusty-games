@@ -140,11 +140,12 @@ pub struct CurrentPlayer;
 pub struct Winner;
 
 /// Bundle for a board.
-/// Contains [`GameLink`], [`SpriteBundle`] and a [`Board`].
+/// Contains [`GameLink`], [`Sprite`], [`Transform`] and a [`Board`].
 #[derive(Bundle)]
 pub struct BoardBundle {
     game_link: GameLink,
-    background: SpriteBundle,
+    sprite: Sprite,
+    transform: Transform,
     board: Board,
 }
 
@@ -152,15 +153,12 @@ impl BoardBundle {
     pub fn new(game: Entity, size: Vec2, translation: Vec3) -> Self {
         Self {
             game_link: GameLink::new(game),
-            background: SpriteBundle {
-                sprite: Sprite {
-                    color: SECONDARY_COLOR,
-                    custom_size: Some(size),
-                    ..default()
-                },
-                transform: Transform::from_translation(translation),
+            sprite: Sprite {
+                color: SECONDARY_COLOR,
+                custom_size: Some(size),
                 ..default()
             },
+            transform: Transform::from_translation(translation),
             board: Board,
         }
     }
@@ -168,19 +166,19 @@ impl BoardBundle {
 
 #[derive(Debug, Bundle)]
 pub struct BotDifficultyButtonBundle {
-    pub button: ButtonBundle,
-    pub difficulty: BotDifficulty,
-    pub settings_link: GameSettingsLink,
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    difficulty: BotDifficulty,
+    settings_link: GameSettingsLink,
 }
 
 impl BotDifficultyButtonBundle {
-    pub fn new(style: Style, difficulty: BotDifficulty, settings: Entity) -> Self {
+    pub fn new(node: Node, difficulty: BotDifficulty, settings: Entity) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             difficulty,
             settings_link: GameSettingsLink::new(settings),
         }

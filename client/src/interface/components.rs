@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use bevy::prelude::*;
-use bevy_simple_text_input::{TextInputBundle, TextInputTextStyle};
+use bevy_simple_text_input::{TextInput, TextInputTextColor, TextInputTextFont};
 
-use super::common::{self, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR};
+use super::common::{self, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR, SECONDARY_COLOR};
 use crate::app_state::{AppState, AppStateTransition};
 use crate::game::{GameInfo, GameLink};
 
@@ -83,21 +83,31 @@ pub struct Overlay;
 
 #[derive(Debug, Bundle)]
 pub struct PlaygroundBundle {
-    pub node: NodeBundle,
-    pub game_link: GameLink,
-    pub playground: Playground,
+    node: Node,
+    game_link: GameLink,
+    playground: Playground,
+}
+
+impl PlaygroundBundle {
+    pub fn new(game: Entity) -> Self {
+        Self {
+            node: common::root_node(),
+            game_link: GameLink::new(game),
+            playground: Playground,
+        }
+    }
 }
 
 #[derive(Debug, Bundle)]
 pub struct GameSettingsBundle {
-    pub node: NodeBundle,
-    pub game_settings: GameSettings,
+    node: Node,
+    game_settings: GameSettings,
 }
 
 impl GameSettingsBundle {
     pub fn new() -> Self {
         Self {
-            node: common::column_node_bundle(),
+            node: common::column_node(),
             game_settings: GameSettings,
         }
     }
@@ -105,18 +115,18 @@ impl GameSettingsBundle {
 
 #[derive(Debug, Bundle)]
 pub struct GamePageButtonBundle<T: Send + Sync + 'static> {
-    pub button: ButtonBundle,
-    pub game_tag: GameTag<T>,
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    game_tag: GameTag<T>,
 }
 
 impl<T: Send + Sync + 'static> GamePageButtonBundle<T> {
-    pub fn new(style: Style) -> Self {
+    pub fn new(node: Node) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             game_tag: GameTag::default(),
         }
     }
@@ -124,19 +134,19 @@ impl<T: Send + Sync + 'static> GamePageButtonBundle<T> {
 
 #[derive(Debug, Bundle)]
 pub struct CreateGameButtonBundle {
-    pub button: ButtonBundle,
-    pub game_settings_link: GameSettingsLink,
-    pub create_game: CreateGame,
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    game_settings_link: GameSettingsLink,
+    create_game: CreateGame,
 }
 
 impl CreateGameButtonBundle {
-    pub fn new(style: Style, settings: Entity) -> Self {
+    pub fn new(node: Node, settings: Entity) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             game_settings_link: GameSettingsLink(settings),
             create_game: CreateGame,
         }
@@ -145,29 +155,27 @@ impl CreateGameButtonBundle {
 
 #[derive(Bundle)]
 pub struct MenuNavigationButtonBundle {
-    pub button: ButtonBundle,
-    pub state_transition: AppStateTransition,
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    state_transition: AppStateTransition,
 }
 
 impl MenuNavigationButtonBundle {
-    pub fn new(style: Style, state: AppState) -> Self {
+    pub fn new(node: Node, state: AppState) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             state_transition: AppStateTransition(Some(state)),
         }
     }
 
-    pub fn exit(style: Style) -> Self {
+    pub fn exit(node: Node) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             state_transition: AppStateTransition(None),
         }
     }
@@ -175,25 +183,23 @@ impl MenuNavigationButtonBundle {
 
 #[derive(Bundle)]
 pub struct OverlayNodeBundle {
-    pub node: NodeBundle,
-    pub tag: Overlay,
+    node: Node,
+    background_color: BackgroundColor,
+    tag: Overlay,
 }
 
 impl Default for OverlayNodeBundle {
     fn default() -> Self {
         Self {
-            node: NodeBundle {
-                style: Style {
-                    display: Display::Flex,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    height: Val::Percent(100.0),
-                    width: Val::Percent(100.0),
-                    ..default()
-                },
-                background_color: OVERLAY_BACKGROUND_COLOR.into(),
+            node: Node {
+                display: Display::Flex,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                height: Val::Percent(100.0),
+                width: Val::Percent(100.0),
                 ..default()
             },
+            background_color: OVERLAY_BACKGROUND_COLOR.into(),
             tag: Overlay,
         }
     }
@@ -201,18 +207,18 @@ impl Default for OverlayNodeBundle {
 
 #[derive(Bundle)]
 pub struct JoinGameButtonBundle {
-    pub button: ButtonBundle,
-    pub join: JoinGame,
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    join: JoinGame,
 }
 
 impl JoinGameButtonBundle {
-    pub fn new(style: Style, game: GameInfo) -> Self {
+    pub fn new(node: Node, game: GameInfo) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             join: JoinGame(game),
         }
     }
@@ -220,18 +226,18 @@ impl JoinGameButtonBundle {
 
 #[derive(Bundle)]
 pub struct SubmitButtonBundle {
-    pub button: ButtonBundle,
-    pub submit: SubmitButton,
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    submit: SubmitButton,
 }
 
 impl SubmitButtonBundle {
-    pub fn new(style: Style, source: Entity) -> Self {
+    pub fn new(node: Node, source: Entity) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             submit: SubmitButton { source },
         }
     }
@@ -239,19 +245,20 @@ impl SubmitButtonBundle {
 
 #[derive(Bundle)]
 pub struct SettingTextInputBundle {
-    pub node: NodeBundle,
-    pub text_input: TextInputBundle,
-    pub setting: Setting,
+    node: Node,
+    text_font: TextInputTextFont,
+    text_color: TextInputTextColor,
+    text_input: TextInput,
+    setting: Setting,
 }
 
 impl SettingTextInputBundle {
-    pub fn new(style: Style, text_style: TextStyle, setting: Setting) -> Self {
+    pub fn new(node: Node, text_font: TextFont, setting: Setting) -> Self {
         Self {
-            node: NodeBundle { style, ..default() },
-            text_input: TextInputBundle {
-                text_style: TextInputTextStyle(text_style),
-                ..default()
-            },
+            node,
+            text_font: TextInputTextFont(text_font),
+            text_color: TextInputTextColor(SECONDARY_COLOR.into()),
+            text_input: TextInput,
             setting,
         }
     }
@@ -259,38 +266,60 @@ impl SettingTextInputBundle {
 
 #[derive(Bundle)]
 pub struct UserIdTextInputBundle {
-    pub node: NodeBundle,
-    pub text_input: TextInputBundle,
-    pub user_id_input: UserIdInput,
+    node: Node,
+    text_font: TextInputTextFont,
+    text_color: TextInputTextColor,
+    text_input: TextInput,
+    user_id_input: UserIdInput,
 }
 
 impl UserIdTextInputBundle {
-    pub fn new(style: Style, text_style: TextStyle) -> Self {
+    pub fn new(node: Node, text_font: TextFont) -> Self {
         Self {
-            node: NodeBundle { style, ..default() },
-            text_input: TextInputBundle {
-                text_style: TextInputTextStyle(text_style),
-                ..default()
-            },
+            node,
+            text_font: TextInputTextFont(text_font),
+            text_color: TextInputTextColor(SECONDARY_COLOR.into()),
+            text_input: TextInput,
             user_id_input: UserIdInput,
         }
     }
 }
 
 #[derive(Bundle)]
-pub struct UiImageBundle {
-    pub node: NodeBundle,
-    pub image: UiImage,
+pub struct ImageBundle {
+    node: Node,
+    image: ImageNode,
 }
 
-impl UiImageBundle {
-    pub fn new(style: Style, image: Handle<Image>) -> Self {
+impl ImageBundle {
+    pub fn new(node: Node, image: Handle<Image>) -> Self {
         Self {
-            node: NodeBundle {
-                style,
-                ..default()
-            },
-            image: UiImage::new(image),
+            node,
+            image: ImageNode::new(image),
         }
+    }
+}
+
+#[derive(Bundle)]
+pub struct TextBundle {
+    node: Node,
+    text: Text,
+    text_font: TextFont,
+    text_color: TextColor,
+}
+
+impl TextBundle {
+    pub fn new(text: impl Into<String>, text_font: TextFont) -> Self {
+        Self {
+            node: Default::default(),
+            text: Text::new(text),
+            text_font,
+            text_color: TextColor(SECONDARY_COLOR.into()),
+        }
+    }
+
+    pub fn with_node(mut self, node: Node) -> Self {
+        self.node = node;
+        self
     }
 }

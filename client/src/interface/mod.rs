@@ -15,8 +15,8 @@ use events::PlayerGamesReady;
 use systems::*;
 
 pub use components::{
-    CreateGame, GameSettings, GameSettingsLink, GameTag, PlayerColor, Playground,
-    SubmitButtonBundle, UserIdInput, UserIdTextInputBundle,
+    CreateGame, GameSettings, GameSettingsLink, GameTag, JoinGameButtonBundle, PlayerColor,
+    Playground, SubmitButtonBundle, TextBundle, UserIdInput, UserIdTextInputBundle,
 };
 pub use events::{
     GameLeft, GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed,

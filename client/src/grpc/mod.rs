@@ -86,12 +86,12 @@ impl Plugin for GrpcPlugin {
                 (
                     connect.run_if(
                         not(resource_exists::<GrpcClient>)
-                            .and_then(not(any_with_component::<ConnectClientTask>)),
+                            .and(not(any_with_component::<ConnectClientTask>)),
                     ),
                     handle_connect.run_if(any_with_component::<ConnectClientTask>),
                     receive_status.run_if(
                         resource_exists::<ConnectionStatusWatcher>
-                            .and_then(not(any_with_component::<ReceiveConnectionStatusTask>)),
+                            .and(not(any_with_component::<ReceiveConnectionStatusTask>)),
                     ),
                     handle_receive_status.run_if(any_with_component::<ReceiveConnectionStatusTask>),
                     handle_response::<proto::CreateGameReply>

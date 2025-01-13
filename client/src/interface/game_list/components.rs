@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::game::GameInfo;
-use crate::interface::common::column_node_bundle;
+use crate::interface::common::column_node;
 
 #[derive(Component)]
 pub enum GameList {
@@ -19,15 +19,21 @@ impl Default for GameList {
 
 #[derive(Bundle)]
 pub struct GameListBundle {
-    pub container: NodeBundle,
-    pub list: GameList,
+    node: Node,
+    list: GameList,
 }
 
 impl Default for GameListBundle {
     fn default() -> Self {
         Self {
-            container: column_node_bundle(),
+            node: column_node(),
             list: GameList::default(),
         }
+    }
+}
+
+impl GameListBundle {
+    pub fn node_mut(&mut self) -> &mut Node {
+        &mut self.node
     }
 }

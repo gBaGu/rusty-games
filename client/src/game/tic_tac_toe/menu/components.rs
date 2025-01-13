@@ -80,19 +80,19 @@ pub struct NetworkGameSettingsBundle {
 
 #[derive(Debug, Bundle)]
 pub struct BotStrategyButtonBundle {
-    pub button: ButtonBundle,
-    pub strategy: Strategy,
-    pub settings_link: GameSettingsLink,
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    strategy: Strategy,
+    settings_link: GameSettingsLink,
 }
 
 impl BotStrategyButtonBundle {
-    pub fn new(style: Style, strategy: Strategy, settings: Entity) -> Self {
+    pub fn new(node: Node, strategy: Strategy, settings: Entity) -> Self {
         Self {
-            button: ButtonBundle {
-                style,
-                background_color: PRIMARY_COLOR.into(),
-                ..default()
-            },
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
             strategy,
             settings_link: GameSettingsLink::new(settings),
         }
