@@ -2,7 +2,6 @@ use bevy::prelude::*;
 use game_server::core::tic_tac_toe::TicTacToe;
 use game_server::core::{self, Game as _};
 use game_server::proto;
-use smallvec::SmallVec;
 
 use super::bot::{BotBundle, NoDifficultyBotBundle};
 use super::{
@@ -260,45 +259,16 @@ pub fn create_pending_action(
             Ok((Some(_), mut queue)) => {
                 queue.push(PendingAction::new_unconfirmed(
                     event.player(),
-                    event.action(),
+                    *event.action(),
                 ));
             }
             Ok((None, mut queue)) => {
-                queue.push(PendingAction::new_confirmed(event.player(), event.action()));
+                queue.push(PendingAction::new_confirmed(event.player(), *event.action()));
             }
             Err(err) => {
                 println!("failed to get game entity: {}", err);
                 continue;
             }
         };
-    }
-}
-
-/// Take all consecutive confirmed actions from [`PendingActionQueue`], apply them and send
-/// [`PlayerActionApplied`] and [`StateUpdated`] events.
-pub fn apply_confirmed(
-    mut game: Query<(Entity, &mut LocalGame, &mut PendingActionQueue), With<ActiveGame>>,
-    mut action_applied: EventWriter<PlayerActionApplied>,
-    mut state_updated: EventWriter<StateUpdated>,
-) {
-    for (game_entity, mut game, mut queue) in game.iter_mut() {
-        let mut actions_processed = 0;
-        for pending_action in queue.iter().take_while(|action| action.is_confirmed()) {
-            match game.update(pending_action.player(), *pending_action.action()) {
-                Ok(state) => {
-                    action_applied.send(PlayerActionApplied::new(
-                        game_entity,
-                        pending_action.player(),
-                        *pending_action.action(),
-                    ));
-                    state_updated.send(StateUpdated::new(game_entity, state));
-                }
-                Err(err) => println!("action {:?} failed with {}", pending_action, err),
-            }
-            actions_processed += 1;
-        }
-        if actions_processed > 0 {
-            *queue = PendingActionQueue::from(SmallVec::from(&queue[actions_processed..]));
-        }
     }
 }

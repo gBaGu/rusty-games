@@ -3,14 +3,16 @@ use std::collections::HashSet;
 use bevy::prelude::*;
 use game_server::{core, proto};
 
-use super::components::{ActionResendTimer, FinishedGame, Game};
+use super::components::{ActionResendTimer, FinishedGame, Game, LocalGame};
 use super::pending_action::ConfirmationStatus;
 use super::{
     ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
     NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, StateUpdated,
     TurnStart, UserAuthority, Winner,
 };
-use crate::game::events::{ActionStatusRevertPolicy, ReadyForConfirmation};
+use crate::game::events::{
+    ActionApplied, ActionConfirmed, ActionDropped, ActionStatusRevertPolicy, ReadyForConfirmation,
+};
 use crate::UserIdChanged;
 use crate::{grpc, interface};
 
@@ -238,6 +240,56 @@ pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
     }
 }
 
+/// Whenever action is confirmed or dropped take first consecutive confirmed actions
+/// from [`PendingActionQueue`], apply them and send [`ActionApplied`] and [`StateUpdated`] events.
+/// In case of an error send [`ActionDropped`] event.
+pub fn apply_confirmed<T>(
+    mut game: Query<(&mut LocalGame<T>, &mut PendingActionQueue<T::TurnData>), With<ActiveGame>>,
+    mut action_confirmed: EventReader<ActionConfirmed<T::TurnData>>,
+    mut action_dropped: EventReader<ActionDropped<T::TurnData>>,
+    mut action_applied: EventWriter<ActionApplied<T::TurnData>>,
+    mut state_updated: EventWriter<StateUpdated>,
+    // mut action_dropped_writer: EventWriter<ActionDropped<T::TurnData>>,
+) where
+    T: core::Game + Send + Sync + 'static,
+    T::TurnData: Copy + Send + Sync + 'static,
+{
+
+    // TODO: maybe add some event to replace this, for example ActionQueueNextChanged
+    let game_set = HashSet::<_>::from_iter(
+        action_confirmed
+            .read()
+            .map(|e| e.game())
+            .chain(action_dropped.read().map(|e| e.game())),
+    );
+    for game_entity in game_set {
+        let Ok((mut game, mut queue)) = game.get_mut(game_entity) else {
+            continue;
+        };
+        for pending_action in queue.pop_confirmed() {
+            match game.update(pending_action.player(), *pending_action.action()) {
+                Ok(state) => {
+                    action_applied.send(ActionApplied::new(
+                        game_entity,
+                        pending_action.player(),
+                        *pending_action.action(),
+                    ));
+                    state_updated.send(StateUpdated::new(game_entity, state));
+                }
+                Err(_err) => {
+                    // TODO: figure out how to send this event
+                    // action_dropped_writer.send(ActionDropped::new(
+                    //     game_entity,
+                    //     pending_action.player(),
+                    //     *pending_action.action(),
+                    //     format!("game update failed after confirmation: {}", err),
+                    // ));
+                }
+            }
+        }
+    }
+}
+
 /// Receive [`StateUpdated`] event and send [`TurnStart`], [`PlayerWon`] or [`Draw`]
 /// depending on a new state.
 pub fn handle_state_updated(
@@ -409,6 +461,21 @@ pub fn close_session(
 ) {
     for entity in deactivated_game.read() {
         close_session.send(grpc::CloseSession::new(entity));
+    }
+}
+
+/// Log [`PendingAction`] when it's dropped out of the queue.
+pub fn log_dropped_action<T: std::fmt::Debug + Send + Sync + 'static>(
+    mut action_dropped: EventReader<ActionDropped<T>>,
+) {
+    for event in action_dropped.read() {
+        println!(
+            "game {} action dropped, action={:?}, player={}, reason={}",
+            event.game(),
+            event.action(),
+            event.player(),
+            event.reason()
+        );
     }
 }
 

@@ -17,7 +17,8 @@ use components::{
     PlayerPosition, UserAuthority,
 };
 use events::{
-    ActionConfirmationFailed, PlayerActionApplied, PlayerActionInitialized, ReadyForConfirmation,
+    ActionApplied, ActionConfirmationFailed, ActionConfirmed, ActionDropped, ActionInitialized,
+    ReadyForConfirmation,
 };
 use resources::RefreshGameTimer;
 use systems::*;
@@ -51,7 +52,11 @@ impl Plugin for GamePlugin {
             .add_event::<GameDataReady>()
             .add_event::<GameEntityReady>()
             .add_event::<ReadyForConfirmation>()
+            .add_event::<ActionInitialized<core::GridIndex>>()
             .add_event::<ActionConfirmationFailed<core::GridIndex>>()
+            .add_event::<ActionConfirmed<core::GridIndex>>()
+            .add_event::<ActionDropped<core::GridIndex>>()
+            .add_event::<ActionApplied<core::GridIndex>>()
             .add_event::<BotReady>()
             .add_event::<StateUpdated>()
             .add_event::<TurnStart>()
@@ -61,10 +66,19 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
-                    handle_game_spawn,
-                    handle_local_game_creation,
                     initialize_game_session::<TicTacToe>.in_set(NetworkSystems),
                     network_game_initialization_finished,
+                    send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
+                    action_confirmation_failed::<core::GridIndex>,
+                    handle_action_from_server::<core::GridIndex>,
+                    close_session,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    handle_game_spawn,
+                    handle_local_game_creation,
                     handle_state_updated,
                     update_current_player,
                     handle_draw,
@@ -73,15 +87,13 @@ impl Plugin for GamePlugin {
                     update_current_user,
                     clear_foreign_network_games,
                     clear_game_on_exit,
-                    close_session,
-                    send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
                     action_ready_for_confirmation::<core::GridIndex>,
                     create_resend_action_timer::<core::GridIndex>,
                     resend_action_timer_tick,
                     revert_action_status::<core::GridIndex>,
-                    handle_action_from_server::<core::GridIndex>,
-                    action_confirmation_failed::<core::GridIndex>,
+                    apply_confirmed::<TicTacToe>,
                 ),
-            );
+            )
+            .add_systems(Update, log_dropped_action::<core::GridIndex>);
     }
 }

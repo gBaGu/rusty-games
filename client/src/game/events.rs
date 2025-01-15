@@ -81,15 +81,26 @@ impl BotReady {
     }
 }
 
+/// Event that signals that game might have an action to send for a confirmation.
+/// Contains game entity.
+#[derive(Debug, Deref, Event)]
+pub struct ReadyForConfirmation(Entity);
+
+impl ReadyForConfirmation {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 /// Event that signals that `player` wants to make game action.
 #[derive(Debug, Event)]
-pub struct PlayerActionInitialized<T> {
+pub struct ActionInitialized<T> {
     game: Entity,
     player: core::PlayerPosition,
     action: T,
 }
 
-impl<T: Copy> PlayerActionInitialized<T> {
+impl<T> ActionInitialized<T> {
     pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,
@@ -106,19 +117,8 @@ impl<T: Copy> PlayerActionInitialized<T> {
         self.player
     }
 
-    pub fn action(&self) -> T {
-        self.action
-    }
-}
-
-/// Event that signals that game might have an action to send for a confirmation.
-/// Contains game entity.
-#[derive(Debug, Deref, Event)]
-pub struct ReadyForConfirmation(Entity);
-
-impl ReadyForConfirmation {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
+    pub fn action(&self) -> &T {
+        &self.action
     }
 }
 
@@ -134,7 +134,7 @@ pub enum ActionStatusRevertPolicy<T> {
 #[derive(Debug, Event)]
 pub struct ActionConfirmationFailed<T> {
     game: Entity,
-    revert_policy: ActionStatusRevertPolicy<T>
+    revert_policy: ActionStatusRevertPolicy<T>,
 }
 
 impl<T> ActionConfirmationFailed<T> {
@@ -162,15 +162,76 @@ impl<T> ActionConfirmationFailed<T> {
     }
 }
 
-/// Event that signals that `action` created by `player` is applied.
 #[derive(Debug, Event)]
-pub struct PlayerActionApplied<T> {
+pub struct ActionConfirmed<T> {
     game: Entity,
     player: core::PlayerPosition,
     action: T,
 }
 
-impl<T: Copy> PlayerActionApplied<T> {
+impl<T> ActionConfirmed<T> {
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> core::PlayerPosition {
+        self.player
+    }
+
+    pub fn action(&self) -> &T {
+        &self.action
+    }
+}
+
+#[derive(Debug, Event)]
+pub struct ActionDropped<T> {
+    game: Entity,
+    player: core::PlayerPosition,
+    action: T,
+    reason: String,
+}
+
+impl<T> ActionDropped<T> {
+    pub fn new(
+        game: Entity,
+        player: core::PlayerPosition,
+        action: T,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            game,
+            player,
+            action,
+            reason: reason.into(),
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> core::PlayerPosition {
+        self.player
+    }
+
+    pub fn action(&self) -> &T {
+        &self.action
+    }
+
+    pub fn reason(&self) -> &String {
+        &self.reason
+    }
+}
+
+/// Event that signals that `action` created by `player` is applied.
+#[derive(Debug, Event)]
+pub struct ActionApplied<T> {
+    game: Entity,
+    player: core::PlayerPosition,
+    action: T,
+}
+
+impl<T> ActionApplied<T> {
     pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,
@@ -187,8 +248,8 @@ impl<T: Copy> PlayerActionApplied<T> {
         self.player
     }
 
-    pub fn action(&self) -> T {
-        self.action
+    pub fn action(&self) -> &T {
+        &self.action
     }
 }
 

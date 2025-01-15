@@ -201,7 +201,7 @@ pub fn set_tile_image(
         };
         let Some((mut visibility, mut sprite, ..)) = tile
             .iter_mut()
-            .find(|(.., &tile, parent)| parent.get() == board_entity && *tile == event.action())
+            .find(|(.., &tile, parent)| parent.get() == board_entity && *tile == *event.action())
         else {
             continue;
         };

@@ -86,6 +86,12 @@ impl<T> From<SmallVec<[PendingAction<T>; 8]>> for PendingActionQueue<T> {
     }
 }
 
+impl<T> PendingActionQueue<T> {
+    pub fn pop_confirmed(&mut self) -> impl Iterator<Item=PendingAction<T>> + '_ {
+        self.0.drain_filter(|a| a.is_confirmed())
+    }
+}
+
 ///  Prevents actions from being sent for confirmation.  
 /// Contains [`Timer`] that defines for how long actions cannot be sent for confirmation.
 #[derive(Debug, Component, Deref, DerefMut)]
