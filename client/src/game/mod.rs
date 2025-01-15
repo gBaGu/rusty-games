@@ -18,7 +18,7 @@ use components::{
 };
 use events::{
     ActionApplied, ActionConfirmationFailed, ActionConfirmed, ActionDropped, ActionEnqueued,
-    ActionInitialized, ActionQueueNextChanged, ReadyForConfirmation,
+    ActionInitialized, ActionQueueNextChanged,
 };
 use pending_action::{ConfirmationStatus, PendingAction};
 use resources::RefreshGameTimer;
@@ -52,7 +52,6 @@ impl Plugin for GamePlugin {
             .add_event::<GameDataReady>()
             .add_event::<GameEntityReady>()
             .add_event::<ActionQueueNextChanged>()
-            .add_event::<ReadyForConfirmation>()
             .add_event::<ActionInitialized<core::GridIndex>>()
             .add_event::<ActionEnqueued<core::GridIndex>>()
             .add_event::<ActionConfirmationFailed<core::GridIndex>>()
@@ -92,7 +91,6 @@ impl Plugin for GamePlugin {
                     create_pending_action::<core::GridIndex>,
                     confirm_local_game_action::<core::GridIndex>,
                     action_queue_next_changed::<core::GridIndex>,
-                    action_ready_for_confirmation::<core::GridIndex>,
                     create_resend_action_timer::<core::GridIndex>,
                     resend_action_timer_tick,
                     revert_action_status::<core::GridIndex>,

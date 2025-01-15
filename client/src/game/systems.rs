@@ -11,7 +11,7 @@ use super::{
 };
 use crate::game::events::{
     ActionApplied, ActionConfirmed, ActionDropped, ActionEnqueued, ActionInitialized,
-    ActionQueueNextChanged, ActionStatusRevertPolicy, ReadyForConfirmation,
+    ActionQueueNextChanged, ActionStatusRevertPolicy,
 };
 use crate::UserIdChanged;
 use crate::{grpc, interface};
@@ -143,16 +143,24 @@ pub fn confirm_local_game_action<T: Copy + Send + Sync + 'static>(
     }
 }
 
-/// Listen to [`ReadyForConfirmation`] event and is the first pending action is not confirmed
+/// Listen to [`ActionQueueNextChanged`] event or [`ActionResendTimer`] removal and
+/// if the first pending action in the queue is not confirmed
 /// send it in a [`grpc::SessionActionReadyToSend`] event
 /// and change status to `ConfirmationStatus::WaitingConfirmation`.
 pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
-    mut game: Query<&mut PendingActionQueue<T>, (With<ActiveGame>, With<NetworkGame>)>,
-    mut ready_for_confirmation: EventReader<ReadyForConfirmation>,
+    mut game: Query<
+        &mut PendingActionQueue<T>,
+        (
+            With<ActiveGame>,
+            With<NetworkGame>,
+            Without<ActionResendTimer>,
+        ),
+    >,
+    mut next_changed: EventReader<ActionQueueNextChanged>,
+    mut resend: RemovedComponents<ActionResendTimer>,
     mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
 ) {
-    for event in ready_for_confirmation.read() {
-        let game_entity = **event;
+    for game_entity in resend.read().chain(next_changed.read().map(|e| **e)) {
         let Ok(mut queue) = game.get_mut(game_entity) else {
             continue;
         };
@@ -166,26 +174,6 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
                 *next_action.action(),
             ));
         }
-    }
-}
-
-/// Whenever [`PendingActionQueue`] is changed ([`ActionResendTimer`] must be absent) or
-/// [`ActionResendTimer`] is removed send [`ReadyForConfirmation`] event.
-pub fn action_ready_for_confirmation<T: Send + Sync + 'static>(
-    // TODO: remove this
-    game: Query<
-        Entity,
-        (
-            With<ActiveGame>,
-            Without<ActionResendTimer>,
-            Changed<PendingActionQueue<T>>,
-        ),
-    >,
-    mut resend: RemovedComponents<ActionResendTimer>,
-    mut ready_for_confirmation: EventWriter<ReadyForConfirmation>,
-) {
-    for entity in game.iter().chain(resend.read()) {
-        ready_for_confirmation.send(ReadyForConfirmation::new(entity));
     }
 }
 

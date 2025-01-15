@@ -90,17 +90,6 @@ impl ActionQueueNextChanged {
     }
 }
 
-/// Event that signals that game might have an action to send for a confirmation.
-/// Contains game entity.
-#[derive(Debug, Deref, Event)]
-pub struct ReadyForConfirmation(Entity);
-
-impl ReadyForConfirmation {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-}
-
 /// Event that signals that `player` wants to make game action.
 #[derive(Debug, Event)]
 pub struct ActionInitialized<T> {
