@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use bevy::prelude::*;
 use game_server::{core, proto};
 use smallvec::SmallVec;
@@ -80,7 +78,10 @@ pub fn action_queue_next_changed<T: Send + Sync + 'static>(
     mut action_dropped: EventReader<ActionDropped<T>>,
     mut next_changed: EventWriter<ActionQueueNextChanged>,
 ) {
-    let dropped = SmallVec::<[_; 8]>::from_iter(action_dropped.read().map(|e| e.game()));
+    let dropped =
+        SmallVec::<[_; 8]>::from_iter(action_dropped.read().map(|e| e.game()).inspect(|e| {
+            next_changed.send(ActionQueueNextChanged::new(*e));
+        }));
     let mut enqueued = SmallVec::<[_; 8]>::new();
     for event in action_enqueued.read() {
         if let Some((_, n)) = enqueued.iter_mut().find(|(e, _)| *e == event.game()) {
@@ -91,7 +92,6 @@ pub fn action_queue_next_changed<T: Send + Sync + 'static>(
     }
     for (game_entity, new_actions) in enqueued {
         if dropped.contains(&game_entity) {
-            next_changed.send(ActionQueueNextChanged::new(game_entity));
             continue;
         }
         if matches!(queue.get(game_entity), Ok(queue) if queue.len() == new_actions) {
@@ -172,6 +172,7 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
 /// Whenever [`PendingActionQueue`] is changed ([`ActionResendTimer`] must be absent) or
 /// [`ActionResendTimer`] is removed send [`ReadyForConfirmation`] event.
 pub fn action_ready_for_confirmation<T: Send + Sync + 'static>(
+    // TODO: remove this
     game: Query<
         Entity,
         (
@@ -256,11 +257,10 @@ pub fn action_confirmation_failed<T: Copy + Send + Sync + 'static>(
     mut action_send_failed: EventReader<grpc::SessionActionSendFailed<T>>,
     mut confirmation_failed: EventWriter<ActionConfirmationFailed<T>>,
 ) {
-    let mut closed_sessions = HashSet::new();
-    for event in session_closed.read() {
-        closed_sessions.insert(**event);
-        confirmation_failed.send(ActionConfirmationFailed::revert_all(**event));
-    }
+    let closed_sessions =
+        SmallVec::<[_; 8]>::from_iter(session_closed.read().map(|e| **e).inspect(|e| {
+            confirmation_failed.send(ActionConfirmationFailed::revert_all(*e));
+        }));
     for event in action_send_failed.read() {
         if closed_sessions.contains(&event.session_entity()) {
             continue;
@@ -338,14 +338,11 @@ pub fn apply_confirmed<T>(
     T: core::Game + Send + Sync + 'static,
     T::TurnData: Copy + Send + Sync + 'static,
 {
-    // TODO: maybe add some event to replace this, for example ActionQueueNextChanged
-    let game_set = HashSet::<_>::from_iter(
-        action_confirmed
-            .read()
-            .map(|e| e.game())
-            .chain(next_changed.read().map(|e| **e)),
-    );
-    for game_entity in game_set {
+    let to_confirm = action_confirmed
+        .read()
+        .map(|e| e.game())
+        .chain(next_changed.read().map(|e| **e));
+    for game_entity in to_confirm {
         let Ok((mut game, mut queue)) = game.get_mut(game_entity) else {
             continue;
         };
