@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 
 use bevy::prelude::*;
 use game_server::core;
-use itertools::Itertools;
 use smallvec::SmallVec;
 
 use super::{ConfirmationStatus, PendingAction, ACTION_RESEND_INTERVAL_SEC};
@@ -88,21 +87,19 @@ impl<T> From<SmallVec<[PendingAction<T>; 8]>> for PendingActionQueue<T> {
 }
 
 impl<T> PendingActionQueue<T> {
+    /// Remove all confirmed actions and return iterator that yields them.
     pub fn pop_confirmed(&mut self) -> impl Iterator<Item = PendingAction<T>> + '_ {
         self.0.drain_filter(|a| a.is_confirmed())
     }
-}
 
-impl<T: Copy> PendingActionQueue<T> {
-    pub fn confirm_latest(&mut self) -> SmallVec<[PendingAction<T>; 8]> {
-        let unconfirmed_reversed: SmallVec<[_; 8]> = self
-            .0
-            .iter_mut()
-            .rev()
-            .take_while(|a| !a.is_confirmed())
-            .update(|a| a.set_status(ConfirmationStatus::Confirmed))
-            .collect();
-        unconfirmed_reversed.iter().rev().map(|v| **v).collect()
+    /// Confirm last consecutive unconfirmed actions and return iterator that yields them.
+    pub fn confirm_latest(&mut self) -> impl Iterator<Item = &PendingAction<T>> {
+        let mut confirmed_count = 0;
+        for action in self.iter_mut().rev().take_while(|a| !a.is_confirmed()) {
+            action.set_status(ConfirmationStatus::Confirmed);
+            confirmed_count += 1;
+        }
+        self[self.len() - confirmed_count..].iter()
     }
 }
 
@@ -356,5 +353,136 @@ impl From<core::GridIndex> for Position {
 impl From<Position> for core::GridIndex {
     fn from(value: Position) -> Self {
         value.0
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn action_queue_pop_confirmed() {
+        // remove first two and leave the rest
+        let mut queue = PendingActionQueue::from(smallvec::smallvec![
+            PendingAction::new(0, 0, ConfirmationStatus::Confirmed),
+            PendingAction::new(0, 1, ConfirmationStatus::Confirmed),
+            PendingAction::new(0, 2, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 3, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 4, ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, 5, ConfirmationStatus::NotConfirmed),
+        ]);
+        itertools::assert_equal(
+            queue.pop_confirmed(),
+            [
+                PendingAction::new(0, 0, ConfirmationStatus::Confirmed),
+                PendingAction::new(0, 1, ConfirmationStatus::Confirmed),
+            ]
+            .into_iter(),
+        );
+        itertools::assert_equal(
+            queue.iter(),
+            [
+                PendingAction::new(0, 2, ConfirmationStatus::WaitingConfirmation),
+                PendingAction::new(0, 3, ConfirmationStatus::WaitingConfirmation),
+                PendingAction::new(0, 4, ConfirmationStatus::NotConfirmed),
+                PendingAction::new(0, 5, ConfirmationStatus::NotConfirmed),
+            ]
+            .iter(),
+        );
+
+        // not consecutive confirmed actions will be removed as well in this implementation
+        queue = PendingActionQueue::from(smallvec::smallvec![
+            PendingAction::new(0, 0, ConfirmationStatus::Confirmed),
+            PendingAction::new(0, 1, ConfirmationStatus::Confirmed),
+            PendingAction::new(0, 2, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 3, ConfirmationStatus::Confirmed),
+            PendingAction::new(0, 4, ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, 5, ConfirmationStatus::Confirmed),
+        ]);
+        itertools::assert_equal(
+            queue.pop_confirmed(),
+            [
+                PendingAction::new(0, 0, ConfirmationStatus::Confirmed),
+                PendingAction::new(0, 1, ConfirmationStatus::Confirmed),
+                PendingAction::new(0, 3, ConfirmationStatus::Confirmed),
+                PendingAction::new(0, 5, ConfirmationStatus::Confirmed),
+            ]
+            .into_iter(),
+        );
+        itertools::assert_equal(
+            queue.iter(),
+            [
+                PendingAction::new(0, 2, ConfirmationStatus::WaitingConfirmation),
+                PendingAction::new(0, 4, ConfirmationStatus::NotConfirmed),
+            ]
+            .iter(),
+        );
+
+        // if there is no confirmed actions - yield nothing and leave the queue unchanged
+        queue = PendingActionQueue::from(smallvec::smallvec![
+            PendingAction::new(0, 1, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 2, ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, 3, ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, 4, ConfirmationStatus::NotConfirmed),
+        ]);
+        itertools::assert_equal(queue.pop_confirmed(), std::iter::empty());
+        itertools::assert_equal(
+            queue.iter(),
+            [
+                PendingAction::new(0, 1, ConfirmationStatus::WaitingConfirmation),
+                PendingAction::new(0, 2, ConfirmationStatus::WaitingConfirmation),
+                PendingAction::new(0, 3, ConfirmationStatus::NotConfirmed),
+                PendingAction::new(0, 4, ConfirmationStatus::NotConfirmed),
+            ]
+            .iter(),
+        );
+    }
+
+    #[test]
+    fn action_queue_confirm_latest() {
+        // confirm last 4
+        let mut queue = PendingActionQueue::from(smallvec::smallvec![
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, (), ConfirmationStatus::Confirmed),
+            PendingAction::new(0, (), ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, (), ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+        ]);
+        assert_eq!(queue.confirm_latest().count(), 4);
+        itertools::assert_equal(
+            queue.iter().map(|a| a.status()),
+            std::iter::once(ConfirmationStatus::NotConfirmed)
+                .chain(std::iter::repeat(ConfirmationStatus::Confirmed).take(5)),
+        );
+
+        // the last one is confirmed, so leave the rest unchanged
+        queue = PendingActionQueue::from(smallvec::smallvec![
+            PendingAction::new(0, (), ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, (), ConfirmationStatus::Confirmed),
+        ]);
+        assert_eq!(queue.confirm_latest().count(), 0);
+        itertools::assert_equal(
+            queue.iter().map(|a| a.status()),
+            std::iter::once(ConfirmationStatus::WaitingConfirmation)
+                .chain(std::iter::repeat(ConfirmationStatus::NotConfirmed).take(3))
+                .chain(std::iter::once(ConfirmationStatus::Confirmed)),
+        );
+
+        // confirm all
+        queue = PendingActionQueue::from(smallvec::smallvec![
+            PendingAction::new(0, (), ConfirmationStatus::WaitingConfirmation),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+            PendingAction::new(0, (), ConfirmationStatus::NotConfirmed),
+        ]);
+        assert_eq!(queue.confirm_latest().count(), 4);
+        itertools::assert_equal(
+            queue.iter().map(|a| a.status()),
+            std::iter::repeat(ConfirmationStatus::Confirmed).take(4),
+        );
     }
 }

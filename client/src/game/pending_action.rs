@@ -20,7 +20,7 @@ impl fmt::Display for ConfirmationStatus {
 }
 
 /// Player action that is waiting to be applied.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PendingAction<T> {
     player: core::PlayerPosition,
     action: T,
