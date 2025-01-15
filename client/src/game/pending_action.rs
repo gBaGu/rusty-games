@@ -1,13 +1,12 @@
 use std::fmt;
 
-use bevy::prelude::*;
 use game_server::core;
 
 /// Confirmation status of a [`PendingAction`].
 /// In case of a bot game pending actions are created as `Confirmed`.
 /// In case of a network game pending actions are created as `NotConfirmed` and need to undergo
 /// confirmation process by executing them on the server side.
-#[derive(Clone, Copy, Debug, PartialEq, Component)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConfirmationStatus {
     NotConfirmed,
     WaitingConfirmation,
@@ -21,7 +20,7 @@ impl fmt::Display for ConfirmationStatus {
 }
 
 /// Player action that is waiting to be applied.
-#[derive(Clone, Copy, Debug, Component)]
+#[derive(Clone, Copy, Debug)]
 pub struct PendingAction<T> {
     player: core::PlayerPosition,
     action: T,

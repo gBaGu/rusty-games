@@ -2,9 +2,10 @@ use std::marker::PhantomData;
 
 use bevy::prelude::*;
 use game_server::core;
+use itertools::Itertools;
 use smallvec::SmallVec;
 
-use super::{PendingAction, ACTION_RESEND_INTERVAL_SEC};
+use super::{ConfirmationStatus, PendingAction, ACTION_RESEND_INTERVAL_SEC};
 use crate::interface::common::{PRIMARY_COLOR, SECONDARY_COLOR};
 use crate::interface::GameSettingsLink;
 
@@ -87,8 +88,21 @@ impl<T> From<SmallVec<[PendingAction<T>; 8]>> for PendingActionQueue<T> {
 }
 
 impl<T> PendingActionQueue<T> {
-    pub fn pop_confirmed(&mut self) -> impl Iterator<Item=PendingAction<T>> + '_ {
+    pub fn pop_confirmed(&mut self) -> impl Iterator<Item = PendingAction<T>> + '_ {
         self.0.drain_filter(|a| a.is_confirmed())
+    }
+}
+
+impl<T: Copy> PendingActionQueue<T> {
+    pub fn confirm_latest(&mut self) -> SmallVec<[PendingAction<T>; 8]> {
+        let unconfirmed_reversed: SmallVec<[_; 8]> = self
+            .0
+            .iter_mut()
+            .rev()
+            .take_while(|a| !a.is_confirmed())
+            .update(|a| a.set_status(ConfirmationStatus::Confirmed))
+            .collect();
+        unconfirmed_reversed.iter().rev().map(|v| **v).collect()
     }
 }
 

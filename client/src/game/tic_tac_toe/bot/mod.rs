@@ -4,7 +4,7 @@ mod systems;
 
 use bevy::prelude::*;
 
-use super::{LocalGame, PendingAction, PlayerActionInitialized, TTTBoard};
+use super::{LocalGame, PlayerActionInitialized, TTTBoard};
 use components::Delay;
 use resources::QLearningModel;
 use systems::*;

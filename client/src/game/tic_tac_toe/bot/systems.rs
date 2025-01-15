@@ -5,8 +5,10 @@ use game_server::core;
 use game_server::core::Game as _;
 use rand::Rng;
 
-use super::{Delay, LocalGame, PendingAction, PlayerActionInitialized, QLearningModel, Strategy};
-use crate::game::{BotAuthority, BotDifficulty, BotReady, CurrentPlayer, PlayerPosition, TTTBoard};
+use super::{Delay, LocalGame, PlayerActionInitialized, QLearningModel, Strategy};
+use crate::game::{
+    ActiveGame, BotAuthority, BotDifficulty, BotReady, CurrentPlayer, PlayerPosition, TTTBoard,
+};
 
 const MIN_ACTION_DELAY: u64 = 500;
 const MAX_ACTION_DELAY: u64 = 1500;
@@ -61,11 +63,10 @@ pub fn delay(
     }
 }
 
-/// Listens for the [`BotReady`] event and if there is no [`PendingAction`] in the game
-/// sends [`PlayerActionInitialized`] event with action generated
-/// depending on [`Strategy`] and [`BotDifficulty`] values of a bot entity.
+/// Listens for the [`BotReady`] event and sends [`PlayerActionInitialized`] event
+/// with action generated depending on [`Strategy`] and [`BotDifficulty`] values of a bot entity.
 pub fn initialize_action(
-    game: Query<(Entity, &LocalGame), Without<PendingAction>>,
+    game: Query<(Entity, &LocalGame), With<ActiveGame>>,
     bot: Query<(&Strategy, Option<&BotDifficulty>), With<BotAuthority>>,
     mut bot_ready: EventReader<BotReady>,
     mut action_initialized: EventWriter<PlayerActionInitialized>,

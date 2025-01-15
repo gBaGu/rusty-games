@@ -81,6 +81,15 @@ impl BotReady {
     }
 }
 
+#[derive(Debug, Deref, Event)]
+pub struct ActionQueueNextChanged(Entity);
+
+impl ActionQueueNextChanged {
+    pub fn new(entity: Entity) -> Self {
+        Self(entity)
+    }
+}
+
 /// Event that signals that game might have an action to send for a confirmation.
 /// Contains game entity.
 #[derive(Debug, Deref, Event)]
@@ -101,6 +110,36 @@ pub struct ActionInitialized<T> {
 }
 
 impl<T> ActionInitialized<T> {
+    pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
+        Self {
+            game,
+            player,
+            action,
+        }
+    }
+
+    pub fn game(&self) -> Entity {
+        self.game
+    }
+
+    pub fn player(&self) -> core::PlayerPosition {
+        self.player
+    }
+
+    pub fn action(&self) -> &T {
+        &self.action
+    }
+}
+
+/// Event that signals that `player` wants to make game action.
+#[derive(Debug, Event)]
+pub struct ActionEnqueued<T> {
+    game: Entity,
+    player: core::PlayerPosition,
+    action: T,
+}
+
+impl<T> ActionEnqueued<T> {
     pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
         Self {
             game,
@@ -170,6 +209,14 @@ pub struct ActionConfirmed<T> {
 }
 
 impl<T> ActionConfirmed<T> {
+    pub fn new(game: Entity, player: core::PlayerPosition, action: T) -> Self {
+        Self {
+            game,
+            player,
+            action,
+        }
+    }
+
     pub fn game(&self) -> Entity {
         self.game
     }

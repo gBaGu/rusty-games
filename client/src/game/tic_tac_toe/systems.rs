@@ -5,8 +5,8 @@ use game_server::proto;
 
 use super::bot::{BotBundle, NoDifficultyBotBundle};
 use super::{
-    Images, LocalGame, LocalGameBundle, NetworkGameBundle, PendingAction, PendingActionQueue,
-    PlayerActionApplied, PlayerActionInitialized, O_SPRITE_PATH, X_SPRITE_PATH,
+    Images, LocalGame, LocalGameBundle, NetworkGameBundle, PlayerActionApplied, O_SPRITE_PATH,
+    X_SPRITE_PATH,
 };
 use crate::game::components::PendingGame;
 use crate::game::resources::RefreshGameTimer;
@@ -243,32 +243,5 @@ pub fn create(
         let game_entity = game_cmds.id();
         game_cmds.insert_children(0, &[user_id, enemy_id]);
         println!("game created: {:?}", game_entity);
-    }
-}
-
-/// Receive [`PlayerActionInitialized`] event and insert [`PendingAction`]
-/// into a [`PendingActionQueue`] of a game entity received in the event.
-/// If game entity contains [`NetworkGame`] component the status of created action will be
-/// `PendingActionStatus::NotConfirmed`, otherwise `PendingActionStatus::Confirmed`.
-pub fn create_pending_action(
-    mut game: Query<(Option<&NetworkGame>, &mut PendingActionQueue), With<ActiveGame>>,
-    mut action_initialized: EventReader<PlayerActionInitialized>,
-) {
-    for event in action_initialized.read() {
-        match game.get_mut(event.game()) {
-            Ok((Some(_), mut queue)) => {
-                queue.push(PendingAction::new_unconfirmed(
-                    event.player(),
-                    *event.action(),
-                ));
-            }
-            Ok((None, mut queue)) => {
-                queue.push(PendingAction::new_confirmed(event.player(), *event.action()));
-            }
-            Err(err) => {
-                println!("failed to get game entity: {}", err);
-                continue;
-            }
-        };
     }
 }

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 use game_server::{core, proto};
+use smallvec::SmallVec;
 
 use super::components::{ActionResendTimer, FinishedGame, Game, LocalGame};
 use super::pending_action::ConfirmationStatus;
@@ -11,7 +12,8 @@ use super::{
     TurnStart, UserAuthority, Winner,
 };
 use crate::game::events::{
-    ActionApplied, ActionConfirmed, ActionDropped, ActionStatusRevertPolicy, ReadyForConfirmation,
+    ActionApplied, ActionConfirmed, ActionDropped, ActionEnqueued, ActionInitialized,
+    ActionQueueNextChanged, ActionStatusRevertPolicy, ReadyForConfirmation,
 };
 use crate::UserIdChanged;
 use crate::{grpc, interface};
@@ -72,11 +74,80 @@ pub fn network_game_initialization_finished(
     }
 }
 
+pub fn action_queue_next_changed<T: Send + Sync + 'static>(
+    queue: Query<&PendingActionQueue<T>>,
+    mut action_enqueued: EventReader<ActionEnqueued<T>>,
+    mut action_dropped: EventReader<ActionDropped<T>>,
+    mut next_changed: EventWriter<ActionQueueNextChanged>,
+) {
+    let dropped = SmallVec::<[_; 8]>::from_iter(action_dropped.read().map(|e| e.game()));
+    let mut enqueued = SmallVec::<[_; 8]>::new();
+    for event in action_enqueued.read() {
+        if let Some((_, n)) = enqueued.iter_mut().find(|(e, _)| *e == event.game()) {
+            *n += 1;
+        } else {
+            enqueued.push((event.game(), 1usize));
+        }
+    }
+    for (game_entity, new_actions) in enqueued {
+        if dropped.contains(&game_entity) {
+            next_changed.send(ActionQueueNextChanged::new(game_entity));
+            continue;
+        }
+        if matches!(queue.get(game_entity), Ok(queue) if queue.len() == new_actions) {
+            next_changed.send(ActionQueueNextChanged::new(game_entity));
+        }
+    }
+}
+
+/// Receive [`ActionInitialized`] event and insert unconfirmed [`PendingAction`]
+/// into a [`PendingActionQueue`] of a game entity received in the event.  
+/// Triggers [`ActionEnqueued`].
+pub fn create_pending_action<T: Copy + Send + Sync + 'static>(
+    mut game: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    mut action_initialized: EventReader<ActionInitialized<T>>,
+    mut action_enqueued: EventWriter<ActionEnqueued<T>>,
+) {
+    for event in action_initialized.read() {
+        let Ok(mut queue) = game.get_mut(event.game()) else {
+            continue;
+        };
+        queue.push(PendingAction::new_unconfirmed(
+            event.player(),
+            *event.action(),
+        ));
+        action_enqueued.send(ActionEnqueued::new(
+            event.game(),
+            event.player(),
+            *event.action(),
+        ));
+    }
+}
+
+pub fn confirm_local_game_action<T: Copy + Send + Sync + 'static>(
+    mut game: Query<&mut PendingActionQueue<T>, (With<ActiveGame>, Without<NetworkGame>)>,
+    mut action_enqueued: EventReader<ActionEnqueued<T>>,
+    mut action_confirmed: EventWriter<ActionConfirmed<T>>,
+) {
+    for event in action_enqueued.read() {
+        let Ok(mut queue) = game.get_mut(event.game()) else {
+            continue;
+        };
+        for action in queue.confirm_latest() {
+            action_confirmed.send(ActionConfirmed::new(
+                event.game(),
+                action.player(),
+                *action.action(),
+            ));
+        }
+    }
+}
+
 /// Listen to [`ReadyForConfirmation`] event and is the first pending action is not confirmed
 /// send it in a [`grpc::SessionActionReadyToSend`] event
 /// and change status to `ConfirmationStatus::WaitingConfirmation`.
 pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
-    mut game: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    mut game: Query<&mut PendingActionQueue<T>, (With<ActiveGame>, With<NetworkGame>)>,
     mut ready_for_confirmation: EventReader<ReadyForConfirmation>,
     mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
 ) {
@@ -208,6 +279,8 @@ pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
     mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
     player: Query<(&PlayerPosition, &Parent), With<CurrentUser>>,
     mut update_received: EventReader<grpc::SessionUpdateReceived<T>>,
+    mut action_enqueued: EventWriter<ActionEnqueued<T>>,
+    mut action_confirmed: EventWriter<ActionConfirmed<T>>,
 ) {
     for event in update_received.read() {
         let Ok(mut queue) = action_queue.get_mut(event.session_entity()) else {
@@ -236,31 +309,41 @@ pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
                 event.player(),
                 *event.action(),
             ));
+            action_enqueued.send(ActionEnqueued::new(
+                event.session_entity(),
+                event.player(),
+                *event.action(),
+            ));
         }
+        action_confirmed.send(ActionConfirmed::new(
+            event.session_entity(),
+            event.player(),
+            *event.action(),
+        ));
     }
 }
 
-/// Whenever action is confirmed or dropped take first consecutive confirmed actions
-/// from [`PendingActionQueue`], apply them and send [`ActionApplied`] and [`StateUpdated`] events.
-/// In case of an error send [`ActionDropped`] event.
+/// Whenever action is confirmed or next action in the queue is changed
+/// take first consecutive confirmed actions from [`PendingActionQueue`],
+/// apply them and send [`ActionApplied`] and [`StateUpdated`] events.  
+/// In case of an error drop action and send [`ActionDropped`] event.
 pub fn apply_confirmed<T>(
     mut game: Query<(&mut LocalGame<T>, &mut PendingActionQueue<T::TurnData>), With<ActiveGame>>,
     mut action_confirmed: EventReader<ActionConfirmed<T::TurnData>>,
-    mut action_dropped: EventReader<ActionDropped<T::TurnData>>,
+    mut next_changed: EventReader<ActionQueueNextChanged>,
     mut action_applied: EventWriter<ActionApplied<T::TurnData>>,
     mut state_updated: EventWriter<StateUpdated>,
-    // mut action_dropped_writer: EventWriter<ActionDropped<T::TurnData>>,
+    mut action_dropped: EventWriter<ActionDropped<T::TurnData>>,
 ) where
     T: core::Game + Send + Sync + 'static,
     T::TurnData: Copy + Send + Sync + 'static,
 {
-
     // TODO: maybe add some event to replace this, for example ActionQueueNextChanged
     let game_set = HashSet::<_>::from_iter(
         action_confirmed
             .read()
             .map(|e| e.game())
-            .chain(action_dropped.read().map(|e| e.game())),
+            .chain(next_changed.read().map(|e| **e)),
     );
     for game_entity in game_set {
         let Ok((mut game, mut queue)) = game.get_mut(game_entity) else {
@@ -276,14 +359,13 @@ pub fn apply_confirmed<T>(
                     ));
                     state_updated.send(StateUpdated::new(game_entity, state));
                 }
-                Err(_err) => {
-                    // TODO: figure out how to send this event
-                    // action_dropped_writer.send(ActionDropped::new(
-                    //     game_entity,
-                    //     pending_action.player(),
-                    //     *pending_action.action(),
-                    //     format!("game update failed after confirmation: {}", err),
-                    // ));
+                Err(err) => {
+                    action_dropped.send(ActionDropped::new(
+                        game_entity,
+                        pending_action.player(),
+                        *pending_action.action(),
+                        format!("game update failed after confirmation: {}", err),
+                    ));
                 }
             }
         }

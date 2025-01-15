@@ -17,9 +17,10 @@ use components::{
     PlayerPosition, UserAuthority,
 };
 use events::{
-    ActionApplied, ActionConfirmationFailed, ActionConfirmed, ActionDropped, ActionInitialized,
-    ReadyForConfirmation,
+    ActionApplied, ActionConfirmationFailed, ActionConfirmed, ActionDropped, ActionEnqueued,
+    ActionInitialized, ActionQueueNextChanged, ReadyForConfirmation,
 };
+use pending_action::{ConfirmationStatus, PendingAction};
 use resources::RefreshGameTimer;
 use systems::*;
 
@@ -31,7 +32,6 @@ pub use events::{
     BotReady, Draw, GameDataReady, GameEntityReady, PlayerWon, StateUpdated, TurnStart,
 };
 pub use game_info::{FullGameInfo, GameInfo};
-pub use pending_action::PendingAction;
 pub use resources::GameMenuContext;
 
 pub const ACTION_RESEND_INTERVAL_SEC: f32 = 1.0;
@@ -51,8 +51,10 @@ impl Plugin for GamePlugin {
         app.add_plugins(tic_tac_toe::TicTacToePlugin)
             .add_event::<GameDataReady>()
             .add_event::<GameEntityReady>()
+            .add_event::<ActionQueueNextChanged>()
             .add_event::<ReadyForConfirmation>()
             .add_event::<ActionInitialized<core::GridIndex>>()
+            .add_event::<ActionEnqueued<core::GridIndex>>()
             .add_event::<ActionConfirmationFailed<core::GridIndex>>()
             .add_event::<ActionConfirmed<core::GridIndex>>()
             .add_event::<ActionDropped<core::GridIndex>>()
@@ -87,6 +89,9 @@ impl Plugin for GamePlugin {
                     update_current_user,
                     clear_foreign_network_games,
                     clear_game_on_exit,
+                    create_pending_action::<core::GridIndex>,
+                    confirm_local_game_action::<core::GridIndex>,
+                    action_queue_next_changed::<core::GridIndex>,
                     action_ready_for_confirmation::<core::GridIndex>,
                     create_resend_action_timer::<core::GridIndex>,
                     resend_action_timer_tick,
