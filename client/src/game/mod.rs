@@ -97,6 +97,13 @@ impl Plugin for GamePlugin {
                     apply_confirmed::<TicTacToe>,
                 ),
             )
-            .add_systems(Update, log_dropped_action::<core::GridIndex>);
+            .add_systems(
+                Update,
+                (
+                    log_enqueued_action::<core::GridIndex>,
+                    log_confirmed_action::<core::GridIndex>,
+                    log_dropped_action::<core::GridIndex>,
+                ),
+            );
     }
 }

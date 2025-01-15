@@ -81,6 +81,7 @@ impl BotReady {
     }
 }
 
+/// Event that signals that the first pending action in the queue has changed.
 #[derive(Debug, Deref, Event)]
 pub struct ActionQueueNextChanged(Entity);
 
@@ -120,7 +121,7 @@ impl<T> ActionInitialized<T> {
     }
 }
 
-/// Event that signals that `player` wants to make game action.
+/// Event that signals that new pending action was added to the queue.
 #[derive(Debug, Event)]
 pub struct ActionEnqueued<T> {
     game: Entity,
@@ -190,6 +191,7 @@ impl<T> ActionConfirmationFailed<T> {
     }
 }
 
+/// Event that signals that pending action was confirmed.
 #[derive(Debug, Event)]
 pub struct ActionConfirmed<T> {
     game: Entity,
@@ -219,6 +221,7 @@ impl<T> ActionConfirmed<T> {
     }
 }
 
+/// Event that signals that pending action had failed to execute and was removed from the queue.
 #[derive(Debug, Event)]
 pub struct ActionDropped<T> {
     game: Entity,

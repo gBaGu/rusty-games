@@ -72,6 +72,8 @@ pub fn network_game_initialization_finished(
     }
 }
 
+/// Receive [`ActionEnqueued`] and [`ActionDropped`] events and
+/// send [`ActionQueueNextChanged`] when the first action in the queue has changed.
 pub fn action_queue_next_changed<T: Send + Sync + 'static>(
     queue: Query<&PendingActionQueue<T>>,
     mut action_enqueued: EventReader<ActionEnqueued<T>>,
@@ -124,6 +126,8 @@ pub fn create_pending_action<T: Copy + Send + Sync + 'static>(
     }
 }
 
+/// Receive [`ActionEnqueued`] and if the game is local confirm all pending actions.
+/// Triggers [`ActionConfirmed`].
 pub fn confirm_local_game_action<T: Copy + Send + Sync + 'static>(
     mut game: Query<&mut PendingActionQueue<T>, (With<ActiveGame>, Without<NetworkGame>)>,
     mut action_enqueued: EventReader<ActionEnqueued<T>>,
@@ -260,9 +264,11 @@ pub fn action_confirmation_failed<T: Copy + Send + Sync + 'static>(
     }
 }
 
-/// Receive [`grpc::SessionUpdateReceived`] event and if it's a current player action
-/// then update action status in [`PendingActionQueue`], otherwise just push it to the end with
-/// its status set to `ConfirmationStatus::Confirmed`.
+/// Receive [`grpc::SessionUpdateReceived`] event and find [`PendingActionQueue`].
+/// If the action received in the event is a current player action
+/// then set its status to `ConfirmationStatus::Confirmed`,
+/// otherwise push confirmed action to the queue and send [`ActionEnqueued`] event.
+/// In both cases send [`ActionConfirmed`] event.
 pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
     mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
     player: Query<(&PlayerPosition, &Parent), With<CurrentUser>>,
@@ -396,7 +402,6 @@ pub fn update_current_player(
             .for_each(|(player_entity, &position, _)| {
                 let mut player_cmds = commands.entity(player_entity);
                 if *position == event.player() {
-                    println!("set current player: {}", event.player());
                     player_cmds.insert(CurrentPlayer);
                 } else {
                     player_cmds.remove::<CurrentPlayer>();
@@ -541,7 +546,35 @@ pub fn log_dropped_action<T: std::fmt::Debug + Send + Sync + 'static>(
             event.game(),
             event.action(),
             event.player(),
-            event.reason()
+            event.reason(),
+        );
+    }
+}
+
+/// Log [`PendingAction`] when it's added to the queue.
+pub fn log_enqueued_action<T: std::fmt::Debug + Send + Sync + 'static>(
+    mut action_enqueued: EventReader<ActionEnqueued<T>>,
+) {
+    for event in action_enqueued.read() {
+        println!(
+            "game {} action added, action={:?}, player={}",
+            event.game(),
+            event.action(),
+            event.player(),
+        );
+    }
+}
+
+/// Log [`PendingAction`] when it was confirmed.
+pub fn log_confirmed_action<T: std::fmt::Debug + Send + Sync + 'static>(
+    mut action_confirmed: EventReader<ActionConfirmed<T>>,
+) {
+    for event in action_confirmed.read() {
+        println!(
+            "game {} action was confirmed, action={:?}, player={}",
+            event.game(),
+            event.action(),
+            event.player(),
         );
     }
 }
