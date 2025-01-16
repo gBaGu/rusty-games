@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use game_server::{core, proto};
-use itertools::Itertools;
 use smallvec::SmallVec;
 
 use super::components::{ActionResendTimer, FinishedGame, Game, LocalGame};
@@ -835,11 +834,11 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity1);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
 
         clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
         app.world_mut()
@@ -850,11 +849,11 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity1);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::Single(0));
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
 
         clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
         app.world_mut()
@@ -868,14 +867,14 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity2);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity1);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::Single(1));
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
 
         clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
         app.world_mut()
@@ -889,11 +888,11 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity2);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
     }
 
     /// Check:

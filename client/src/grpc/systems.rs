@@ -617,29 +617,19 @@ mod test {
             .entity(session_inactive)
             .contains::<DummySession>());
         let session_closed_events = app.world().resource::<Events<SessionClosed>>();
-        let mut session_closed_event_reader = session_closed_events.get_reader();
+        let mut cursor = session_closed_events.get_cursor();
         assert_eq!(
-            **session_closed_event_reader
-                .read(session_closed_events)
-                .next()
-                .unwrap(),
+            **cursor.read(session_closed_events).next().unwrap(),
             session_active
         );
         assert_eq!(
-            **session_closed_event_reader
-                .read(session_closed_events)
-                .next()
-                .unwrap(),
+            **cursor.read(session_closed_events).next().unwrap(),
             session_inactive
         );
         let open_session_events = app.world().resource::<Events<OpenSession>>();
-        let mut open_session_event_reader = open_session_events.get_reader();
+        let mut cursor = open_session_events.get_cursor();
         assert_eq!(
-            open_session_event_reader
-                .read(open_session_events)
-                .next()
-                .unwrap()
-                .game(),
+            cursor.read(open_session_events).next().unwrap().game(),
             session_active
         );
     }
@@ -672,17 +662,13 @@ mod test {
 
         // this should trigger send error because there's no session component
         app.update();
-        let error_events = app.world().resource::<SendFailedEvents>();
-        let mut error_event_reader = error_events.get_reader();
+        let err_events = app.world().resource::<SendFailedEvents>();
+        let mut cursor = err_events.get_cursor();
         assert_eq!(
-            error_event_reader
-                .read(error_events)
-                .next()
-                .unwrap()
-                .session_entity(),
+            cursor.read(err_events).next().unwrap().session_entity(),
             session
         ); // got error event
-        assert!(error_event_reader.read(error_events).next().is_none());
+        assert!(cursor.read(err_events).next().is_none());
         // ensure old events are dropped
         app.world_mut().resource_mut::<SendFailedEvents>().clear();
 
@@ -708,17 +694,13 @@ mod test {
         send_action_ready_to_send(app.world_mut(), session, ());
         // this should trigger send error because previous SendActionTask isn't completed
         app.update();
-        let error_events = app.world().resource::<SendFailedEvents>();
-        let mut error_event_reader = error_events.get_reader();
+        let err_events = app.world().resource::<SendFailedEvents>();
+        let mut cursor = err_events.get_cursor();
         assert_eq!(
-            error_event_reader
-                .read(error_events)
-                .next()
-                .unwrap()
-                .session_entity(),
+            cursor.read(err_events).next().unwrap().session_entity(),
             session
         ); // got error event
-        assert!(error_event_reader.read(error_events).next().is_none());
+        assert!(cursor.read(err_events).next().is_none());
         // remove infinite task
         app.world_mut()
             .entity_mut(session)
@@ -746,17 +728,13 @@ mod test {
         // this should remove send task and trigger error event because the channel is closed
         app.update();
         assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
-        let error_events = app.world().resource::<SendFailedEvents>();
-        let mut error_event_reader = error_events.get_reader();
+        let err_events = app.world().resource::<SendFailedEvents>();
+        let mut cursor = err_events.get_cursor();
         assert_eq!(
-            error_event_reader
-                .read(error_events)
-                .next()
-                .unwrap()
-                .session_entity(),
+            cursor.read(err_events).next().unwrap().session_entity(),
             session
         ); // got error event
-        assert!(error_event_reader.read(error_events).next().is_none());
+        assert!(cursor.read(err_events).next().is_none());
     }
 
     /// Spawn game session with receiver that will receive some predefined updates.
@@ -804,15 +782,11 @@ mod test {
         app.update();
         assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
-        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
-        let mut update_event_reader = update_events.get_reader();
-        assert!(update_event_reader.read(update_events).next().is_some()); // got update event
-        assert!(update_event_reader.read(update_events).next().is_none());
-        assert!(error_events
-            .get_reader()
-            .read(error_events)
-            .next()
-            .is_none());
+        let err_events = app.world().resource::<Events<SessionErrorReceived>>();
+        let mut cursor = update_events.get_cursor();
+        assert!(cursor.read(update_events).next().is_some()); // got update event
+        assert!(cursor.read(update_events).next().is_none());
+        assert!(err_events.get_cursor().read(err_events).next().is_none());
 
         // this should spawn receive task
         app.update();
@@ -830,15 +804,11 @@ mod test {
         app.update();
         assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
-        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
-        let mut update_event_reader = update_events.get_reader();
-        assert!(update_event_reader.read(update_events).next().is_some()); // got update event
-        assert!(update_event_reader.read(update_events).next().is_none());
-        assert!(error_events
-            .get_reader()
-            .read(error_events)
-            .next()
-            .is_none());
+        let err_events = app.world().resource::<Events<SessionErrorReceived>>();
+        let mut cursor = update_events.get_cursor();
+        assert!(cursor.read(update_events).next().is_some()); // got update event
+        assert!(cursor.read(update_events).next().is_none());
+        assert!(err_events.get_cursor().read(err_events).next().is_none());
 
         // this should spawn receive task
         app.update();
@@ -856,15 +826,15 @@ mod test {
         app.update();
         assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
-        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        let err_events = app.world().resource::<Events<SessionErrorReceived>>();
         assert!(update_events
-            .get_reader()
+            .get_cursor()
             .read(update_events)
             .next()
             .is_none());
-        let mut error_event_reader = error_events.get_reader();
-        assert!(error_event_reader.read(error_events).next().is_some()); // got error event
-        assert!(error_event_reader.read(error_events).next().is_none());
+        let mut cursor = err_events.get_cursor();
+        assert!(cursor.read(err_events).next().is_some()); // got error event
+        assert!(cursor.read(err_events).next().is_none());
 
         // this should spawn receive task
         app.update();
@@ -874,32 +844,24 @@ mod test {
         app.update();
         assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
-        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        let err_events = app.world().resource::<Events<SessionErrorReceived>>();
         assert!(update_events
-            .get_reader()
+            .get_cursor()
             .read(update_events)
             .next()
             .is_none());
-        assert!(error_events
-            .get_reader()
-            .read(error_events)
-            .next()
-            .is_none());
+        assert!(err_events.get_cursor().read(err_events).next().is_none());
 
         s.close();
         // this should just print a message
         app.update();
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
-        let error_events = app.world().resource::<Events<SessionErrorReceived>>();
+        let err_events = app.world().resource::<Events<SessionErrorReceived>>();
         assert!(update_events
-            .get_reader()
+            .get_cursor()
             .read(update_events)
             .next()
             .is_none());
-        assert!(error_events
-            .get_reader()
-            .read(error_events)
-            .next()
-            .is_none());
+        assert!(err_events.get_cursor().read(err_events).next().is_none());
     }
 }
