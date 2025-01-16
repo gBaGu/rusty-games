@@ -2,12 +2,11 @@ use bevy::prelude::*;
 use game_server::core::tic_tac_toe::TicTacToe;
 use game_server::core::{self, Game as _};
 use game_server::proto;
-use smallvec::SmallVec;
 
 use super::bot::{BotBundle, NoDifficultyBotBundle};
 use super::{
-    Images, LocalGame, LocalGameBundle, NetworkGameBundle, PendingAction, PendingActionQueue,
-    PlayerActionApplied, PlayerActionInitialized, O_SPRITE_PATH, X_SPRITE_PATH,
+    Images, LocalGame, LocalGameBundle, NetworkGameBundle, PlayerActionApplied, O_SPRITE_PATH,
+    X_SPRITE_PATH,
 };
 use crate::game::components::PendingGame;
 use crate::game::resources::RefreshGameTimer;
@@ -244,61 +243,5 @@ pub fn create(
         let game_entity = game_cmds.id();
         game_cmds.insert_children(0, &[user_id, enemy_id]);
         println!("game created: {:?}", game_entity);
-    }
-}
-
-/// Receive [`PlayerActionInitialized`] event and insert [`PendingAction`]
-/// into a [`PendingActionQueue`] of a game entity received in the event.
-/// If game entity contains [`NetworkGame`] component the status of created action will be
-/// `PendingActionStatus::NotConfirmed`, otherwise `PendingActionStatus::Confirmed`.
-pub fn create_pending_action(
-    mut game: Query<(Option<&NetworkGame>, &mut PendingActionQueue), With<ActiveGame>>,
-    mut action_initialized: EventReader<PlayerActionInitialized>,
-) {
-    for event in action_initialized.read() {
-        match game.get_mut(event.game()) {
-            Ok((Some(_), mut queue)) => {
-                queue.push(PendingAction::new_unconfirmed(
-                    event.player(),
-                    event.action(),
-                ));
-            }
-            Ok((None, mut queue)) => {
-                queue.push(PendingAction::new_confirmed(event.player(), event.action()));
-            }
-            Err(err) => {
-                println!("failed to get game entity: {}", err);
-                continue;
-            }
-        };
-    }
-}
-
-/// Take all consecutive confirmed actions from [`PendingActionQueue`], apply them and send
-/// [`PlayerActionApplied`] and [`StateUpdated`] events.
-pub fn apply_confirmed(
-    mut game: Query<(Entity, &mut LocalGame, &mut PendingActionQueue), With<ActiveGame>>,
-    mut action_applied: EventWriter<PlayerActionApplied>,
-    mut state_updated: EventWriter<StateUpdated>,
-) {
-    for (game_entity, mut game, mut queue) in game.iter_mut() {
-        let mut actions_processed = 0;
-        for pending_action in queue.iter().take_while(|action| action.is_confirmed()) {
-            match game.update(pending_action.player(), *pending_action.action()) {
-                Ok(state) => {
-                    action_applied.send(PlayerActionApplied::new(
-                        game_entity,
-                        pending_action.player(),
-                        *pending_action.action(),
-                    ));
-                    state_updated.send(StateUpdated::new(game_entity, state));
-                }
-                Err(err) => println!("action {:?} failed with {}", pending_action, err),
-            }
-            actions_processed += 1;
-        }
-        if actions_processed > 0 {
-            *queue = PendingActionQueue::from(SmallVec::from(&queue[actions_processed..]));
-        }
     }
 }

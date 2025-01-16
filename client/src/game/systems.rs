@@ -1,16 +1,18 @@
-use std::collections::HashSet;
-
 use bevy::prelude::*;
 use game_server::{core, proto};
+use smallvec::SmallVec;
 
-use super::components::{FinishedGame, Game};
+use super::components::{ActionResendTimer, FinishedGame, Game, LocalGame};
 use super::pending_action::ConfirmationStatus;
 use super::{
     ActionConfirmationFailed, ActiveGame, CurrentPlayer, CurrentUser, Draw, GameEntityReady,
     NetworkGame, PendingAction, PendingActionQueue, PlayerPosition, PlayerWon, StateUpdated,
     TurnStart, UserAuthority, Winner,
 };
-use crate::game::events::ActionStatusRevertPolicy;
+use crate::game::events::{
+    ActionApplied, ActionConfirmed, ActionDropped, ActionEnqueued, ActionInitialized,
+    ActionQueueNextChanged, ActionStatusRevertPolicy,
+};
 use crate::UserIdChanged;
 use crate::{grpc, interface};
 
@@ -70,14 +72,105 @@ pub fn network_game_initialization_finished(
     }
 }
 
-/// If the game has [`PendingAction`] and it is not confirmed,
-/// send [`grpc::SessionActionReadyToSend`] event
-/// and change action status to `ConfirmationStatus::WaitingConfirmation`.
+/// Receive [`ActionEnqueued`] and [`ActionDropped`] events and
+/// send [`ActionQueueNextChanged`] when the first action in the queue has changed.
+pub fn action_queue_next_changed<T: Send + Sync + 'static>(
+    queue: Query<&PendingActionQueue<T>>,
+    mut action_enqueued: EventReader<ActionEnqueued<T>>,
+    mut action_dropped: EventReader<ActionDropped<T>>,
+    mut next_changed: EventWriter<ActionQueueNextChanged>,
+) {
+    let mut dropped = SmallVec::<[_; 8]>::new();
+    for game_entity in action_dropped.read().map(|e| e.game()) {
+        if !dropped.contains(&game_entity) {
+            next_changed.send(ActionQueueNextChanged::new(game_entity));
+            dropped.push(game_entity);
+        }
+    }
+    let mut enqueued = SmallVec::<[_; 8]>::new();
+    for event in action_enqueued.read() {
+        if let Some((_, n)) = enqueued.iter_mut().find(|(e, _)| *e == event.game()) {
+            *n += 1;
+        } else {
+            enqueued.push((event.game(), 1usize));
+        }
+    }
+    for (game_entity, new_actions) in enqueued {
+        if dropped.contains(&game_entity) {
+            continue;
+        }
+        if matches!(queue.get(game_entity), Ok(queue) if queue.len() == new_actions) {
+            next_changed.send(ActionQueueNextChanged::new(game_entity));
+        }
+    }
+}
+
+/// Receive [`ActionInitialized`] event and insert unconfirmed [`PendingAction`]
+/// into a [`PendingActionQueue`] of a game entity received in the event.  
+/// Triggers [`ActionEnqueued`].
+pub fn create_pending_action<T: Copy + Send + Sync + 'static>(
+    mut game: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
+    mut action_initialized: EventReader<ActionInitialized<T>>,
+    mut action_enqueued: EventWriter<ActionEnqueued<T>>,
+) {
+    for event in action_initialized.read() {
+        let Ok(mut queue) = game.get_mut(event.game()) else {
+            continue;
+        };
+        queue.push(PendingAction::new_unconfirmed(
+            event.player(),
+            *event.action(),
+        ));
+        action_enqueued.send(ActionEnqueued::new(
+            event.game(),
+            event.player(),
+            *event.action(),
+        ));
+    }
+}
+
+/// Receive [`ActionEnqueued`] and if the game is local confirm all pending actions.
+/// Triggers [`ActionConfirmed`].
+pub fn confirm_local_game_action<T: Copy + Send + Sync + 'static>(
+    mut game: Query<&mut PendingActionQueue<T>, (With<ActiveGame>, Without<NetworkGame>)>,
+    mut action_enqueued: EventReader<ActionEnqueued<T>>,
+    mut action_confirmed: EventWriter<ActionConfirmed<T>>,
+) {
+    for event in action_enqueued.read() {
+        let Ok(mut queue) = game.get_mut(event.game()) else {
+            continue;
+        };
+        for action in queue.confirm_latest() {
+            action_confirmed.send(ActionConfirmed::new(
+                event.game(),
+                action.player(),
+                *action.action(),
+            ));
+        }
+    }
+}
+
+/// Listen to [`ActionQueueNextChanged`] event or [`ActionResendTimer`] removal and
+/// if the first pending action in the queue is not confirmed
+/// send it in a [`grpc::SessionActionReadyToSend`] event
+/// and change status to `ConfirmationStatus::WaitingConfirmation`.
 pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
-    mut game: Query<(Entity, &mut PendingActionQueue<T>), With<ActiveGame>>,
+    mut game: Query<
+        &mut PendingActionQueue<T>,
+        (
+            With<ActiveGame>,
+            With<NetworkGame>,
+            Without<ActionResendTimer>,
+        ),
+    >,
+    mut next_changed: EventReader<ActionQueueNextChanged>,
+    mut resend: RemovedComponents<ActionResendTimer>,
     mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
 ) {
-    for (game_entity, mut queue) in game.iter_mut() {
+    for game_entity in resend.read().chain(next_changed.read().map(|e| **e)) {
+        let Ok(mut queue) = game.get_mut(game_entity) else {
+            continue;
+        };
         let Some(next_action) = queue.first_mut() else {
             continue;
         };
@@ -87,6 +180,34 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
                 game_entity,
                 *next_action.action(),
             ));
+        }
+    }
+}
+
+/// Insert [`ActionResendTimer`] into the entity when [`ActionConfirmationFailed`] is received.
+pub fn create_resend_action_timer<T: Send + Sync + 'static>(
+    mut commands: Commands,
+    game: Query<(), (With<ActiveGame>, Without<ActionResendTimer>)>,
+    mut confirmation_failed: EventReader<ActionConfirmationFailed<T>>,
+) {
+    for event in confirmation_failed.read() {
+        if game.contains(event.game()) {
+            commands
+                .entity(event.game())
+                .insert(ActionResendTimer::default());
+        }
+    }
+}
+
+/// Tick [`ActionResendTimer`] and remove it when it's finished.
+pub fn resend_action_timer_tick(
+    mut commands: Commands,
+    mut timer: Query<(Entity, &mut ActionResendTimer)>,
+    time: Res<Time>,
+) {
+    for (timer_entity, mut timer) in timer.iter_mut() {
+        if timer.tick(time.delta()).just_finished() {
+            commands.entity(timer_entity).remove::<ActionResendTimer>();
         }
     }
 }
@@ -131,11 +252,10 @@ pub fn action_confirmation_failed<T: Copy + Send + Sync + 'static>(
     mut action_send_failed: EventReader<grpc::SessionActionSendFailed<T>>,
     mut confirmation_failed: EventWriter<ActionConfirmationFailed<T>>,
 ) {
-    let mut closed_sessions = HashSet::new();
-    for event in session_closed.read() {
-        closed_sessions.insert(**event);
-        confirmation_failed.send(ActionConfirmationFailed::revert_all(**event));
-    }
+    let closed_sessions =
+        SmallVec::<[_; 8]>::from_iter(session_closed.read().map(|e| **e).inspect(|e| {
+            confirmation_failed.send(ActionConfirmationFailed::revert_all(*e));
+        }));
     for event in action_send_failed.read() {
         if closed_sessions.contains(&event.session_entity()) {
             continue;
@@ -147,13 +267,17 @@ pub fn action_confirmation_failed<T: Copy + Send + Sync + 'static>(
     }
 }
 
-/// Receive [`grpc::SessionUpdateReceived`] event and if it's a current player action
-/// then update action status in [`PendingActionQueue`], otherwise just push it to the end with
-/// its status set to `ConfirmationStatus::Confirmed`.
+/// Receive [`grpc::SessionUpdateReceived`] event and find [`PendingActionQueue`].
+/// If the action received in the event is a current player action
+/// then set its status to `ConfirmationStatus::Confirmed`,
+/// otherwise push confirmed action to the queue and send [`ActionEnqueued`] event.
+/// In both cases send [`ActionConfirmed`] event.
 pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
     mut action_queue: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
     player: Query<(&PlayerPosition, &Parent), With<CurrentUser>>,
     mut update_received: EventReader<grpc::SessionUpdateReceived<T>>,
+    mut action_enqueued: EventWriter<ActionEnqueued<T>>,
+    mut action_confirmed: EventWriter<ActionConfirmed<T>>,
 ) {
     for event in update_received.read() {
         let Ok(mut queue) = action_queue.get_mut(event.session_entity()) else {
@@ -182,6 +306,62 @@ pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
                 event.player(),
                 *event.action(),
             ));
+            action_enqueued.send(ActionEnqueued::new(
+                event.session_entity(),
+                event.player(),
+                *event.action(),
+            ));
+        }
+        action_confirmed.send(ActionConfirmed::new(
+            event.session_entity(),
+            event.player(),
+            *event.action(),
+        ));
+    }
+}
+
+/// Whenever action is confirmed or next action in the queue is changed
+/// take first consecutive confirmed actions from [`PendingActionQueue`],
+/// apply them and send [`ActionApplied`] and [`StateUpdated`] events.  
+/// In case of an error drop action and send [`ActionDropped`] event.
+pub fn apply_confirmed<T>(
+    mut game: Query<(&mut LocalGame<T>, &mut PendingActionQueue<T::TurnData>), With<ActiveGame>>,
+    mut action_confirmed: EventReader<ActionConfirmed<T::TurnData>>,
+    mut next_changed: EventReader<ActionQueueNextChanged>,
+    mut action_applied: EventWriter<ActionApplied<T::TurnData>>,
+    mut state_updated: EventWriter<StateUpdated>,
+    mut action_dropped: EventWriter<ActionDropped<T::TurnData>>,
+) where
+    T: core::Game + Send + Sync + 'static,
+    T::TurnData: Copy + Send + Sync + 'static,
+{
+    let to_confirm = action_confirmed
+        .read()
+        .map(|e| e.game())
+        .chain(next_changed.read().map(|e| **e));
+    for game_entity in to_confirm {
+        let Ok((mut game, mut queue)) = game.get_mut(game_entity) else {
+            continue;
+        };
+        for pending_action in queue.pop_confirmed() {
+            match game.update(pending_action.player(), *pending_action.action()) {
+                Ok(state) => {
+                    action_applied.send(ActionApplied::new(
+                        game_entity,
+                        pending_action.player(),
+                        *pending_action.action(),
+                    ));
+                    state_updated.send(StateUpdated::new(game_entity, state));
+                }
+                Err(err) => {
+                    action_dropped.send(ActionDropped::new(
+                        game_entity,
+                        pending_action.player(),
+                        *pending_action.action(),
+                        format!("game update failed after confirmation: {}", err),
+                    ));
+                }
+            }
         }
     }
 }
@@ -225,7 +405,6 @@ pub fn update_current_player(
             .for_each(|(player_entity, &position, _)| {
                 let mut player_cmds = commands.entity(player_entity);
                 if *position == event.player() {
-                    println!("set current player: {}", event.player());
                     player_cmds.insert(CurrentPlayer);
                 } else {
                     player_cmds.remove::<CurrentPlayer>();
@@ -357,6 +536,49 @@ pub fn close_session(
 ) {
     for entity in deactivated_game.read() {
         close_session.send(grpc::CloseSession::new(entity));
+    }
+}
+
+/// Log [`PendingAction`] when it's dropped out of the queue.
+pub fn log_dropped_action<T: std::fmt::Debug + Send + Sync + 'static>(
+    mut action_dropped: EventReader<ActionDropped<T>>,
+) {
+    for event in action_dropped.read() {
+        println!(
+            "game {} action dropped, action={:?}, player={}, reason={}",
+            event.game(),
+            event.action(),
+            event.player(),
+            event.reason(),
+        );
+    }
+}
+
+/// Log [`PendingAction`] when it's added to the queue.
+pub fn log_enqueued_action<T: std::fmt::Debug + Send + Sync + 'static>(
+    mut action_enqueued: EventReader<ActionEnqueued<T>>,
+) {
+    for event in action_enqueued.read() {
+        println!(
+            "game {} action added, action={:?}, player={}",
+            event.game(),
+            event.action(),
+            event.player(),
+        );
+    }
+}
+
+/// Log [`PendingAction`] when it was confirmed.
+pub fn log_confirmed_action<T: std::fmt::Debug + Send + Sync + 'static>(
+    mut action_confirmed: EventReader<ActionConfirmed<T>>,
+) {
+    for event in action_confirmed.read() {
+        println!(
+            "game {} action was confirmed, action={:?}, player={}",
+            event.game(),
+            event.action(),
+            event.player(),
+        );
     }
 }
 
@@ -612,11 +834,11 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity1);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
 
         clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
         app.world_mut()
@@ -627,11 +849,11 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity1);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::Single(0));
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
 
         clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
         app.world_mut()
@@ -645,14 +867,14 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity2);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity1);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::Single(1));
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
 
         clear_events::<ActionConfirmationFailed<u64>>(app.world_mut());
         app.world_mut()
@@ -666,10 +888,201 @@ mod test {
         let confirmation_failed_events = app
             .world()
             .resource::<Events<ActionConfirmationFailed<u64>>>();
-        let mut reader = confirmation_failed_events.get_reader();
-        let event = reader.read(confirmation_failed_events).next().unwrap();
+        let mut cursor = confirmation_failed_events.get_cursor();
+        let event = cursor.read(confirmation_failed_events).next().unwrap();
         assert_eq!(event.game(), entity2);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
-        assert!(reader.read(confirmation_failed_events).next().is_none());
+        assert!(cursor.read(confirmation_failed_events).next().is_none());
+    }
+
+    /// Check:
+    /// - empty queue, 1 enqueued
+    /// - 1-action queue, 1 enqueued
+    /// - empty queue, 1-action queue, 1 enqueued for both queues
+    #[test]
+    fn action_queue_next_changed_after_action_enqueue() {
+        type ActionQueue = PendingActionQueue<u64>;
+
+        let mut app = App::new();
+        app.add_event::<ActionEnqueued<u64>>();
+        app.add_event::<ActionDropped<u64>>();
+        app.add_event::<ActionQueueNextChanged>();
+        app.add_systems(Update, action_queue_next_changed::<u64>);
+
+        let queue1 = app.world_mut().spawn(ActionQueue::default()).id();
+        let queue2 = app.world_mut().spawn(ActionQueue::default()).id();
+
+        // insert 1 action into the first queue and emit 1 event
+        app.world_mut()
+            .entity_mut(queue1)
+            .get_mut::<ActionQueue>()
+            .unwrap()
+            .push(PendingAction::new(0, 0, ConfirmationStatus::NotConfirmed));
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue1, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // insert 2 actions into the second queue and emit 1 event
+        app.world_mut()
+            .entity_mut(queue2)
+            .insert(ActionQueue::from(SmallVec::from_elem(
+                PendingAction::new(0, 0, ConfirmationStatus::NotConfirmed),
+                2,
+            )));
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue2, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        assert!(events.get_cursor().read(events).next().is_none());
+
+        // first queue - 1 action, second - 2 actions, emit 1 event for both
+        let mut events = app
+            .world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>();
+        events.send(ActionEnqueued::new(queue1, 0, 0));
+        events.send(ActionEnqueued::new(queue2, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+    }
+
+    /// Check:
+    /// - drop from 1-action queue
+    /// - drop from 2-action queue
+    /// - drop from both 1-action and 2-action queue
+    /// - 2 drops from one queue trigger 1 event
+    #[test]
+    fn action_queue_next_changed_after_action_drop() {
+        type ActionQueue = PendingActionQueue<u64>;
+
+        let mut app = App::new();
+        app.add_event::<ActionEnqueued<u64>>();
+        app.add_event::<ActionDropped<u64>>();
+        app.add_event::<ActionQueueNextChanged>();
+        app.add_systems(Update, action_queue_next_changed::<u64>);
+
+        let queue1 = app.world_mut().spawn(ActionQueue::default()).id();
+        let queue2 = app
+            .world_mut()
+            .spawn(ActionQueue::from(smallvec::smallvec![PendingAction::new(
+                0,
+                0,
+                ConfirmationStatus::NotConfirmed
+            )]))
+            .id();
+
+        // 1 action remains after drop
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue2, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // queue is empty after drop
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue1, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // one queue has 1 action and the other one is empty after drop
+        let mut events = app.world_mut().resource_mut::<Events<ActionDropped<u64>>>();
+        events.send(ActionDropped::new(queue1, 0, 0, ""));
+        events.send(ActionDropped::new(queue2, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // 2 drops from the queue trigger 1 event
+        let mut events = app.world_mut().resource_mut::<Events<ActionDropped<u64>>>();
+        events.send(ActionDropped::new(queue1, 0, 0, ""));
+        events.send(ActionDropped::new(queue1, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+    }
+
+    /// Check:
+    /// - drop and enqueue in one queue trigger one event
+    /// - the same as above but events order is changed
+    #[test]
+    fn action_queue_next_changed_after_action_enqueue_and_drop() {
+        type ActionQueue = PendingActionQueue<u64>;
+
+        let mut app = App::new();
+        app.add_event::<ActionEnqueued<u64>>();
+        app.add_event::<ActionDropped<u64>>();
+        app.add_event::<ActionQueueNextChanged>();
+        app.add_systems(Update, action_queue_next_changed::<u64>);
+
+        let queue1 = app.world_mut().spawn(ActionQueue::default()).id();
+        let queue2 = app
+            .world_mut()
+            .spawn(ActionQueue::from(SmallVec::from_elem(
+                PendingAction::new(0, 0, ConfirmationStatus::NotConfirmed),
+                2,
+            )))
+            .id();
+
+        // drop and enqueue for queue2 should trigger one event
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue2, 0, 0, ""));
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue2, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // enqueue and drop for queue2 should trigger one event
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue1, 0, 0));
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue1, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
     }
 }

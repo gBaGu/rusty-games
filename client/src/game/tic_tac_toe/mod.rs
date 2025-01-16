@@ -22,10 +22,8 @@ type Action = <TicTacToe as core::Game>::TurnData;
 type LocalGame = super::LocalGame<TicTacToe>;
 type LocalGameBundle = super::LocalGameBundle<TicTacToe, Action>;
 type NetworkGameBundle = super::NetworkGameBundle<TicTacToe, Action>;
-type PendingAction = super::PendingAction<Action>;
-type PendingActionQueue = super::PendingActionQueue<Action>;
-type PlayerActionInitialized = super::PlayerActionInitialized<Action>;
-type PlayerActionApplied = super::PlayerActionApplied<Action>;
+type PlayerActionInitialized = super::ActionInitialized<Action>;
+type PlayerActionApplied = super::ActionApplied<Action>;
 
 pub struct TicTacToePlugin;
 
@@ -37,8 +35,6 @@ impl Plugin for TicTacToePlugin {
             menu::GameMenuPlugin,
             ui::InGameUIPlugin,
         ))
-        .add_event::<PlayerActionInitialized>()
-        .add_event::<PlayerActionApplied>()
         .add_systems(Startup, init)
         .add_systems(
             Update,
@@ -47,8 +43,6 @@ impl Plugin for TicTacToePlugin {
                 handle_get_game_reply_on_join,
                 handle_get_game,
                 create,
-                create_pending_action,
-                apply_confirmed,
             ),
         );
     }
