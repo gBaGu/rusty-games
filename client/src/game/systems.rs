@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use game_server::{core, proto};
+use itertools::Itertools;
 use smallvec::SmallVec;
 
 use super::components::{ActionResendTimer, FinishedGame, Game, LocalGame};
@@ -80,10 +81,13 @@ pub fn action_queue_next_changed<T: Send + Sync + 'static>(
     mut action_dropped: EventReader<ActionDropped<T>>,
     mut next_changed: EventWriter<ActionQueueNextChanged>,
 ) {
-    let dropped =
-        SmallVec::<[_; 8]>::from_iter(action_dropped.read().map(|e| e.game()).inspect(|e| {
-            next_changed.send(ActionQueueNextChanged::new(*e));
-        }));
+    let mut dropped = SmallVec::<[_; 8]>::new();
+    for game_entity in action_dropped.read().map(|e| e.game()) {
+        if !dropped.contains(&game_entity) {
+            next_changed.send(ActionQueueNextChanged::new(game_entity));
+            dropped.push(game_entity);
+        }
+    }
     let mut enqueued = SmallVec::<[_; 8]>::new();
     for event in action_enqueued.read() {
         if let Some((_, n)) = enqueued.iter_mut().find(|(e, _)| *e == event.game()) {
@@ -890,5 +894,196 @@ mod test {
         assert_eq!(event.game(), entity2);
         assert_eq!(*event.revert_policy(), ActionStatusRevertPolicy::All);
         assert!(reader.read(confirmation_failed_events).next().is_none());
+    }
+
+    /// Check:
+    /// - empty queue, 1 enqueued
+    /// - 1-action queue, 1 enqueued
+    /// - empty queue, 1-action queue, 1 enqueued for both queues
+    #[test]
+    fn action_queue_next_changed_after_action_enqueue() {
+        type ActionQueue = PendingActionQueue<u64>;
+
+        let mut app = App::new();
+        app.add_event::<ActionEnqueued<u64>>();
+        app.add_event::<ActionDropped<u64>>();
+        app.add_event::<ActionQueueNextChanged>();
+        app.add_systems(Update, action_queue_next_changed::<u64>);
+
+        let queue1 = app.world_mut().spawn(ActionQueue::default()).id();
+        let queue2 = app.world_mut().spawn(ActionQueue::default()).id();
+
+        // insert 1 action into the first queue and emit 1 event
+        app.world_mut()
+            .entity_mut(queue1)
+            .get_mut::<ActionQueue>()
+            .unwrap()
+            .push(PendingAction::new(0, 0, ConfirmationStatus::NotConfirmed));
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue1, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // insert 2 actions into the second queue and emit 1 event
+        app.world_mut()
+            .entity_mut(queue2)
+            .insert(ActionQueue::from(SmallVec::from_elem(
+                PendingAction::new(0, 0, ConfirmationStatus::NotConfirmed),
+                2,
+            )));
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue2, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        assert!(events.get_cursor().read(events).next().is_none());
+
+        // first queue - 1 action, second - 2 actions, emit 1 event for both
+        let mut events = app
+            .world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>();
+        events.send(ActionEnqueued::new(queue1, 0, 0));
+        events.send(ActionEnqueued::new(queue2, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+    }
+
+    /// Check:
+    /// - drop from 1-action queue
+    /// - drop from 2-action queue
+    /// - drop from both 1-action and 2-action queue
+    /// - 2 drops from one queue trigger 1 event
+    #[test]
+    fn action_queue_next_changed_after_action_drop() {
+        type ActionQueue = PendingActionQueue<u64>;
+
+        let mut app = App::new();
+        app.add_event::<ActionEnqueued<u64>>();
+        app.add_event::<ActionDropped<u64>>();
+        app.add_event::<ActionQueueNextChanged>();
+        app.add_systems(Update, action_queue_next_changed::<u64>);
+
+        let queue1 = app.world_mut().spawn(ActionQueue::default()).id();
+        let queue2 = app
+            .world_mut()
+            .spawn(ActionQueue::from(smallvec::smallvec![PendingAction::new(
+                0,
+                0,
+                ConfirmationStatus::NotConfirmed
+            )]))
+            .id();
+
+        // 1 action remains after drop
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue2, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // queue is empty after drop
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue1, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // one queue has 1 action and the other one is empty after drop
+        let mut events = app.world_mut().resource_mut::<Events<ActionDropped<u64>>>();
+        events.send(ActionDropped::new(queue1, 0, 0, ""));
+        events.send(ActionDropped::new(queue2, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // 2 drops from the queue trigger 1 event
+        let mut events = app.world_mut().resource_mut::<Events<ActionDropped<u64>>>();
+        events.send(ActionDropped::new(queue1, 0, 0, ""));
+        events.send(ActionDropped::new(queue1, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+    }
+
+    /// Check:
+    /// - drop and enqueue in one queue trigger one event
+    /// - the same as above but events order is changed
+    #[test]
+    fn action_queue_next_changed_after_action_enqueue_and_drop() {
+        type ActionQueue = PendingActionQueue<u64>;
+
+        let mut app = App::new();
+        app.add_event::<ActionEnqueued<u64>>();
+        app.add_event::<ActionDropped<u64>>();
+        app.add_event::<ActionQueueNextChanged>();
+        app.add_systems(Update, action_queue_next_changed::<u64>);
+
+        let queue1 = app.world_mut().spawn(ActionQueue::default()).id();
+        let queue2 = app
+            .world_mut()
+            .spawn(ActionQueue::from(SmallVec::from_elem(
+                PendingAction::new(0, 0, ConfirmationStatus::NotConfirmed),
+                2,
+            )))
+            .id();
+
+        // drop and enqueue for queue2 should trigger one event
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue2, 0, 0, ""));
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue2, 0, 0));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
+
+        // enqueue and drop for queue2 should trigger one event
+        app.world_mut()
+            .resource_mut::<Events<ActionEnqueued<u64>>>()
+            .send(ActionEnqueued::new(queue1, 0, 0));
+        app.world_mut()
+            .resource_mut::<Events<ActionDropped<u64>>>()
+            .send(ActionDropped::new(queue1, 0, 0, ""));
+        app.update();
+
+        let events = app.world().resource::<Events<ActionQueueNextChanged>>();
+        let mut cursor = events.get_cursor();
+        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert!(cursor.read(events).next().is_none());
+        clear_events::<ActionQueueNextChanged>(app.world_mut());
     }
 }
