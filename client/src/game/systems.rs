@@ -67,6 +67,7 @@ pub fn network_game_initialization_finished(
 ) {
     for event in session_opened.read() {
         if network_game.contains(**event) {
+            info!("session is initialized for game {}", **event);
             game_ready.send(interface::GameReady::new(**event));
         }
     }
@@ -108,24 +109,25 @@ pub fn action_queue_next_changed<T: Send + Sync + 'static>(
 /// Receive [`ActionInitialized`] event and insert unconfirmed [`PendingAction`]
 /// into a [`PendingActionQueue`] of a game entity received in the event.  
 /// Triggers [`ActionEnqueued`].
-pub fn create_pending_action<T: Copy + Send + Sync + 'static>(
+pub fn create_pending_action<T: std::fmt::Debug + Copy + Send + Sync + 'static>(
     mut game: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
     mut action_initialized: EventReader<ActionInitialized<T>>,
     mut action_enqueued: EventWriter<ActionEnqueued<T>>,
 ) {
     for event in action_initialized.read() {
+        let action = *event.action();
+        let player = event.player();
+        info!(
+            "game {} action {:?} initialized, player={}",
+            event.game(),
+            action,
+            player
+        );
         let Ok(mut queue) = game.get_mut(event.game()) else {
             continue;
         };
-        queue.push(PendingAction::new_unconfirmed(
-            event.player(),
-            *event.action(),
-        ));
-        action_enqueued.send(ActionEnqueued::new(
-            event.game(),
-            event.player(),
-            *event.action(),
-        ));
+        queue.push(PendingAction::new_unconfirmed(player, action));
+        action_enqueued.send(ActionEnqueued::new(event.game(), player, action));
     }
 }
 
@@ -223,7 +225,7 @@ pub fn revert_action_status<T: PartialEq + Send + Sync + 'static>(
         let Ok(mut queue) = action_queue.get_mut(event.game()) else {
             continue;
         };
-        println!("unable to confirm actions for game {}", event.game());
+        warn!("unable to confirm actions for game {}", event.game());
         match event.revert_policy() {
             ActionStatusRevertPolicy::All => {
                 for action in queue.iter_mut().filter(|a| a.is_waiting_confirmation()) {
@@ -293,11 +295,11 @@ pub fn handle_action_from_server<T: Copy + Send + Sync + 'static>(
                 continue;
             };
             if !next_action.is_waiting_confirmation() {
-                println!("unexpected pending action status: {}", next_action.status());
+                error!("unexpected pending action status: {}", next_action.status());
                 continue;
             }
             if next_action.player() != event.player() {
-                println!("unexpected pending action player: {}", next_action.player());
+                error!("unexpected pending action player: {}", next_action.player());
                 continue;
             }
             next_action.set_status(ConfirmationStatus::Confirmed);
@@ -375,17 +377,15 @@ pub fn handle_state_updated(
     mut draw: EventWriter<Draw>,
 ) {
     for event in state_updated.read() {
+        info!("game {} state updated: {:?}", event.game(), event.state());
         match event.state() {
             core::GameState::Turn(next_player) => {
-                println!("turn start: {:?}", event.game());
                 turn_start.send(TurnStart::new(event.game(), next_player));
             }
             core::GameState::Finished(core::FinishedState::Win(winner)) => {
-                println!("win: {:?}", event.game());
                 player_won.send(PlayerWon::new(event.game(), winner));
             }
             core::GameState::Finished(core::FinishedState::Draw) => {
-                println!("draw: {:?}", event.game());
                 draw.send(Draw::new(event.game()));
             }
         }
@@ -544,8 +544,8 @@ pub fn log_dropped_action<T: std::fmt::Debug + Send + Sync + 'static>(
     mut action_dropped: EventReader<ActionDropped<T>>,
 ) {
     for event in action_dropped.read() {
-        println!(
-            "game {} action dropped, action={:?}, player={}, reason={}",
+        warn!(
+            "game {} action {:?} dropped, player={}, reason={}",
             event.game(),
             event.action(),
             event.player(),
@@ -559,8 +559,8 @@ pub fn log_enqueued_action<T: std::fmt::Debug + Send + Sync + 'static>(
     mut action_enqueued: EventReader<ActionEnqueued<T>>,
 ) {
     for event in action_enqueued.read() {
-        println!(
-            "game {} action added, action={:?}, player={}",
+        debug!(
+            "game {} action {:?} added to queue, player={}",
             event.game(),
             event.action(),
             event.player(),
@@ -573,8 +573,8 @@ pub fn log_confirmed_action<T: std::fmt::Debug + Send + Sync + 'static>(
     mut action_confirmed: EventReader<ActionConfirmed<T>>,
 ) {
     for event in action_confirmed.read() {
-        println!(
-            "game {} action was confirmed, action={:?}, player={}",
+        info!(
+            "game {} action {:?} confirmed, player={}",
             event.game(),
             event.action(),
             event.player(),

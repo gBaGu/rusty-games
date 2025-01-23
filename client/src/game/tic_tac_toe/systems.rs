@@ -45,13 +45,13 @@ pub fn handle_create_game_reply(
         match event.result() {
             Ok(response) => {
                 let Some(game_info) = &response.get_ref().game_info else {
-                    println!("received empty CreateGame reply from server");
+                    error!("received empty CreateGame reply from server");
                     return;
                 };
                 let info = match GameInfo::try_from(game_info.clone()) {
                     Ok(info) => info,
                     Err(err) => {
-                        println!("failed to decode game info: {}", err);
+                        error!("failed to decode game info: {}", err);
                         continue;
                     }
                 };
@@ -66,7 +66,7 @@ pub fn handle_create_game_reply(
                 }
             }
             Err(err) => {
-                println!("CreateGame request failed: {}", err);
+                error!("CreateGame request failed: {}", err);
             }
         }
     }
@@ -92,13 +92,13 @@ pub fn handle_get_game_reply_on_join(
         match event.result() {
             Ok(response) => {
                 let Some(game_info) = &response.get_ref().game_info else {
-                    println!("received empty CreateGame reply from server");
+                    error!("received empty CreateGame reply from server");
                     return;
                 };
                 let info = match FullGameInfo::try_from(game_info.clone()) {
                     Ok(info) => info,
                     Err(err) => {
-                        println!("failed to decode game info: {}", err);
+                        error!("failed to decode game info: {}", err);
                         continue;
                     }
                 };
@@ -114,7 +114,7 @@ pub fn handle_get_game_reply_on_join(
                 }
             }
             Err(err) => {
-                println!("CreateGame request failed: {}", err);
+                error!("CreateGame request failed: {}", err);
             }
         }
     }
@@ -137,17 +137,17 @@ pub fn handle_get_game(
         match event.result() {
             Ok(response) => {
                 let Some(info) = &response.get_ref().game_info else {
-                    println!("dropping empty GetGame response");
+                    error!("dropping empty GetGame response");
                     continue;
                 };
                 if info.game_id != *network_game {
-                    println!("received game info for other game, dropping");
+                    error!("received game info for other game, dropping");
                     continue;
                 }
                 let full_info = match FullGameInfo::try_from(info.clone()) {
                     Ok(info) => info,
                     Err(err) => {
-                        println!("failed to decode full game info: {}", err);
+                        error!("failed to decode full game info: {}", err);
                         continue;
                     }
                 };
@@ -175,7 +175,7 @@ pub fn handle_get_game(
                 }
             }
             Err(err) => {
-                println!("GetGame request failed: {}", err);
+                error!("GetGame request failed: {}", err);
             }
         }
     }
@@ -242,6 +242,6 @@ pub fn create(
         };
         let game_entity = game_cmds.id();
         game_cmds.insert_children(0, &[user_id, enemy_id]);
-        println!("game created: {:?}", game_entity);
+        info!("game created: {}", game_entity);
     }
 }

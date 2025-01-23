@@ -134,7 +134,7 @@ pub fn init_game_list(
                             commands.entity(game_list_entity).insert(task);
                         }
                         Err(err) => {
-                            println!("get_player_games call failed: {}", err);
+                            error!("get_player_games call failed: {}", err);
                             *game_list = interface::GameList::Message("Server is down".into());
                         }
                     };
@@ -158,7 +158,6 @@ pub fn send_get_player_games(
 ) {
     if timer.tick(time.delta()).just_finished() {
         let Ok((game_list_entity, mut list)) = game_list.get_single_mut() else {
-            println!("no game list found to refresh");
             return;
         };
         let Some(id) = settings.user_id() else {
@@ -172,7 +171,7 @@ pub fn send_get_player_games(
                 timer.pause();
             }
             Err(err) => {
-                println!("get_player_games call failed: {}", err);
+                error!("get_player_games call failed: {}", err);
                 *list = interface::GameList::Message("Server is down".into());
             }
         }
@@ -190,11 +189,11 @@ pub fn update_active_strategy(
             continue;
         };
         if settings_link.get() != event.settings {
-            println!("settings link from event doesn't match one from component");
+            error!("settings link from event doesn't match one from component");
             continue;
         }
         let Ok(mut settings) = settings.get_mut(settings_link.get()) else {
-            println!("unable to get strategy settings component");
+            error!("unable to get strategy settings component");
             continue;
         };
         settings.set_strategy(*strategy);
@@ -232,11 +231,11 @@ pub fn update_active_difficulty(
             continue;
         };
         if settings_link.get() != event.settings {
-            println!("settings link from event doesn't match one from component");
+            error!("settings link from event doesn't match one from component");
             continue;
         }
         let Ok(mut settings) = settings.get_mut(settings_link.get()) else {
-            println!("unable to get strategy settings component");
+            error!("unable to get difficulty settings component");
             continue;
         };
         settings.set_difficulty(*difficulty);
@@ -269,7 +268,7 @@ pub fn create_bot_game(
             let mut difficulty = None;
             if strategy.has_difficulty() {
                 if bot_settings.difficulty().is_none() {
-                    println!("bot difficulty is not set");
+                    error!("bot difficulty is not set");
                     continue;
                 }
                 difficulty = bot_settings.difficulty();
@@ -310,11 +309,11 @@ pub fn create_network_game(
                 continue;
             };
             let Some(opponent) = network_settings.opponent() else {
-                println!("opponent is not set");
+                error!("opponent is not set");
                 continue;
             };
             let Some(client) = client.as_ref() else {
-                println!("grpc client is not connected");
+                error!("grpc client is not connected");
                 continue;
             };
             match client.create_game::<TicTacToe>(user, opponent) {
@@ -324,7 +323,7 @@ pub fn create_network_game(
                         .insert(task);
                     return;
                 }
-                Err(err) => println!("create_game call failed: {}", err),
+                Err(err) => error!("create_game call failed: {}", err),
             }
         }
     }
@@ -386,7 +385,7 @@ pub fn join_game(
                         .spawn(PendingExistingGameBundle::<TicTacToe>::new(event.game_id()))
                         .insert(task);
                 }
-                Err(err) => println!("get_game call failed: {}", err),
+                Err(err) => error!("get_game call failed: {}", err),
             };
         }
     }

@@ -24,7 +24,7 @@ use crate::Settings;
 
 pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
     if timer.tick(time.delta()).just_finished() {
-        println!("trying to connect to grpc server...");
+        debug!("trying to connect to grpc server...");
         let task = IoTaskPool::get().spawn(async move {
             transport::Endpoint::new(DEFAULT_GRPC_SERVER_ADDRESS)?
                 .connect()
@@ -42,7 +42,7 @@ pub fn handle_connect(
     client: Option<Res<GrpcClient>>,
 ) {
     let Ok((entity, mut task)) = connect_task.get_single_mut() else {
-        println!("unable to get a single connect task");
+        error!("multiple connect tasks present");
         return;
     };
     if let Some(res) = task.poll_once(commands.entity(entity)) {
@@ -52,14 +52,14 @@ pub fn handle_connect(
         match res {
             Ok(c) => {
                 let client = GrpcClient::new(GameClient::new(c.clone()));
-                println!("server connection established, creating health watcher");
+                debug!("server connection established, creating health watcher");
                 let watcher = ConnectionStatusWatcher::start(HealthClient::new(c));
                 commands.insert_resource(client);
                 commands.insert_resource(watcher);
                 connected.send(Connected);
             }
             Err(err) => {
-                println!("grpc client connect failed: {:?}", err);
+                debug!("grpc client connect failed: {:?}", err);
             }
         }
     }
@@ -71,7 +71,7 @@ pub fn receive_status(mut commands: Commands, watcher: Res<ConnectionStatusWatch
         let task = IoTaskPool::get().spawn(async move { receiver.recv().await });
         commands.spawn(ReceiveConnectionStatusTask::from(task));
     } else {
-        println!("ConnectStatusWatcher is finished");
+        debug!("ConnectStatusWatcher is finished");
         commands.remove_resource::<ConnectionStatusWatcher>();
     }
 }
@@ -84,20 +84,20 @@ pub fn handle_receive_status(
     client: Option<ResMut<GrpcClient>>,
 ) {
     let Ok((entity, mut task)) = receive_update_task.get_single_mut() else {
-        println!("unable to get a single connect task");
+        error!("multiple receive connection status tasks present");
         return;
     };
     if let Some(res) = task.poll_once(commands.entity(entity)) {
         if let Some(mut client) = client {
             let updated_status = res.unwrap_or_else(|err| {
-                println!("failed to get connection status: {}", err);
+                error!("failed to get connection status: {}", err);
                 false
             });
             if client.connected() && !updated_status {
-                println!("grpc client disconnected");
+                info!("grpc client disconnected");
                 disconnected.send(Disconnected);
             } else if !client.connected() && updated_status {
-                println!("grpc client connected");
+                info!("grpc client connected");
                 connected.send(Connected);
             }
             client.set_connected(updated_status);
@@ -213,7 +213,7 @@ pub fn send_get_game_before_connect<T>(
 {
     for (game_entity, network_game) in connecting_session.iter_mut() {
         let Some(ref client) = client else {
-            println!("unable to reconnect session: grpc client is not connected");
+            error!("unable to reconnect session: grpc client is not connected");
             commands
                 .entity(game_entity)
                 .remove::<ConnectingGameSession<T>>();
@@ -224,7 +224,7 @@ pub fn send_get_game_before_connect<T>(
                 commands.entity(game_entity).insert(task);
             }
             Err(err) => {
-                println!("unable to reconnect session: GetGame call failed: {}", err);
+                error!("unable to reconnect session: GetGame call failed: {}", err);
                 commands
                     .entity(game_entity)
                     .remove::<ConnectingGameSession<T>>();
@@ -261,11 +261,11 @@ pub fn connect_session<T>(
             .entity(event.entity())
             .remove::<ConnectingGameSession<T>>();
         let Some(user) = settings.user_id() else {
-            println!("unable to reconnect session: user is not logged in");
+            error!("unable to connect session: user is not logged in");
             continue;
         };
         let Some(ref client) = client else {
-            println!("unable to reconnect session: grpc client is not connected");
+            error!("unable to connect session: grpc client is not connected");
             continue;
         };
         match event.result() {
@@ -274,13 +274,13 @@ pub fn connect_session<T>(
                     commands.entity(event.entity()).insert(session);
                     session_opened.send(SessionOpened::new(event.entity()));
                 }
-                Err(err) => println!(
-                    "unable to reconnect session: GameSession call failed: {}",
+                Err(err) => error!(
+                    "unable to connect session: GameSession call failed: {}",
                     err
                 ),
             },
             Err(err) => {
-                println!("unable to reconnect session: GetGame call failed: {}", err);
+                error!("unable to connect session: GetGame call failed: {}", err);
             }
         }
     }
@@ -303,7 +303,7 @@ pub fn init_session_action_send_task<T>(
         let session_entity = event.session_entity();
         let action = *event.action();
         let Ok((session, send_action_task)) = session.get(session_entity) else {
-            println!("failed to send session action: session component not found");
+            error!("failed to send session action: session component not found");
             action_send_failed.send(SessionActionSendFailed::new(session_entity, action));
             continue;
         };
@@ -338,13 +338,13 @@ pub fn handle_session_action_send<T>(
     for (task_entity, mut task) in task.iter_mut() {
         if let Some(res) = task.poll_once(commands.entity(task_entity)) {
             if let Err(err) = res {
-                println!("send session action task failed: {}", err);
+                error!("send session action task failed: {}", err);
                 match T::from_protobuf(&err.into_inner()) {
                     Ok(action) => {
                         action_send_failed.send(SessionActionSendFailed::new(task_entity, action));
                     }
                     Err(err) => {
-                        println!("cannot decode action back from bytes: {}", err);
+                        error!("cannot decode action back from bytes: {}", err);
                     }
                 }
             }
@@ -367,7 +367,7 @@ pub fn init_session_update_receive_task<T>(
     for (session_entity, session) in session.iter() {
         let receiver = session.update_receiver();
         if !receiver.is_closed() {
-            println!("create receive session update task");
+            trace!("create receive session update task");
             let task = IoTaskPool::get().spawn(async move { receiver.recv().await });
             commands
                 .entity(session_entity)
@@ -403,7 +403,7 @@ pub fn handle_session_update_receive<T>(
                 }
                 Err(err) => {
                     // channel is closed, print and do nothing
-                    println!("failed to read from session update channel: {}", err);
+                    error!("failed to read from session update channel: {}", err);
                 }
             };
         }
@@ -413,10 +413,10 @@ pub fn handle_session_update_receive<T>(
 /// Print game session errors.
 pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) {
     for event in error_received.read() {
-        println!(
+        error!(
             "game session ({}) error received: {}",
             event.session_entity(),
-            event.error()
+            event.error(),
         );
     }
 }
@@ -555,7 +555,7 @@ mod test {
                     IoTaskPool::get().spawn(async move {
                         let _s_update = s_update; // move it here
                         while let Ok(_) = r_action.recv().await {}
-                        println!("active session is closed");
+                        info!("active session is closed");
                     }),
                     s_action,
                     r_update,
@@ -571,7 +571,7 @@ mod test {
                 IoTaskPool::get().spawn(async move {
                     let _s_update = s_update; // move it here
                     while let Ok(_) = r_action.recv().await {}
-                    println!("inactive session is closed");
+                    info!("inactive session is closed");
                 }),
                 s_action,
                 r_update,
@@ -691,7 +691,7 @@ mod test {
             .insert(DummySession::new(
                 IoTaskPool::get().spawn(async move {
                     while let Ok(_) = r_cloned.recv().await {
-                        println!("action is sent!");
+                        info!("action is sent!");
                         notify_sender.send(()).await.expect("notification failed");
                     }
                 }),
