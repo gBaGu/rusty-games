@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::tasks;
 use bevy::tasks::futures_lite::future;
 use bevy::tasks::IoTaskPool;
+use game_server::core::ToProtobuf as _;
 use game_server::{core, proto};
 use tonic::transport;
 
@@ -286,15 +287,12 @@ pub fn connect_session<T>(
 }
 
 /// Receive the [`SessionActionReadyToSend`] event, find [`GameSession`] entity and
-/// create a task that will send the action from event into session sender.
-/// Send the [`SessionActionSendFailed`] event if there is no [`GameSession`] entity or
-/// another [`SendActionTask`] is present.
+/// create a task that will send encoded action from event into session sender.
+/// Send the [`SessionActionSendFailed`] event if there is no [`GameSession`] entity,
+/// another [`SendActionTask`] is present or action encoding failed.
 pub fn init_session_action_send_task<T>(
     mut commands: Commands,
-    session: Query<(
-        &GameSession<T, T::TurnData>,
-        Option<&SendActionTask<T::TurnData>>,
-    )>,
+    session: Query<(&GameSession<T, T::TurnData>, Option<&SendActionTask>)>,
     mut action_ready: EventReader<SessionActionReadyToSend<T::TurnData>>,
     mut action_send_failed: EventWriter<SessionActionSendFailed<T::TurnData>>,
 ) where
@@ -313,8 +311,15 @@ pub fn init_session_action_send_task<T>(
             action_send_failed.send(SessionActionSendFailed::new(session_entity, action));
             continue;
         }
+        let action_data = match action.to_protobuf() {
+            Ok(data) => data,
+            Err(_err) => {
+                action_send_failed.send(SessionActionSendFailed::new(session_entity, action));
+                continue;
+            }
+        };
         let sender = session.action_sender();
-        let task = IoTaskPool::get().spawn(async move { sender.send(action).await });
+        let task = IoTaskPool::get().spawn(async move { sender.send(action_data).await });
         commands
             .entity(session_entity)
             .insert(SendActionTask::from(task));
@@ -325,17 +330,23 @@ pub fn init_session_action_send_task<T>(
 /// `T` is a type of action.
 pub fn handle_session_action_send<T>(
     mut commands: Commands,
-    mut task: Query<(Entity, &mut SendActionTask<T>)>,
+    mut task: Query<(Entity, &mut SendActionTask)>,
     mut action_send_failed: EventWriter<SessionActionSendFailed<T>>,
 ) where
-    T: Send + Sync + 'static,
+    T: core::FromProtobuf + Send + Sync + 'static,
 {
     for (task_entity, mut task) in task.iter_mut() {
         if let Some(res) = task.poll_once(commands.entity(task_entity)) {
             if let Err(err) = res {
                 println!("send session action task failed: {}", err);
-                action_send_failed
-                    .send(SessionActionSendFailed::new(task_entity, err.into_inner()));
+                match T::from_protobuf(&err.into_inner()) {
+                    Ok(action) => {
+                        action_send_failed.send(SessionActionSendFailed::new(task_entity, action));
+                    }
+                    Err(err) => {
+                        println!("cannot decode action back from bytes: {}", err);
+                    }
+                }
             }
         }
     }
@@ -689,7 +700,7 @@ mod test {
             ));
 
         // insert send action task and check that another one cannot be created
-        let pending_task: SendActionTask<()> = IoTaskPool::get().spawn(future::pending()).into();
+        let pending_task: SendActionTask = IoTaskPool::get().spawn(future::pending()).into();
         app.world_mut().entity_mut(session).insert(pending_task);
         send_action_ready_to_send(app.world_mut(), session, ());
         // this should trigger send error because previous SendActionTask isn't completed
@@ -704,12 +715,12 @@ mod test {
         // remove infinite task
         app.world_mut()
             .entity_mut(session)
-            .remove::<SendActionTask<()>>();
+            .remove::<SendActionTask>();
 
         send_action_ready_to_send(app.world_mut(), session, ());
         // this should create send task
         app.update();
-        assert!(app.world().entity(session).contains::<SendActionTask<()>>());
+        assert!(app.world().entity(session).contains::<SendActionTask>());
 
         // this is needed in order to ensure that the send task has completed
         tasks::block_on(IoTaskPool::get().spawn(async move {
@@ -717,17 +728,17 @@ mod test {
         }));
         // this should remove send task
         app.update();
-        assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
+        assert!(!app.world().entity(session).contains::<SendActionTask>());
 
         r.close();
         send_action_ready_to_send(app.world_mut(), session, ());
         // this should create send task
         app.update();
-        assert!(app.world().entity(session).contains::<SendActionTask<()>>());
+        assert!(app.world().entity(session).contains::<SendActionTask>());
 
         // this should remove send task and trigger error event because the channel is closed
         app.update();
-        assert!(!app.world().entity(session).contains::<SendActionTask<()>>());
+        assert!(!app.world().entity(session).contains::<SendActionTask>());
         let err_events = app.world().resource::<SendFailedEvents>();
         let mut cursor = err_events.get_cursor();
         assert_eq!(

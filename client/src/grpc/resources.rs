@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::tasks::IoTaskPool;
 use game_server::core::{self, FromProtobuf as _, ToProtobuf as _};
 use game_server::proto;
-use tonic::codegen::tokio_stream::StreamExt;
+use tonic::codegen::tokio_stream::{self, StreamExt};
 use tonic::{Code, Request};
 use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
@@ -97,43 +97,34 @@ impl GrpcClient {
             return Err(GrpcError::NotConnected);
         }
         let mut client = self.game.clone();
-        let (action_s, action_r) = async_channel::unbounded::<T::TurnData>();
+        let (action_s, action_r) = async_channel::unbounded::<Vec<u8>>();
         let (update_s, update_r) = async_channel::unbounded();
         let task = IoTaskPool::get().spawn(async move {
-            let request_stream = async_stream::stream! {
-                yield proto::GameSessionRequest {
-                    request: Some(proto::game_session_request::Request::Init(proto::GameSession {
+            let request_stream = tokio_stream::once(proto::GameSessionRequest {
+                request: Some(proto::game_session_request::Request::Init(
+                    proto::GameSession {
                         game_type: T::get_game_type().into(),
                         game_id,
                         player_id,
-                    }))
-                };
-
-                while let Ok(action) = action_r.recv().await {
-                    // TODO: handle error
-                    let data = action.to_protobuf().expect("game session: failed to encode action data");
-                    println!("game session: action data: {:?}", data);
-                    yield proto::GameSessionRequest {
-                        request: Some(proto::game_session_request::Request::TurnData(data))
-                    }
-                }
-                println!("game session: request stream is finished");
-            };
+                    },
+                )),
+            })
+            .chain(action_r.map(|data| proto::GameSessionRequest {
+                request: Some(proto::game_session_request::Request::TurnData(data)),
+            }));
             let mut reply_stream = match client.game_session(request_stream).await {
                 Ok(resp) => resp.into_inner(),
                 Err(err) => {
                     println!("failed to execute GameSession request: {}", err);
                     return;
-                },
+                }
             };
             while let Some(res) = reply_stream.next().await {
                 let update_result = match res {
-                    Ok(reply) => {
-                        match T::TurnData::from_protobuf(&reply.turn_data) {
-                            Ok(action) => Ok(GameSessionUpdate::new(reply.player_position, action)),
-                            Err(err) => Err(err.into()),
-                        }
-                    }
+                    Ok(reply) => match T::TurnData::from_protobuf(&reply.turn_data) {
+                        Ok(action) => Ok(GameSessionUpdate::new(reply.player_position, action)),
+                        Err(err) => Err(err.into()),
+                    },
                     Err(err) => Err(GrpcError::GameSessionUpdateFailed(err.to_string())),
                 };
                 if let Err(_err) = update_s.send(update_result).await {
