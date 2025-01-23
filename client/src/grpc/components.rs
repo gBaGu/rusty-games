@@ -51,18 +51,18 @@ impl PollOnce for ReceiveConnectionStatusTask {
     type Output = Result<bool, async_channel::RecvError>;
 }
 
-/// Task component for sending actions of type `T` into the game session input channel.
+/// Task component for sending encoded actions into the game session input channel.
 #[derive(Component, Deref, DerefMut)]
-pub struct SendActionTask<T>(Task<Result<(), async_channel::SendError<T>>>);
+pub struct SendActionTask(Task<Result<(), async_channel::SendError<Vec<u8>>>>);
 
-impl<T> From<Task<Result<(), async_channel::SendError<T>>>> for SendActionTask<T> {
-    fn from(value: Task<Result<(), async_channel::SendError<T>>>) -> Self {
+impl From<Task<Result<(), async_channel::SendError<Vec<u8>>>>> for SendActionTask {
+    fn from(value: Task<Result<(), async_channel::SendError<Vec<u8>>>>) -> Self {
         Self(value)
     }
 }
 
-impl<T: Send + 'static> PollOnce for SendActionTask<T> {
-    type Output = Result<(), async_channel::SendError<T>>;
+impl PollOnce for SendActionTask {
+    type Output = Result<(), async_channel::SendError<Vec<u8>>>;
     const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
 }
 
@@ -92,7 +92,7 @@ impl<T: Send + 'static> PollOnce for ReceiveSessionUpdateTask<T> {
 #[derive(Debug, Component)]
 pub struct GameSession<G, T> {
     task: Task<()>,
-    action_sender: async_channel::Sender<T>,
+    action_sender: async_channel::Sender<Vec<u8>>,
     update_receiver: async_channel::Receiver<GrpcResult<GameSessionUpdate<T>>>,
     _phantom_data: PhantomData<G>,
 }
@@ -100,7 +100,7 @@ pub struct GameSession<G, T> {
 impl<G, T> GameSession<G, T> {
     pub fn new(
         task: Task<()>,
-        action_sender: async_channel::Sender<T>,
+        action_sender: async_channel::Sender<Vec<u8>>,
         update_receiver: async_channel::Receiver<GrpcResult<GameSessionUpdate<T>>>,
     ) -> Self {
         Self {
@@ -111,7 +111,7 @@ impl<G, T> GameSession<G, T> {
         }
     }
 
-    pub fn action_sender(&self) -> async_channel::Sender<T> {
+    pub fn action_sender(&self) -> async_channel::Sender<Vec<u8>> {
         self.action_sender.clone()
     }
 
