@@ -25,8 +25,10 @@ pub struct GameListBundle {
 
 impl Default for GameListBundle {
     fn default() -> Self {
+        let mut node = column_node();
+        node.width = Val::Percent(80.);
         Self {
-            node: column_node(),
+            node,
             list: GameList::default(),
         }
     }

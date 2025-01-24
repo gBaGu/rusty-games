@@ -304,6 +304,7 @@ impl ImageBundle {
 pub struct TextBundle {
     node: Node,
     text: Text,
+    text_layout: TextLayout,
     text_font: TextFont,
     text_color: TextColor,
 }
@@ -313,13 +314,9 @@ impl TextBundle {
         Self {
             node: Default::default(),
             text: Text::new(text),
+            text_layout: TextLayout::new_with_justify(JustifyText::Center),
             text_font,
             text_color: TextColor(SECONDARY_COLOR.into()),
         }
-    }
-
-    pub fn with_node(mut self, node: Node) -> Self {
-        self.node = node;
-        self
     }
 }
