@@ -19,7 +19,7 @@ impl From<(usize, usize)> for GridIndex {
 
 impl Display for GridIndex {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.col, self.row)
+        write!(f, "C{},R{}", self.col, self.row)
     }
 }
 

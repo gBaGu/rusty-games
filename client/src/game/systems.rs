@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy::prelude::*;
 use game_server::{core, proto};
 use smallvec::SmallVec;
@@ -109,7 +111,7 @@ pub fn action_queue_next_changed<T: Send + Sync + 'static>(
 /// Receive [`ActionInitialized`] event and insert unconfirmed [`PendingAction`]
 /// into a [`PendingActionQueue`] of a game entity received in the event.  
 /// Triggers [`ActionEnqueued`].
-pub fn create_pending_action<T: std::fmt::Debug + Copy + Send + Sync + 'static>(
+pub fn create_pending_action<T: fmt::Display + Copy + Send + Sync + 'static>(
     mut game: Query<&mut PendingActionQueue<T>, With<ActiveGame>>,
     mut action_initialized: EventReader<ActionInitialized<T>>,
     mut action_enqueued: EventWriter<ActionEnqueued<T>>,
@@ -118,7 +120,7 @@ pub fn create_pending_action<T: std::fmt::Debug + Copy + Send + Sync + 'static>(
         let action = *event.action();
         let player = event.player();
         info!(
-            "game {} action {:?} initialized, player={}",
+            "game {} action {} initialized, player={}",
             event.game(),
             action,
             player
@@ -540,12 +542,12 @@ pub fn close_session(
 }
 
 /// Log [`PendingAction`] when it's dropped out of the queue.
-pub fn log_dropped_action<T: std::fmt::Debug + Send + Sync + 'static>(
+pub fn log_dropped_action<T: fmt::Display + Send + Sync + 'static>(
     mut action_dropped: EventReader<ActionDropped<T>>,
 ) {
     for event in action_dropped.read() {
         warn!(
-            "game {} action {:?} dropped, player={}, reason={}",
+            "game {} action {} dropped, player={}, reason={}",
             event.game(),
             event.action(),
             event.player(),
@@ -555,12 +557,12 @@ pub fn log_dropped_action<T: std::fmt::Debug + Send + Sync + 'static>(
 }
 
 /// Log [`PendingAction`] when it's added to the queue.
-pub fn log_enqueued_action<T: std::fmt::Debug + Send + Sync + 'static>(
+pub fn log_enqueued_action<T: fmt::Display + Send + Sync + 'static>(
     mut action_enqueued: EventReader<ActionEnqueued<T>>,
 ) {
     for event in action_enqueued.read() {
         debug!(
-            "game {} action {:?} added to queue, player={}",
+            "game {} action {} added to queue, player={}",
             event.game(),
             event.action(),
             event.player(),
@@ -569,12 +571,12 @@ pub fn log_enqueued_action<T: std::fmt::Debug + Send + Sync + 'static>(
 }
 
 /// Log [`PendingAction`] when it was confirmed.
-pub fn log_confirmed_action<T: std::fmt::Debug + Send + Sync + 'static>(
+pub fn log_confirmed_action<T: fmt::Display + Send + Sync + 'static>(
     mut action_confirmed: EventReader<ActionConfirmed<T>>,
 ) {
     for event in action_confirmed.read() {
         info!(
-            "game {} action {:?} confirmed, player={}",
+            "game {} action {} confirmed, player={}",
             event.game(),
             event.action(),
             event.player(),

@@ -403,7 +403,7 @@ pub fn handle_session_update_receive<T>(
                 }
                 Err(err) => {
                     // channel is closed, print and do nothing
-                    error!("failed to read from session update channel: {}", err);
+                    warn!("failed to read from session update channel: {}", err);
                 }
             };
         }

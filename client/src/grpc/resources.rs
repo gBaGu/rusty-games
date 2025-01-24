@@ -128,7 +128,7 @@ impl GrpcClient {
                     Err(err) => Err(GrpcError::GameSessionUpdateFailed(err.to_string())),
                 };
                 if let Err(_err) = update_s.send(update_result).await {
-                    debug!("game session: update channel is closed, skipping next updates...");
+                    debug!("update channel is closed, skipping next updates...");
                     break;
                 }
             }
