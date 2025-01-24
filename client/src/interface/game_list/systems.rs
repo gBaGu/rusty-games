@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use game_server::core;
 
-use super::{GameList, LIST_ITEM_WIDTH};
+use super::GameList;
 use crate::grpc::{Connected, Disconnected};
 use crate::interface;
 
@@ -53,24 +53,29 @@ pub fn update(
                                 .spawn(interface::common::row_node())
                                 .with_children(|builder| {
                                     let mut item_node = interface::common::menu_item_node();
-                                    item_node.width = Val::Px(LIST_ITEM_WIDTH);
+                                    item_node.width = Val::Auto;
                                     for s in [
-                                        &format!("ID: {}", game.id),
-                                        &state_text,
+                                        &format!("ID: {} ", game.id),
                                         &format!("Players: {:?}", game.players),
+                                        &state_text,
                                     ] {
                                         builder.spawn(item_node.clone()).with_child(
                                             interface::TextBundle::new(s, text_font.clone()),
                                         );
                                     }
+                                    let mut flex_row = interface::common::flex_row();
+                                    flex_row.flex_grow = 1.;
+                                    flex_row.justify_content = JustifyContent::End;
                                     let join = interface::JoinGameButtonBundle::new(
                                         interface::common::menu_item_node(),
                                         game.clone(),
                                     );
-                                    builder.spawn(join).with_child(interface::TextBundle::new(
-                                        "Join",
-                                        text_font.clone(),
-                                    ));
+                                    builder.spawn(flex_row).with_children(|builder| {
+                                        builder.spawn(join).with_child(interface::TextBundle::new(
+                                            "Join",
+                                            text_font.clone(),
+                                        ));
+                                    });
                                 });
                         }
                     });

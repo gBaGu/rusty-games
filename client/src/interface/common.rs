@@ -23,6 +23,16 @@ pub fn load_text_font(asset_server: &AssetServer) -> TextFont {
     TextFont::from_font(asset_server.load(FONT_PATH)).with_font_size(FONT_SIZE)
 }
 
+pub fn flex_row() -> Node {
+    Node {
+        display: Display::Flex,
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        justify_content: JustifyContent::Center,
+        ..default()
+    }
+}
+
 pub fn root_node() -> Node {
     Node {
         flex_direction: FlexDirection::Column,
@@ -45,10 +55,9 @@ pub fn column_node() -> Node {
 
 pub fn row_node() -> Node {
     Node {
-        flex_direction: FlexDirection::Row,
-        align_items: AlignItems::Center,
+        width: Val::Percent(100.0),
         padding: UiRect::horizontal(Val::Percent(MENU_ROW_HORIZONTAL_PADDING_PERCENT)),
-        ..default()
+        ..flex_row()
     }
 }
 
