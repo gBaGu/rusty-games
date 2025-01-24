@@ -35,7 +35,7 @@ pub fn start_delay(mut bot: Query<&mut Delay, (With<BotAuthority>, Added<Current
     let mut rng = rand::thread_rng();
     for mut delay in bot.iter_mut() {
         let milliseconds = rng.gen_range(MIN_ACTION_DELAY..MAX_ACTION_DELAY);
-        println!("starting bot delay ({}ms)", milliseconds);
+        trace!("starting bot delay ({}ms)", milliseconds);
         delay.reset();
         delay.start(Duration::from_millis(milliseconds));
     }
@@ -57,7 +57,6 @@ pub fn delay(
             continue;
         };
         if delay.tick(time.delta()).just_finished() {
-            println!("bot is ready to make a move");
             bot_ready.send(BotReady::new(bot_entity, parent.get(), *position));
         }
     }
@@ -73,6 +72,7 @@ pub fn initialize_action(
     model: Res<QLearningModel>,
 ) {
     for event in bot_ready.read() {
+        debug!("bot {} is ready to make a move", event.bot());
         let Ok((strategy, difficulty)) = bot.get(event.bot()) else {
             continue;
         };
@@ -85,16 +85,16 @@ pub fn initialize_action(
                 if let Some(difficulty) = difficulty {
                     model.get_move(*difficulty, game.board())
                 } else {
-                    println!("unable to get bot difficulty");
+                    error!("unable to get bot difficulty");
                     None
                 }
             }
         };
         let Some(action) = action else {
-            println!("unable to get action from bot strategy");
+            error!("unable to get action from bot strategy");
             continue;
         };
-        println!("action initialized by a q-learning bot: {}", action);
+        debug!("action initialized by bot: {}", action);
         action_initialized.send(PlayerActionInitialized::new(
             game_entity,
             event.player_position(),

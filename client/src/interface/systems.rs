@@ -91,10 +91,10 @@ pub fn state_transition(
     for (interaction, state_transition) in menu_items.iter() {
         if *interaction == Interaction::Pressed {
             if let Some(new_state) = state_transition.0 {
-                println!("state transition: {:?}", new_state);
+                info!("state transition: {:?}", new_state);
                 next_app_state.set(new_state);
             } else {
-                println!("exit");
+                info!("exit");
                 exit.send(AppExit::Success);
             }
         }
@@ -350,7 +350,7 @@ pub fn setup_game(mut commands: Commands, game: Query<Entity, With<ActiveGame>>)
     if let Ok(game_entity) = game.get_single() {
         commands.spawn(PlaygroundBundle::new(game_entity));
     } else {
-        println!("multiple games found");
+        error!("multiple games found");
     }
 }
 
@@ -361,7 +361,7 @@ pub fn start_game(
     asset_server: Res<AssetServer>,
 ) {
     for event in game_ready.read() {
-        println!("starting game: {:?}", event.get());
+        debug!("starting game: {}", event.get());
         next_app_state.set(AppState::Game);
         commands.entity(event.get()).insert(ActiveGame);
         commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);

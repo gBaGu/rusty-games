@@ -37,7 +37,7 @@ impl QLearningModel {
         match Agent::load(&path) {
             Ok(agent) => Some(agent),
             Err(err) => {
-                println!(
+                warn!(
                     "failed to load {} q-learning model from {:?}: {}",
                     difficulty.filename(),
                     path,

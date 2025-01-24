@@ -49,11 +49,16 @@ pub fn create(
         let Ok(game) = game.get(game_link.get()) else {
             continue;
         };
-        println!("create board for game: {:?}", game_link.get());
         let board_size = Vec2::splat(window.width().min(window.height()) * 0.7);
         let tile_size = calculate_tile_size(board_size);
         let v_border_length = tile_size.y * 0.8;
         let h_border_length = tile_size.x * 0.8;
+        debug!(
+            "create board for game: {}, size: {}, tile size: {}",
+            game_link.get(),
+            board_size,
+            tile_size,
+        );
         commands
             .spawn(BoardBundle::new(game_link.get(), board_size, Vec3::ZERO))
             .with_children(|builder| {
@@ -72,7 +77,7 @@ pub fn create(
                                         img.clone(),
                                     )
                                 } else {
-                                    println!("unable to get image for {}", player);
+                                    warn!("unable to get image for {}", player);
                                     TileBundle::new_empty(tile_size, tile_translation, pos)
                                 }
                             }
@@ -126,11 +131,11 @@ pub fn handle_mouse_input(
     mut pressed: EventWriter<TilePressed>,
 ) {
     let Ok(window) = window.get_single() else {
-        println!("failed to get single window");
+        error!("failed to get single window");
         return;
     };
     let Ok((camera, camera_transform)) = camera.get_single() else {
-        println!("failed to get single camera");
+        error!("failed to get single camera");
         return;
     };
     for event in button_evr.read() {
@@ -148,7 +153,6 @@ pub fn handle_mouse_input(
                     bounds.contains(world_position)
                 });
                 if let Some((_, _, &tile, parent)) = tile {
-                    println!("tile pressed: {:?}", tile);
                     pressed.send(TilePressed::new(parent.get(), tile.into()));
                 }
             }
@@ -166,6 +170,7 @@ pub fn initialize_action(
     mut action_initialized: EventWriter<PlayerActionInitialized>,
 ) {
     for event in tile_pressed.read() {
+        debug!("board {}: tile {} pressed", event.board(), event.pos());
         let Ok(game_link) = board.get(event.board()) else {
             continue;
         };
@@ -179,7 +184,6 @@ pub fn initialize_action(
             continue;
         }
         if let Some((&player, _)) = player.iter().find(|(_, p)| p.get() == game_link.get()) {
-            println!("action initialized by a tile press: {}", event.pos());
             action_initialized.send(PlayerActionInitialized::new(
                 game_link.get(),
                 *player,
@@ -229,7 +233,7 @@ pub fn create_win_animation(
             continue;
         };
         let Some(board_size) = sprite.custom_size else {
-            println!("unable to get board size from sprite");
+            error!("unable to get board size from sprite");
             continue;
         };
         let Some((index1, _, index3)) =
@@ -248,7 +252,7 @@ pub fn create_win_animation(
             continue;
         };
 
-        println!("create win animation from {} to {}", index1, index3);
+        debug!("create win animation from {} to {}", index1, index3);
         let texture = asset_server.load(WIN_ANIMATION_PATH);
         let tile_size = calculate_tile_size(board_size);
         let from_center = calculate_tile_center(board_size, tile_size, index1);
@@ -292,7 +296,7 @@ pub fn update_win_animation(
                 .remove_children(&[animation_entity]);
             commands.entity(animation_entity).despawn();
             if let Ok(game_link) = board.get(parent.get()) {
-                println!("game is ready to exit: {:?}", game_link.get());
+                debug!("game is ready to exit: {}", game_link.get());
                 ready_to_exit.send(interface::GameReadyToExit::new(game_link.get()));
             }
         }

@@ -115,7 +115,7 @@ impl GrpcClient {
             let mut reply_stream = match client.game_session(request_stream).await {
                 Ok(resp) => resp.into_inner(),
                 Err(err) => {
-                    println!("failed to execute GameSession request: {}", err);
+                    error!("failed to execute GameSession request: {}", err);
                     return;
                 }
             };
@@ -128,11 +128,11 @@ impl GrpcClient {
                     Err(err) => Err(GrpcError::GameSessionUpdateFailed(err.to_string())),
                 };
                 if let Err(_err) = update_s.send(update_result).await {
-                    println!("game session: update channel is closed, skipping next updates...");
+                    debug!("update channel is closed, skipping next updates...");
                     break;
                 }
             }
-            println!("game session: task is finished");
+            debug!("game session task is finished");
         });
         Ok(GameSession::new(task, action_s, update_r))
     }
@@ -203,20 +203,20 @@ impl ConnectionStatusWatcher {
                                         )
                                 }
                                 Err(err) => {
-                                    println!("got error from health client watch stream: {}", err);
+                                    error!("health client watch reply error: {}", err);
                                     false
                                 }
                             };
                             if let Err(err) = s.send(status).await {
-                                println!("unable to send connection status update: {}", err);
+                                error!("unable to send connection status update: {}", err);
                             }
                         }
                     }
                     Err(status) if status.code() == Code::Unimplemented => break,
                     Err(status) => {
-                        println!("got error from health service: {}", status);
+                        error!("health client watch request failed: {}", status);
                         if let Err(err) = s.send(false).await {
-                            println!("unable to send connection status update: {}", err);
+                            error!("unable to send connection status update: {}", err);
                         }
                     }
                 }

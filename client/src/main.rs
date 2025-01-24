@@ -35,7 +35,6 @@ fn main() {
     let mut settings = Settings::default();
     if let Some(user_id) = cli.user_id {
         settings.set_user_id(user_id);
-        println!("user_id is initialized to {}", user_id);
     }
 
     App::new()

@@ -59,7 +59,7 @@ pub fn create(
             (Some(p1), Some(p2), None) if p2.4.is_some() => (p2, p1),
             (Some(p1), Some(p2), None) => (p1, p2),
             _ => {
-                println!("invalid number of players found for a game");
+                error!("invalid number of players found for a game");
                 continue;
             }
         };

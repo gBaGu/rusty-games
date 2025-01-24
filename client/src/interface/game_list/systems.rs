@@ -33,14 +33,14 @@ pub fn update(
                             let state_text = match game.state {
                                 core::GameState::Turn(id) => {
                                     let Some(user_id) = game.get_user_id(id) else {
-                                        println!("skipping corrupted GameInfo");
+                                        error!("unable to show game: corrupted GameInfo");
                                         continue;
                                     };
                                     format!("Next: {}", user_id)
                                 }
                                 core::GameState::Finished(core::FinishedState::Win(id)) => {
                                     let Some(user_id) = game.get_user_id(id) else {
-                                        println!("skipping corrupted GameInfo");
+                                        error!("unable to show game: corrupted GameInfo");
                                         continue;
                                     };
                                     format!("Winner: {}", user_id)
