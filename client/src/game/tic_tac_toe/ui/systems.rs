@@ -80,62 +80,53 @@ pub fn create(
         let player2_info =
             create_player_info_bundle(game_link.get(), **enemy.1, enemy_color, enemy.5.is_some());
         commands.entity(playground_entity).with_children(|builder| {
-            builder
-                .spawn(Node {
-                    display: Display::Flex,
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    margin: UiRect::bottom(Val::Auto),
-                    ..default()
-                })
-                .with_children(|builder| {
-                    builder.spawn(player1_info).with_children(|builder| {
-                        let text = match (user.2, user.3) {
-                            (Some(v), None) => format!("{:?}", v),
-                            (None, Some(v)) => format!("{:?}", v),
-                            _ => "-".into(),
-                        };
-                        builder.spawn(PlayerImageBundle::new(player1_image.clone()));
-                        builder.spawn(interface::TextBundle::new(text, text_font.clone()));
-                    });
-                    builder
-                        .spawn(GameStateInfoBundle::new(game_link.get()))
-                        .with_children(|builder| {
-                            let text = if user.5.is_some() || enemy.5.is_some() {
-                                "Next:"
-                            } else if user.6.is_some() || enemy.6.is_some() {
-                                "Winner:"
-                            } else {
-                                "Draw"
-                            };
-                            builder.spawn(interface::TextBundle::new(text, text_font.clone()));
-                            if user.5.is_some() {
-                                builder.spawn(NextPlayerImageBundle::new(
-                                    game_link.get(),
-                                    player1_image,
-                                ));
-                            } else if enemy.5.is_some() {
-                                builder.spawn(NextPlayerImageBundle::new(
-                                    game_link.get(),
-                                    player2_image.clone(),
-                                ));
-                            } else if user.6.is_some() {
-                                builder.spawn(PlayerImageBundle::new(player1_image));
-                            } else if enemy.6.is_some() {
-                                builder.spawn(PlayerImageBundle::new(player2_image.clone()));
-                            }
-                        });
-                    builder.spawn(player2_info).with_children(|builder| {
-                        let text = match (enemy.2, enemy.3) {
-                            (Some(v), None) => format!("{:?}", v),
-                            (None, Some(v)) => format!("{:?}", v),
-                            _ => "-".into(),
-                        };
-                        builder.spawn(interface::TextBundle::new(text, text_font.clone()));
-                        builder.spawn(PlayerImageBundle::new(player2_image));
-                    });
+            let mut row_node = interface::common::row_node();
+            row_node.margin = UiRect::bottom(Val::Auto);
+            builder.spawn(row_node).with_children(|builder| {
+                builder.spawn(player1_info).with_children(|builder| {
+                    let text = match (user.2, user.3) {
+                        (Some(v), None) => format!("{:?}", v),
+                        (None, Some(v)) => format!("{:?}", v),
+                        _ => "-".into(),
+                    };
+                    builder.spawn(PlayerImageBundle::new(player1_image.clone()));
+                    builder.spawn(interface::TextBundle::new(text, text_font.clone()));
                 });
+                builder
+                    .spawn(GameStateInfoBundle::new(game_link.get()))
+                    .with_children(|builder| {
+                        let text = if user.5.is_some() || enemy.5.is_some() {
+                            "Next:"
+                        } else if user.6.is_some() || enemy.6.is_some() {
+                            "Winner:"
+                        } else {
+                            "Draw"
+                        };
+                        builder.spawn(interface::TextBundle::new(text, text_font.clone()));
+                        if user.5.is_some() {
+                            builder
+                                .spawn(NextPlayerImageBundle::new(game_link.get(), player1_image));
+                        } else if enemy.5.is_some() {
+                            builder.spawn(NextPlayerImageBundle::new(
+                                game_link.get(),
+                                player2_image.clone(),
+                            ));
+                        } else if user.6.is_some() {
+                            builder.spawn(PlayerImageBundle::new(player1_image));
+                        } else if enemy.6.is_some() {
+                            builder.spawn(PlayerImageBundle::new(player2_image.clone()));
+                        }
+                    });
+                builder.spawn(player2_info).with_children(|builder| {
+                    let text = match (enemy.2, enemy.3) {
+                        (Some(v), None) => format!("{:?}", v),
+                        (None, Some(v)) => format!("{:?}", v),
+                        _ => "-".into(),
+                    };
+                    builder.spawn(interface::TextBundle::new(text, text_font.clone()));
+                    builder.spawn(PlayerImageBundle::new(player2_image));
+                });
+            });
         });
     }
 }

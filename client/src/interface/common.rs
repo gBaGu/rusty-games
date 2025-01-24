@@ -12,7 +12,6 @@ pub const LOGO_WIDTH: f32 = 200.0;
 pub const MENU_ITEM_HEIGHT: f32 = 50.0;
 pub const MENU_ITEM_WIDTH: f32 = 300.0;
 pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
-pub const MENU_ROW_HORIZONTAL_PADDING_PERCENT: f32 = 5.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
 pub const OVERLAY_BACKGROUND_COLOR: Color = Color::srgba(0.25, 0.25, 0.25, 0.95);
@@ -56,7 +55,6 @@ pub fn column_node() -> Node {
 pub fn row_node() -> Node {
     Node {
         width: Val::Percent(100.0),
-        padding: UiRect::horizontal(Val::Percent(MENU_ROW_HORIZONTAL_PADDING_PERCENT)),
         ..flex_row()
     }
 }

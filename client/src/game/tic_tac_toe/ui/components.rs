@@ -3,17 +3,13 @@ use game_server::core;
 
 use super::ITEM_HEIGHT;
 use crate::game::{GameLink, PlayerPosition};
-use crate::interface::PlayerColor;
+use crate::interface;
 
 pub fn ui_info_node() -> Node {
     Node {
-        display: Display::Flex,
         flex_basis: Val::Percent(100.0),
-        flex_direction: FlexDirection::Row,
-        align_items: AlignItems::Center,
-        justify_content: JustifyContent::Center,
         border: UiRect::all(Val::Px(2.0)),
-        ..default()
+        ..interface::common::flex_row()
     }
 }
 
@@ -57,7 +53,7 @@ pub struct PlayerInfoBundle {
     border_color: BorderColor,
     game_link: GameLink,
     player: PlayerPosition,
-    color: PlayerColor,
+    color: interface::PlayerColor,
 }
 
 impl PlayerInfoBundle {
