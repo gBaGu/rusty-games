@@ -98,10 +98,12 @@ pub fn init_network_settings_menu(
                 builder
                     .spawn(interface::common::row_node())
                     .with_children(|builder| {
-                        builder.spawn(interface::TextBundle::new(
-                            "Opponent id:",
-                            text_font.clone(),
-                        ));
+                        builder
+                            .spawn(item_node.clone())
+                            .with_child(interface::TextBundle::new(
+                                "Opponent id:",
+                                text_font.clone(),
+                            ));
                         let input_id = builder
                             .spawn(interface::UserIdTextInputBundle::new(
                                 item_node.clone(),

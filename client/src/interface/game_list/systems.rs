@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use game_server::core;
 
-use super::{GameList, HORIZONTAL_MARGIN};
+use super::{GameList, LIST_ITEM_WIDTH};
 use crate::grpc::{Connected, Disconnected};
 use crate::interface;
 
@@ -52,22 +52,19 @@ pub fn update(
                             builder
                                 .spawn(interface::common::row_node())
                                 .with_children(|builder| {
-                                    let mut item_node_with_margin =
-                                        interface::common::menu_item_node();
-                                    item_node_with_margin.margin.left = Val::Px(HORIZONTAL_MARGIN);
-                                    item_node_with_margin.margin.right = Val::Px(HORIZONTAL_MARGIN);
+                                    let mut item_node = interface::common::menu_item_node();
+                                    item_node.width = Val::Px(LIST_ITEM_WIDTH);
                                     for s in [
                                         &format!("ID: {}", game.id),
                                         &state_text,
                                         &format!("Players: {:?}", game.players),
                                     ] {
-                                        builder.spawn(
-                                            interface::TextBundle::new(s, text_font.clone())
-                                                .with_node(item_node_with_margin.clone()),
+                                        builder.spawn(item_node.clone()).with_child(
+                                            interface::TextBundle::new(s, text_font.clone()),
                                         );
                                     }
                                     let join = interface::JoinGameButtonBundle::new(
-                                        item_node_with_margin,
+                                        interface::common::menu_item_node(),
                                         game.clone(),
                                     );
                                     builder.spawn(join).with_child(interface::TextBundle::new(

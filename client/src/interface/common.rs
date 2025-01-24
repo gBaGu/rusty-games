@@ -5,13 +5,14 @@ pub const ERROR_SOUND_PATH: &str = "audio/error.ogg";
 pub const TURN_SOUND_PATH: &str = "audio/turn.ogg";
 
 pub const FONT_PATH: &str = "fonts/ADLaMDisplay-Regular.ttf";
-pub const FONT_SIZE: f32 = 30.0;
+pub const FONT_SIZE: f32 = 25.0;
 
 pub const LOGO_HEIGHT: f32 = 200.0;
 pub const LOGO_WIDTH: f32 = 200.0;
 pub const MENU_ITEM_HEIGHT: f32 = 50.0;
 pub const MENU_ITEM_WIDTH: f32 = 300.0;
 pub const MENU_LIST_MIN_HEIGHT: f32 = MENU_ITEM_HEIGHT * 6.0;
+pub const MENU_ROW_HORIZONTAL_PADDING_PERCENT: f32 = 5.0;
 pub const GAME_LIST_REFRESH_INTERVAL_SEC: f32 = 5.0;
 
 pub const OVERLAY_BACKGROUND_COLOR: Color = Color::srgba(0.25, 0.25, 0.25, 0.95);
@@ -46,6 +47,7 @@ pub fn row_node() -> Node {
     Node {
         flex_direction: FlexDirection::Row,
         align_items: AlignItems::Center,
+        padding: UiRect::horizontal(Val::Percent(MENU_ROW_HORIZONTAL_PADDING_PERCENT)),
         ..default()
     }
 }
