@@ -15,7 +15,7 @@ pub struct Playground;
 /// Component that indicates that the ui node contains game settings.
 /// This container will be filled depending on a current game page and app state.
 #[derive(Debug, Component)]
-pub struct GameSettings;
+pub struct GameSettingsContainer;
 
 /// Component that indicates that entity is related to a particular game type T.
 #[derive(Debug, Component)]
@@ -29,15 +29,42 @@ impl<T> Default for GameTag<T> {
 
 /// Component that indicates that entity is related to a settings entity.
 #[derive(Debug, Component)]
-pub struct GameSettingsLink(Entity);
+pub struct GameSettingsLink(Entity); // TODO: consider making single SettingLink or SettingParent
+
+impl From<Entity> for GameSettingsLink {
+    fn from(value: Entity) -> Self {
+        Self(value)
+    }
+}
 
 impl GameSettingsLink {
-    pub fn new(settings: Entity) -> Self {
-        Self(settings)
+    pub fn get(&self) -> Entity {
+        self.0
+    }
+}
+
+#[derive(Debug, Component)]
+pub struct SettingOption;
+
+#[derive(Debug, Component)]
+pub struct LocalSettingLink(Entity);
+
+impl LocalSettingLink {
+    pub fn new(setting: Entity) -> Self {
+        Self(setting)
     }
 
     pub fn get(&self) -> Entity {
         self.0
+    }
+}
+
+#[derive(Debug, Default, Component, Deref, DerefMut)]
+pub struct LocalSetting<T>(Option<T>);
+
+impl<T> From<Option<T>> for LocalSetting<T> {
+    fn from(value: Option<T>) -> Self {
+        Self(value)
     }
 }
 
@@ -66,10 +93,6 @@ pub struct SubmitButton {
 pub enum Setting {
     UserId,
 }
-
-/// Component that indicates that input entity is used to create user id value.
-#[derive(Component)]
-pub struct UserIdInput;
 
 /// Tag type to mark input components that they are used to create game
 #[derive(Debug, Component)]
@@ -101,15 +124,68 @@ impl PlaygroundBundle {
 #[derive(Debug, Bundle)]
 pub struct GameSettingsBundle {
     node: Node,
-    game_settings: GameSettings,
+    game_settings: GameSettingsContainer,
 }
 
 impl GameSettingsBundle {
     pub fn new() -> Self {
         Self {
             node: common::column_node(),
-            game_settings: GameSettings,
+            game_settings: GameSettingsContainer,
         }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct SettingOptionButtonBundle<T: Component> {
+    node: Node,
+    visibility: Visibility,
+    background_color: BackgroundColor,
+    button: Button,
+    setting_option: SettingOption,
+    local_setting: LocalSettingLink,
+    value: T,
+}
+
+impl<T: Component> SettingOptionButtonBundle<T> {
+    pub fn new(value: T, setting: Entity, border_size: Val, visible: bool) -> Self {
+        let mut node = common::menu_item_node();
+        node.border = UiRect::all(border_size);
+        let visibility = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        Self {
+            node,
+            visibility,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
+            setting_option: SettingOption,
+            local_setting: LocalSettingLink::new(setting),
+            value,
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct CreateGameSettingBundle<T: Send + Sync + 'static> {
+    node: Node,
+    game_settings: GameSettingsLink,
+    setting: LocalSetting<T>,
+}
+
+impl<T: Send + Sync + 'static> CreateGameSettingBundle<T> {
+    fn new(node: Node, game_settings: GameSettingsLink, value: Option<T>) -> Self {
+        Self {
+            node,
+            game_settings,
+            setting: LocalSetting::from(value),
+        }
+    }
+
+    pub fn new_empty(node: Node, game_settings: GameSettingsLink) -> Self {
+        Self::new(node, game_settings, None)
     }
 }
 
@@ -265,22 +341,22 @@ impl SettingTextInputBundle {
 }
 
 #[derive(Bundle)]
-pub struct UserIdTextInputBundle {
+pub struct LocalSettingTextInputBundle {
     node: Node,
     text_font: TextInputTextFont,
     text_color: TextInputTextColor,
     text_input: TextInput,
-    user_id_input: UserIdInput,
+    local_setting: LocalSettingLink,
 }
 
-impl UserIdTextInputBundle {
-    pub fn new(node: Node, text_font: TextFont) -> Self {
+impl LocalSettingTextInputBundle {
+    pub fn new(node: Node, text_font: TextFont, setting: Entity) -> Self {
         Self {
             node,
             text_font: TextInputTextFont(text_font),
             text_color: TextInputTextColor(SECONDARY_COLOR.into()),
             text_input: TextInput,
-            user_id_input: UserIdInput,
+            local_setting: LocalSettingLink::new(setting),
         }
     }
 }

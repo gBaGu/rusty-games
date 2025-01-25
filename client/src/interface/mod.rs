@@ -11,19 +11,20 @@ use bevy_simple_text_input::TextInputPlugin;
 
 use crate::app_state::{AppState, MenuState};
 use crate::grpc::NetworkSystems;
-use events::PlayerGamesReady;
+use events::{LocalSettingUpdated, PlayerGamesReady};
 use systems::*;
 
 pub use components::{
-    CreateGame, GameSettings, GameSettingsLink, GameTag, JoinGameButtonBundle, PlayerColor,
-    Playground, SubmitButtonBundle, TextBundle, UserIdInput, UserIdTextInputBundle,
+    CreateGame, CreateGameSettingBundle, GameSettingsContainer, GameSettingsLink, GameTag,
+    JoinGameButtonBundle, LocalSetting, LocalSettingTextInputBundle, PlayerColor, Playground,
+    SettingOptionButtonBundle, SubmitButtonBundle, TextBundle,
 };
 pub use events::{
     GameLeft, GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed,
 };
 pub use game_list::GameList;
 pub use resources::RefreshGamesTimer;
-pub use systems::{enter_game_page, remove_game_page_context};
+pub use systems::{enter_game_page, remove_game_page_context, set_local_option_setting};
 
 pub struct InterfacePlugin;
 
@@ -36,6 +37,7 @@ impl Plugin for InterfacePlugin {
             .add_event::<GameLeft>()
             .add_event::<SubmitPressed>()
             .add_event::<SettingOptionPressed>()
+            .add_event::<LocalSettingUpdated>()
             .add_event::<JoinPressed>()
             .add_event::<PlayerGamesReady>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
@@ -90,8 +92,9 @@ impl Plugin for InterfacePlugin {
                     toggle_pause,
                     state_transition,
                     submit_press,
-                    setting_press,
-                    update_difficulty_button_border,
+                    setting_option_pressed,
+                    set_local_text_input_setting::<u64>,
+                    update_option_buttons_border,
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (

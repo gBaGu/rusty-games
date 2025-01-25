@@ -24,6 +24,7 @@ use pending_action::{ConfirmationStatus, PendingAction};
 use resources::RefreshGameTimer;
 use systems::*;
 
+use crate::interface;
 pub use components::{
     ActiveGame, Board, BotDifficulty, CurrentUser, GameLink, NetworkGame, PendingActionQueue,
     Winner,
@@ -104,6 +105,7 @@ impl Plugin for GamePlugin {
                     log_confirmed_action::<core::GridIndex>,
                     log_dropped_action::<core::GridIndex>,
                 ),
-            );
+            )
+            .add_systems(Update, interface::set_local_option_setting::<BotDifficulty>);
     }
 }

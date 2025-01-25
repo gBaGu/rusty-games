@@ -61,19 +61,40 @@ pub struct SubmitPressed {
     pub source: Entity,
 }
 
-/// Event that indicates that the button related to a particular setting option os pressed.
+/// Event that indicates that the button related to a particular setting option is pressed.
 #[derive(Debug, Event)]
-pub struct SettingOptionPressed {
-    pub source: Entity,
-    pub settings: Entity,
-}
+pub struct SettingOptionPressed(Entity);
 
 impl SettingOptionPressed {
-    pub fn new(source: Entity, settings: Entity) -> Self {
+    pub fn new(source: Entity) -> Self {
+        Self(source)
+    }
+
+    pub fn get(&self) -> Entity {
+        self.0
+    }
+}
+
+#[derive(Debug, Event)]
+pub struct LocalSettingUpdated {
+    setting: Entity,
+    source: Entity,
+}
+
+impl LocalSettingUpdated {
+    pub fn new(setting: Entity, source: Entity) -> Self {
         Self {
+            setting,
             source,
-            settings,
         }
+    }
+
+    pub fn setting(&self) -> Entity {
+        self.setting
+    }
+
+    pub fn source(&self) -> Entity {
+        self.source
     }
 }
 

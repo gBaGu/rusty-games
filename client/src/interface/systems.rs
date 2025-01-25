@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use bevy::app::AppExit;
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
@@ -10,18 +12,19 @@ use super::common::{
 };
 use super::components::{
     CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, ImageBundle, JoinGame,
-    MenuNavigationButtonBundle, Overlay, OverlayNodeBundle, Playground, PlaygroundBundle, Setting,
-    SettingTextInputBundle, SubmitButton, SubmitButtonBundle, TextBundle,
+    LocalSetting, LocalSettingLink, MenuNavigationButtonBundle, Overlay, OverlayNodeBundle,
+    Playground, PlaygroundBundle, Setting, SettingOption, SettingTextInputBundle, SubmitButton,
+    SubmitButtonBundle, TextBundle,
 };
-use super::events::{GameLeft, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
+use super::events::{
+    GameLeft, LocalSettingUpdated, PlayerGamesReady, SettingOptionPressed, SubmitPressed,
+};
 use super::game_list::{GameList, GameListBundle};
 use super::resources::RefreshGamesTimer;
-use super::{GameReady, GameReadyToExit, GameSettingsLink, GameTag, JoinPressed};
+use super::{GameReady, GameReadyToExit, GameTag, JoinPressed};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::CommandsExt;
-use crate::game::{
-    ActiveGame, Board, BotDifficulty, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner,
-};
+use crate::game::{ActiveGame, Board, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner};
 use crate::grpc::RpcResultReady;
 use crate::{Settings, UserIdChanged};
 
@@ -134,34 +137,80 @@ pub fn submit_press(
     }
 }
 
-pub fn setting_press(
+pub fn setting_option_pressed(
     setting_button: Query<
-        (Entity, &Interaction, &GameSettingsLink),
-        (With<Button>, Changed<Interaction>),
+        (Entity, &Interaction),
+        (With<Button>, With<SettingOption>, Changed<Interaction>),
     >,
     mut setting_pressed: EventWriter<SettingOptionPressed>,
 ) {
-    for (button_entity, interaction, setting_link) in setting_button.iter() {
+    for (button_entity, interaction) in setting_button.iter() {
         if *interaction == Interaction::Pressed {
-            setting_pressed.send(SettingOptionPressed::new(button_entity, setting_link.get()));
+            setting_pressed.send(SettingOptionPressed::new(button_entity));
         }
     }
 }
 
-pub fn update_difficulty_button_border(
-    mut button: Query<(Entity, &mut BorderColor), (With<Button>, With<BotDifficulty>)>,
+pub fn set_local_text_input_setting<T: Copy + FromStr + PartialEq + Send + Sync + 'static>(
+    mut setting: Query<&mut LocalSetting<T>>,
+    input: Query<(&TextInputValue, &LocalSettingLink)>,
+    mut submit_pressed: EventReader<SubmitPressed>,
+    mut text_input_submit: EventReader<TextInputSubmitEvent>,
+    mut setting_updated: EventWriter<LocalSettingUpdated>,
+) {
+    let submit_pressed_iter = submit_pressed
+        .read()
+        .filter_map(|e| input.get(e.source).ok().map(|v| (e.source, v.0, v.1)));
+    let text_input_submit_iter = text_input_submit
+        .read()
+        .filter_map(|e| input.get(e.entity).ok().map(|v| (e.entity, v.0, v.1)));
+    for (input_entity, input_value, link) in submit_pressed_iter.chain(text_input_submit_iter) {
+        let Ok(mut setting) = setting.get_mut(link.get()) else {
+            continue;
+        };
+        if let Ok(value) = input_value.0.parse::<T>() {
+            let old_value = setting.replace(value);
+            if old_value.and_then(|v| Some(v != value)).unwrap_or(true) {
+                setting_updated.send(LocalSettingUpdated::new(link.get(), input_entity));
+            }
+        }
+    }
+}
+
+pub fn set_local_option_setting<T: Copy + PartialEq + Component>(
+    mut setting: Query<&mut LocalSetting<T>>,
+    source: Query<(&T, &LocalSettingLink)>,
     mut setting_pressed: EventReader<SettingOptionPressed>,
+    mut setting_updated: EventWriter<LocalSettingUpdated>,
 ) {
     for event in setting_pressed.read() {
-        if !button.contains(event.source) {
+        let Ok((value, link)) = source.get(event.get()) else {
             continue;
+        };
+        let Ok(mut setting) = setting.get_mut(link.get()) else {
+            continue;
+        };
+        let old_value = setting.replace(*value);
+        if old_value.and_then(|v| Some(v != *value)).unwrap_or(true) {
+            setting_updated.send(LocalSettingUpdated::new(link.get(), event.get()));
         }
-        for (entity, mut border) in button.iter_mut() {
-            if entity == event.source {
-                *border = SECONDARY_COLOR.into();
+    }
+}
+
+pub fn update_option_buttons_border(
+    mut button: Query<(Entity, &mut BorderColor, &LocalSettingLink), With<SettingOption>>,
+    mut setting_updated: EventReader<LocalSettingUpdated>,
+) {
+    for event in setting_updated.read() {
+        for (button_entity, mut border_color, _) in button
+            .iter_mut()
+            .filter(|(.., link)| link.get() == event.setting())
+        {
+            *border_color = if button_entity == event.source() {
+                SECONDARY_COLOR.into()
             } else {
-                *border = Color::NONE.into();
-            }
+                Color::NONE.into()
+            };
         }
     }
 }

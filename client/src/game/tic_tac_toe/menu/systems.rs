@@ -1,14 +1,8 @@
 use bevy::prelude::*;
-use bevy_simple_text_input::{TextInputSubmitEvent, TextInputValue};
 use game_server::core::tic_tac_toe::TicTacToe;
 
-use crate::game::components::BotDifficultyButtonBundle;
 use crate::game::tic_tac_toe::bot::Strategy;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
-use crate::game::tic_tac_toe::menu::components::{
-    BotGameSettings, BotGameSettingsBundle, BotStrategyButtonBundle, CommonGameSettings,
-    NetworkGameSettings, NetworkGameSettingsBundle,
-};
 use crate::game::{
     BotDifficulty, GameDataReady, GameEntityReady, NetworkGame, PendingExistingGameBundle,
     PendingNewGameBundle,
@@ -16,106 +10,108 @@ use crate::game::{
 use crate::Settings;
 use crate::{grpc, interface};
 
-/// Whenever [`interface::GameSettings`] is added to a page layout fill it
+/// Whenever [`interface::GameSettingsContainer`] is added to a page layout fill it
 /// with bot game settings interface.
 /// Should be called only from state `AppState::Menu(MenuState::PlayAgainstBot)`
 pub fn init_bot_settings_menu(
     mut commands: Commands,
-    node: Query<Entity, Added<interface::GameSettings>>,
+    node: Query<Entity, Added<interface::GameSettingsContainer>>,
     asset_server: Res<AssetServer>,
 ) {
     for settings_entity in node.iter() {
         let text_font = interface::common::load_text_font(&asset_server);
-        let mut choosable_setting_node = interface::common::menu_item_node();
-        choosable_setting_node.border = UiRect::all(Val::Px(2.0));
-        commands
-            .entity(settings_entity)
-            .insert(BotGameSettingsBundle::default())
-            .with_children(|builder| {
-                builder.spawn(interface::TextBundle::new("Bot", text_font.clone()));
-                builder
-                    .spawn(interface::common::row_node())
-                    .with_children(|builder| {
-                        builder
-                            .spawn(BotStrategyButtonBundle::new(
-                                choosable_setting_node.clone(),
-                                Strategy::Random,
-                                settings_entity,
-                            ))
-                            .with_child(interface::TextBundle::new("Random", text_font.clone()));
-                        builder
-                            .spawn(BotStrategyButtonBundle::new(
-                                choosable_setting_node.clone(),
-                                Strategy::QLearning,
-                                settings_entity,
-                            ))
-                            .with_child(interface::TextBundle::new("QLearning", text_font.clone()));
+        commands.entity(settings_entity).with_children(|builder| {
+            builder.spawn(interface::TextBundle::new("Bot", text_font.clone()));
+            builder
+                .spawn(interface::CreateGameSettingBundle::<Strategy>::new_empty(
+                    interface::common::row_node(),
+                    settings_entity.into(),
+                ))
+                .with_children(|builder| {
+                    let parent = builder.parent_entity();
+                    [Strategy::Random, Strategy::QLearning]
+                        .into_iter()
+                        .map(|s| {
+                            (
+                                interface::SettingOptionButtonBundle::new(
+                                    s,
+                                    parent,
+                                    Val::Px(2.),
+                                    true,
+                                ),
+                                interface::TextBundle::new(s.to_string(), text_font.clone()),
+                            )
+                        })
+                        .for_each(|(button, text)| {
+                            builder.spawn(button).with_child(text);
+                        });
+                });
+            builder
+                .spawn(
+                    interface::CreateGameSettingBundle::<BotDifficulty>::new_empty(
+                        interface::common::row_node(),
+                        settings_entity.into(),
+                    ),
+                )
+                .with_children(|builder| {
+                    let parent = builder.parent_entity();
+                    [
+                        BotDifficulty::Easy,
+                        BotDifficulty::Medium,
+                        BotDifficulty::Hard,
+                    ]
+                    .into_iter()
+                    .map(|d| {
+                        (
+                            interface::SettingOptionButtonBundle::new(
+                                d,
+                                parent,
+                                Val::Px(2.),
+                                false,
+                            ),
+                            interface::TextBundle::new(d.to_string(), text_font.clone()),
+                        )
+                    })
+                    .for_each(|(button, text)| {
+                        builder.spawn(button).with_child(text);
                     });
-                builder
-                    .spawn(interface::common::row_node())
-                    .with_children(|builder| {
-                        builder
-                            .spawn(BotDifficultyButtonBundle::new(
-                                choosable_setting_node.clone(),
-                                BotDifficulty::Easy,
-                                settings_entity,
-                            ))
-                            .with_child(interface::TextBundle::new("Easy", text_font.clone()));
-                        builder
-                            .spawn(BotDifficultyButtonBundle::new(
-                                choosable_setting_node.clone(),
-                                BotDifficulty::Medium,
-                                settings_entity,
-                            ))
-                            .with_child(interface::TextBundle::new("Medium", text_font.clone()));
-                        builder
-                            .spawn(BotDifficultyButtonBundle::new(
-                                choosable_setting_node.clone(),
-                                BotDifficulty::Hard,
-                                settings_entity,
-                            ))
-                            .with_child(interface::TextBundle::new("Hard", text_font.clone()));
-                    });
-            });
+                });
+        });
     }
 }
 
-/// Whenever [`interface::GameSettings`] is added to a page layout fill it
+/// Whenever [`interface::GameSettingsContainer`] is added to a page layout fill it
 /// with network game settings interface.
 /// Should be called only from state `AppState::Menu(MenuState::PlayOverNetwork)`
 pub fn init_network_settings_menu(
     mut commands: Commands,
-    node: Query<Entity, Added<interface::GameSettings>>,
+    node: Query<Entity, Added<interface::GameSettingsContainer>>,
     asset_server: Res<AssetServer>,
 ) {
     for settings_entity in node.iter() {
         let text_font = interface::common::load_text_font(&asset_server);
         let item_node = interface::common::menu_item_node();
-        commands
-            .entity(settings_entity)
-            .insert(NetworkGameSettingsBundle::default())
-            .with_children(|builder| {
-                builder
-                    .spawn(interface::common::row_node())
-                    .with_children(|builder| {
-                        builder
-                            .spawn(item_node.clone())
-                            .with_child(interface::TextBundle::new(
-                                "Opponent id:",
-                                text_font.clone(),
-                            ));
-                        let input_id = builder
-                            .spawn(interface::UserIdTextInputBundle::new(
-                                item_node.clone(),
-                                text_font.clone(),
-                            ))
-                            .insert(interface::GameSettingsLink::new(settings_entity))
-                            .id();
-                        builder
-                            .spawn(interface::SubmitButtonBundle::new(item_node, input_id))
-                            .with_child(interface::TextBundle::new("Save", text_font.clone()));
-                    });
-            });
+        commands.entity(settings_entity).with_children(|builder| {
+            builder
+                .spawn(interface::CreateGameSettingBundle::<u64>::new_empty(
+                    interface::common::row_node(),
+                    settings_entity.into(),
+                ))
+                .with_children(|builder| {
+                    let text = interface::TextBundle::new("Opponent id:", text_font.clone());
+                    builder.spawn(item_node.clone()).with_child(text);
+                    let input_id = builder
+                        .spawn(interface::LocalSettingTextInputBundle::new(
+                            item_node.clone(),
+                            text_font.clone(),
+                            builder.parent_entity(),
+                        ))
+                        .id();
+                    builder
+                        .spawn(interface::SubmitButtonBundle::new(item_node, input_id))
+                        .with_child(interface::TextBundle::new("Save", text_font.clone()));
+                });
+        });
     }
 }
 
@@ -180,70 +176,6 @@ pub fn send_get_player_games(
     }
 }
 
-/// Save chosen strategy into a [`BotGameSettings`] component.
-pub fn update_active_strategy(
-    button: Query<(&Strategy, &interface::GameSettingsLink), With<Button>>,
-    mut settings: Query<&mut BotGameSettings>,
-    mut setting_pressed: EventReader<interface::SettingOptionPressed>,
-) {
-    for event in setting_pressed.read() {
-        let Ok((strategy, settings_link)) = button.get(event.source) else {
-            continue;
-        };
-        if settings_link.get() != event.settings {
-            error!("settings link from event doesn't match one from component");
-            continue;
-        }
-        let Ok(mut settings) = settings.get_mut(settings_link.get()) else {
-            error!("unable to get strategy settings component");
-            continue;
-        };
-        settings.set_strategy(*strategy);
-    }
-}
-
-/// Set border color for a strategy button that has just been pressed, reset it for
-/// other strategy buttons.
-pub fn update_strategy_button_border(
-    mut button: Query<(Entity, &mut BorderColor), (With<Button>, With<Strategy>)>,
-    mut setting_pressed: EventReader<interface::SettingOptionPressed>,
-) {
-    for event in setting_pressed.read() {
-        if !button.contains(event.source) {
-            continue;
-        }
-        for (entity, mut border) in button.iter_mut() {
-            if entity == event.source {
-                *border = interface::common::SECONDARY_COLOR.into();
-            } else {
-                *border = Color::NONE.into();
-            }
-        }
-    }
-}
-
-/// Save chosen difficulty to a [`BotGameSettings`] component.
-pub fn update_active_difficulty(
-    button: Query<(&BotDifficulty, &interface::GameSettingsLink), With<Button>>,
-    mut settings: Query<&mut BotGameSettings>,
-    mut setting_pressed: EventReader<interface::SettingOptionPressed>,
-) {
-    for event in setting_pressed.read() {
-        let Ok((difficulty, settings_link)) = button.get(event.source) else {
-            continue;
-        };
-        if settings_link.get() != event.settings {
-            error!("settings link from event doesn't match one from component");
-            continue;
-        }
-        let Ok(mut settings) = settings.get_mut(settings_link.get()) else {
-            error!("unable to get difficulty settings component");
-            continue;
-        };
-        settings.set_difficulty(*difficulty);
-    }
-}
-
 /// Get all data required to create a bot game, spawn [`CreateGameContext`] component and
 /// send [`GameDataReady`] event.
 pub fn create_bot_game(
@@ -252,36 +184,44 @@ pub fn create_bot_game(
         (&Interaction, &interface::GameSettingsLink),
         (Changed<Interaction>, With<interface::CreateGame>),
     >,
-    game_settings: Query<(&CommonGameSettings, &BotGameSettings)>,
+    strategy_setting: Query<(
+        &interface::LocalSetting<Strategy>,
+        &interface::GameSettingsLink,
+    )>,
+    difficulty_setting: Query<(
+        &interface::LocalSetting<BotDifficulty>,
+        &interface::GameSettingsLink,
+    )>,
     mut game_data_ready: EventWriter<GameDataReady>,
     settings: Res<Settings>,
 ) {
-    for (interaction, settings_link) in button.iter() {
+    for (interaction, _) in button.iter() {
         if *interaction == Interaction::Pressed {
             let Some(user) = settings.user_id() else {
                 continue;
             };
-            let Ok((common_settings, bot_settings)) = game_settings.get(settings_link.get()) else {
+            let Ok((strategy, _)) = strategy_setting.get_single() else {
                 continue;
             };
-            let Some(strategy) = bot_settings.strategy() else {
+            let Some(strategy) = **strategy else {
                 continue;
             };
-            let mut difficulty = None;
+            let Ok((difficulty, _)) = difficulty_setting.get_single() else {
+                continue;
+            };
             if strategy.has_difficulty() {
-                if bot_settings.difficulty().is_none() {
+                if difficulty.is_none() {
                     error!("bot difficulty is not set");
                     continue;
                 }
-                difficulty = bot_settings.difficulty();
             }
 
             let ctx = CreateGameContext::new(
                 EnemyType::Bot {
                     strategy,
-                    difficulty,
+                    difficulty: **difficulty,
                 },
-                common_settings.user_first(),
+                true,
                 None,
             );
             let context_entity = commands.spawn(ctx).id();
@@ -298,19 +238,22 @@ pub fn create_network_game(
         (&Interaction, &interface::GameSettingsLink),
         (Changed<Interaction>, With<interface::CreateGame>),
     >,
-    game_settings: Query<(&CommonGameSettings, &NetworkGameSettings)>,
+    opponent_setting: Query<(
+        &interface::LocalSetting<u64>,
+        &interface::GameSettingsLink,
+    )>,
     client: Option<Res<grpc::GrpcClient>>,
     settings: Res<Settings>,
 ) {
-    for (interaction, settings_link) in button.iter() {
+    for (interaction, _) in button.iter() {
         if *interaction == Interaction::Pressed {
             let Some(user) = settings.user_id() else {
                 continue;
             };
-            let Ok((_, network_settings)) = game_settings.get(settings_link.get()) else {
+            let Ok((opponent, _)) = opponent_setting.get_single() else {
                 continue;
             };
-            let Some(opponent) = network_settings.opponent() else {
+            let Some(opponent) = **opponent else {
                 error!("opponent is not set");
                 continue;
             };
@@ -328,40 +271,6 @@ pub fn create_network_game(
                 Err(err) => error!("create_game call failed: {}", err),
             }
         }
-    }
-}
-
-/// Whenever [`interface::SubmitPressed`] or [`TextInputSubmitEvent`] event is received
-/// try to convert [`TextInputValue`] content into [`u64`] and
-/// save result in a [`NetworkGameSettings`].
-pub fn save_opponent(
-    mut settings: Query<&mut NetworkGameSettings>,
-    input: Query<(&TextInputValue, &interface::GameSettingsLink), With<interface::UserIdInput>>,
-    mut submit_pressed: EventReader<interface::SubmitPressed>,
-    mut text_input_submit: EventReader<TextInputSubmitEvent>,
-) {
-    let submit = |input: &str, settings: &mut NetworkGameSettings| {
-        if let Ok(val) = input.parse::<u64>() {
-            settings.set_opponent(val);
-        }
-    };
-    for event in submit_pressed.read() {
-        let Ok((input_value, settings_link)) = input.get(event.source) else {
-            continue;
-        };
-        let Ok(mut settings) = settings.get_mut(settings_link.get()) else {
-            continue;
-        };
-        submit(&input_value.0, &mut settings);
-    }
-    for event in text_input_submit.read() {
-        let Ok((_, settings_link)) = input.get(event.entity) else {
-            continue;
-        };
-        let Ok(mut settings) = settings.get_mut(settings_link.get()) else {
-            continue;
-        };
-        submit(&event.value, &mut settings);
     }
 }
 

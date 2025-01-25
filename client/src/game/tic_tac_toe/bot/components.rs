@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::Formatter;
 use std::time::Duration;
 
 use bevy::prelude::*;
@@ -28,10 +30,16 @@ impl Delay {
 }
 
 /// Component that defines the logic that will be used to choose bot action.
-#[derive(Clone, Copy, Debug, Component)]
+#[derive(Clone, Copy, Debug, PartialEq, Component)]
 pub enum Strategy {
     Random,
     QLearning,
+}
+
+impl fmt::Display for Strategy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl Strategy {

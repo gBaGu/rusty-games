@@ -1,9 +1,7 @@
 use bevy::prelude::*;
 
-use crate::game::BotDifficulty;
 use crate::game::tic_tac_toe::bot::Strategy;
-use crate::interface::common::PRIMARY_COLOR;
-use crate::interface::GameSettingsLink;
+use crate::game::BotDifficulty;
 
 /// Component that stores settings that are common for both bot and network games.
 #[derive(Debug, Component)]
@@ -13,9 +11,7 @@ pub struct CommonGameSettings {
 
 impl Default for CommonGameSettings {
     fn default() -> Self {
-        Self {
-            user_first: true,
-        }
+        Self { user_first: true }
     }
 }
 
@@ -76,25 +72,4 @@ pub struct BotGameSettingsBundle {
 pub struct NetworkGameSettingsBundle {
     pub common: CommonGameSettings,
     pub bot_settings: NetworkGameSettings,
-}
-
-#[derive(Debug, Bundle)]
-pub struct BotStrategyButtonBundle {
-    node: Node,
-    background_color: BackgroundColor,
-    button: Button,
-    strategy: Strategy,
-    settings_link: GameSettingsLink,
-}
-
-impl BotStrategyButtonBundle {
-    pub fn new(node: Node, strategy: Strategy, settings: Entity) -> Self {
-        Self {
-            node,
-            background_color: PRIMARY_COLOR.into(),
-            button: Button,
-            strategy,
-            settings_link: GameSettingsLink::new(settings),
-        }
-    }
 }
