@@ -11,16 +11,17 @@ use bevy_simple_text_input::TextInputPlugin;
 
 use crate::app_state::{AppState, MenuState};
 use crate::grpc::NetworkSystems;
-use events::{LocalSettingUpdated, PlayerGamesReady};
+use events::PlayerGamesReady;
 use systems::*;
 
 pub use components::{
     CreateGame, CreateGameSettingBundle, GameSettingsContainer, GameSettingsLink, GameTag,
-    JoinGameButtonBundle, LocalSetting, LocalSettingTextInputBundle, PlayerColor, Playground,
-    SettingOptionButtonBundle, SubmitButtonBundle, TextBundle,
+    JoinGameButtonBundle, LocalSetting, LocalSettingLink, LocalSettingTextInputBundle, PlayerColor,
+    Playground, SettingOptionButtonBundle, SubmitButtonBundle, TextBundle,
 };
 pub use events::{
-    GameLeft, GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed,
+    GameLeft, GameReady, GameReadyToExit, JoinPressed, LocalSettingUpdated, SettingOptionPressed,
+    SubmitPressed,
 };
 pub use game_list::GameList;
 pub use resources::RefreshGamesTimer;

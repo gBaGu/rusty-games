@@ -28,7 +28,7 @@ impl<T> Default for GameTag<T> {
 }
 
 /// Component that indicates that entity is related to a settings entity.
-#[derive(Debug, Component)]
+#[derive(Debug, PartialEq, Component)]
 pub struct GameSettingsLink(Entity); // TODO: consider making single SettingLink or SettingParent
 
 impl From<Entity> for GameSettingsLink {

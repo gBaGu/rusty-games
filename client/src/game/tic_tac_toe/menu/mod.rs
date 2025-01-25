@@ -17,7 +17,11 @@ impl Plugin for GameMenuPlugin {
         app.add_systems(
             Update,
             (
-                (init_bot_settings_menu, create_bot_game)
+                (
+                    init_bot_settings_menu,
+                    create_bot_game,
+                    update_bot_difficulty_buttons_visibility,
+                )
                     .run_if(in_state(AppState::Menu(MenuState::PlayAgainstBot))),
                 (init_network_settings_menu, create_network_game)
                     .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use game_server::core::tic_tac_toe::TicTacToe;
 
-use crate::game::tic_tac_toe::bot::Strategy;
+use crate::game::tic_tac_toe::bot;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
 use crate::game::{
     BotDifficulty, GameDataReady, GameEntityReady, NetworkGame, PendingExistingGameBundle,
@@ -23,13 +23,15 @@ pub fn init_bot_settings_menu(
         commands.entity(settings_entity).with_children(|builder| {
             builder.spawn(interface::TextBundle::new("Bot", text_font.clone()));
             builder
-                .spawn(interface::CreateGameSettingBundle::<Strategy>::new_empty(
-                    interface::common::row_node(),
-                    settings_entity.into(),
-                ))
+                .spawn(
+                    interface::CreateGameSettingBundle::<bot::Strategy>::new_empty(
+                        interface::common::row_node(),
+                        settings_entity.into(),
+                    ),
+                )
                 .with_children(|builder| {
                     let parent = builder.parent_entity();
-                    [Strategy::Random, Strategy::QLearning]
+                    [bot::Strategy::Random, bot::Strategy::QLearning]
                         .into_iter()
                         .map(|s| {
                             (
@@ -115,6 +117,50 @@ pub fn init_network_settings_menu(
     }
 }
 
+pub fn update_bot_difficulty_buttons_visibility(
+    mut difficulty_button: Query<(
+        &mut Visibility,
+        &BotDifficulty,
+        &interface::LocalSettingLink,
+    )>,
+    mut difficulty_setting: Query<
+        (Entity, &interface::GameSettingsLink),
+        With<interface::LocalSetting<BotDifficulty>>,
+    >,
+    strategy_setting: Query<(
+        &interface::LocalSetting<bot::Strategy>,
+        &interface::GameSettingsLink,
+    )>,
+    mut setting_updated: EventReader<interface::LocalSettingUpdated>,
+    q_learning_model: Res<bot::QLearningModel>,
+) {
+    for event in setting_updated.read() {
+        let Ok((strategy, game_settings_link)) = strategy_setting.get(event.setting()) else {
+            continue;
+        };
+        let Some((difficulty_setting_entity, _)) = difficulty_setting
+            .iter_mut()
+            .find(|(_, link)| *link == game_settings_link)
+        else {
+            continue;
+        };
+        let difficulties = match **strategy {
+            Some(bot::Strategy::QLearning) => q_learning_model.get_available_difficulties(),
+            _ => vec![],
+        };
+        for (mut visibility, difficulty, _) in difficulty_button
+            .iter_mut()
+            .filter(|(.., link)| link.get() == difficulty_setting_entity)
+        {
+            *visibility = if difficulties.contains(difficulty) {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+        }
+    }
+}
+
 /// Whenever [`interface::GameList`] is added to a page layout send GetPlayerGames request or
 /// fill it with a status message.
 pub fn init_game_list(
@@ -185,7 +231,7 @@ pub fn create_bot_game(
         (Changed<Interaction>, With<interface::CreateGame>),
     >,
     strategy_setting: Query<(
-        &interface::LocalSetting<Strategy>,
+        &interface::LocalSetting<bot::Strategy>,
         &interface::GameSettingsLink,
     )>,
     difficulty_setting: Query<(
@@ -238,10 +284,7 @@ pub fn create_network_game(
         (&Interaction, &interface::GameSettingsLink),
         (Changed<Interaction>, With<interface::CreateGame>),
     >,
-    opponent_setting: Query<(
-        &interface::LocalSetting<u64>,
-        &interface::GameSettingsLink,
-    )>,
+    opponent_setting: Query<(&interface::LocalSetting<u64>, &interface::GameSettingsLink)>,
     client: Option<Res<grpc::GrpcClient>>,
     settings: Res<Settings>,
 ) {

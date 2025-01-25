@@ -48,6 +48,20 @@ impl QLearningModel {
         }
     }
 
+    pub fn get_available_difficulties(&self) -> Vec<BotDifficulty> {
+        let mut res = Vec::with_capacity(3);
+        if self.easy.is_some() {
+            res.push(BotDifficulty::Easy);
+        }
+        if self.medium.is_some() {
+            res.push(BotDifficulty::Medium);
+        }
+        if self.hard.is_some() {
+            res.push(BotDifficulty::Hard);
+        }
+        res
+    }
+
     pub fn get_move(&self, difficulty: BotDifficulty, board: &TTTBoard) -> Option<core::GridIndex> {
         let agent = match difficulty {
             BotDifficulty::Easy => self.easy.as_ref(),
