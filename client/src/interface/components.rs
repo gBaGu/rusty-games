@@ -38,6 +38,7 @@ impl From<Entity> for GameSettingsLink {
 }
 
 impl GameSettingsLink {
+    #[allow(dead_code)]
     pub fn get(&self) -> Entity {
         self.0
     }

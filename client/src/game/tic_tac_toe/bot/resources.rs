@@ -3,6 +3,7 @@ use std::path::Path;
 use bevy::asset::io::file::FileAssetReader;
 use bevy::prelude::*;
 use game_server::core;
+use smallvec::SmallVec;
 use tic_tac_toe_ai::Agent;
 
 use super::TTTBoard;
@@ -48,8 +49,8 @@ impl QLearningModel {
         }
     }
 
-    pub fn get_available_difficulties(&self) -> Vec<BotDifficulty> {
-        let mut res = Vec::with_capacity(3);
+    pub fn get_available_difficulties(&self) -> SmallVec<[BotDifficulty; 3]> {
+        let mut res = SmallVec::new();
         if self.easy.is_some() {
             res.push(BotDifficulty::Easy);
         }

@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use game_server::core::tic_tac_toe::TicTacToe;
 
+use super::StrategyUpdated;
 use crate::game::tic_tac_toe::bot;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
 use crate::game::{
@@ -117,42 +118,86 @@ pub fn init_network_settings_menu(
     }
 }
 
-pub fn update_bot_difficulty_buttons_visibility(
+/// Receive bot strategy update [`interface::LocalSettingUpdated`] event and send
+/// another event with a list of difficulty options for the new strategy.
+pub fn get_bot_strategy_difficulty_options(
+    mut setting_updated: EventReader<interface::LocalSettingUpdated<bot::Strategy>>,
+    mut strategy_updated: EventWriter<StrategyUpdated>,
+    q_learning_model: Res<bot::QLearningModel>,
+) {
+    for event in setting_updated.read() {
+        let difficulties = match event.value() {
+            Some(bot::Strategy::QLearning) => q_learning_model.get_available_difficulties(),
+            _ => smallvec::smallvec![],
+        };
+        strategy_updated.send(StrategyUpdated::new(event.setting(), difficulties));
+    }
+}
+
+pub fn update_bot_difficulty_setting(
+    mut difficulty_setting: Query<(
+        Entity,
+        &mut interface::LocalSetting<BotDifficulty>,
+        &interface::GameSettingsLink,
+    )>,
+    strategy_setting: Query<
+        &interface::GameSettingsLink,
+        With<interface::LocalSetting<bot::Strategy>>,
+    >,
+    mut strategy_updated: EventReader<StrategyUpdated>,
+    mut difficulty_updated: EventWriter<interface::LocalSettingUpdated<BotDifficulty>>,
+) {
+    for event in strategy_updated.read() {
+        let Ok(game_settings_link) = strategy_setting.get(event.setting()) else {
+            continue;
+        };
+        let Some((difficulty_setting_entity, mut difficulty, _)) = difficulty_setting
+            .iter_mut()
+            .find(|(.., link)| *link == game_settings_link)
+        else {
+            continue;
+        };
+        if let Some(current_difficulty) = (*difficulty).as_ref() {
+            if !event.difficulty_supported(current_difficulty) {
+                let _ = difficulty.take();
+                difficulty_updated.send(
+                    interface::LocalSettingUpdated::<BotDifficulty>::new_unset(
+                        difficulty_setting_entity,
+                    ),
+                );
+            }
+        }
+    }
+}
+
+pub fn update_difficulty_buttons_visibility(
     mut difficulty_button: Query<(
         &mut Visibility,
         &BotDifficulty,
         &interface::LocalSettingLink,
     )>,
-    mut difficulty_setting: Query<
-        (Entity, &interface::GameSettingsLink),
-        With<interface::LocalSetting<BotDifficulty>>,
-    >,
-    strategy_setting: Query<(
-        &interface::LocalSetting<bot::Strategy>,
+    difficulty_setting: Query<(Entity, &interface::GameSettingsLink)>,
+    strategy_setting: Query<
         &interface::GameSettingsLink,
-    )>,
-    mut setting_updated: EventReader<interface::LocalSettingUpdated>,
-    q_learning_model: Res<bot::QLearningModel>,
+        With<interface::LocalSetting<bot::Strategy>>,
+    >,
+    mut strategy_updated: EventReader<StrategyUpdated>,
 ) {
-    for event in setting_updated.read() {
-        let Ok((strategy, game_settings_link)) = strategy_setting.get(event.setting()) else {
+    for event in strategy_updated.read() {
+        let Ok(game_settings_link) = strategy_setting.get(event.setting()) else {
             continue;
         };
         let Some((difficulty_setting_entity, _)) = difficulty_setting
-            .iter_mut()
+            .iter()
             .find(|(_, link)| *link == game_settings_link)
         else {
             continue;
-        };
-        let difficulties = match **strategy {
-            Some(bot::Strategy::QLearning) => q_learning_model.get_available_difficulties(),
-            _ => vec![],
         };
         for (mut visibility, difficulty, _) in difficulty_button
             .iter_mut()
             .filter(|(.., link)| link.get() == difficulty_setting_entity)
         {
-            *visibility = if difficulties.contains(difficulty) {
+            *visibility = if event.difficulty_supported(difficulty) {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden

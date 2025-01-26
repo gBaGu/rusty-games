@@ -76,25 +76,30 @@ impl SettingOptionPressed {
 }
 
 #[derive(Debug, Event)]
-pub struct LocalSettingUpdated {
+pub struct LocalSettingUpdated<T> {
     setting: Entity,
-    source: Entity,
+    value: Option<T>,
 }
 
-impl LocalSettingUpdated {
-    pub fn new(setting: Entity, source: Entity) -> Self {
-        Self {
-            setting,
-            source,
-        }
+impl<T> LocalSettingUpdated<T> {
+    fn new(setting: Entity, value: Option<T>) -> Self {
+        Self { setting, value }
+    }
+
+    pub fn new_set(setting: Entity, value: T) -> Self {
+        Self::new(setting, Some(value))
+    }
+
+    pub fn new_unset(setting: Entity) -> Self {
+        Self::new(setting, None)
     }
 
     pub fn setting(&self) -> Entity {
         self.setting
     }
 
-    pub fn source(&self) -> Entity {
-        self.source
+    pub fn value(&self) -> &Option<T> {
+        &self.value
     }
 }
 

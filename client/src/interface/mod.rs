@@ -25,7 +25,10 @@ pub use events::{
 };
 pub use game_list::GameList;
 pub use resources::RefreshGamesTimer;
-pub use systems::{enter_game_page, remove_game_page_context, set_local_option_setting};
+pub use systems::{
+    enter_game_page, remove_game_page_context, set_local_option_setting,
+    update_option_buttons_border,
+};
 
 pub struct InterfacePlugin;
 
@@ -38,7 +41,7 @@ impl Plugin for InterfacePlugin {
             .add_event::<GameLeft>()
             .add_event::<SubmitPressed>()
             .add_event::<SettingOptionPressed>()
-            .add_event::<LocalSettingUpdated>()
+            .add_event::<LocalSettingUpdated<u64>>()
             .add_event::<JoinPressed>()
             .add_event::<PlayerGamesReady>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)
@@ -95,7 +98,6 @@ impl Plugin for InterfacePlugin {
                     submit_press,
                     setting_option_pressed,
                     set_local_text_input_setting::<u64>,
-                    update_option_buttons_border,
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (

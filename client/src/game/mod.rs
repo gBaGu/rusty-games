@@ -106,6 +106,13 @@ impl Plugin for GamePlugin {
                     log_dropped_action::<core::GridIndex>,
                 ),
             )
-            .add_systems(Update, interface::set_local_option_setting::<BotDifficulty>);
+            .add_event::<interface::LocalSettingUpdated<BotDifficulty>>()
+            .add_systems(
+                Update,
+                (
+                    interface::set_local_option_setting::<BotDifficulty>,
+                    interface::update_option_buttons_border::<BotDifficulty>,
+                ),
+            );
     }
 }

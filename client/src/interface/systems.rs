@@ -156,22 +156,22 @@ pub fn set_local_text_input_setting<T: Copy + FromStr + PartialEq + Send + Sync 
     input: Query<(&TextInputValue, &LocalSettingLink)>,
     mut submit_pressed: EventReader<SubmitPressed>,
     mut text_input_submit: EventReader<TextInputSubmitEvent>,
-    mut setting_updated: EventWriter<LocalSettingUpdated>,
+    mut setting_updated: EventWriter<LocalSettingUpdated<T>>,
 ) {
     let submit_pressed_iter = submit_pressed
         .read()
-        .filter_map(|e| input.get(e.source).ok().map(|v| (e.source, v.0, v.1)));
+        .filter_map(|e| input.get(e.source).ok());
     let text_input_submit_iter = text_input_submit
         .read()
-        .filter_map(|e| input.get(e.entity).ok().map(|v| (e.entity, v.0, v.1)));
-    for (input_entity, input_value, link) in submit_pressed_iter.chain(text_input_submit_iter) {
+        .filter_map(|e| input.get(e.entity).ok());
+    for (input_value, link) in submit_pressed_iter.chain(text_input_submit_iter) {
         let Ok(mut setting) = setting.get_mut(link.get()) else {
             continue;
         };
         if let Ok(value) = input_value.0.parse::<T>() {
             let old_value = setting.replace(value);
             if old_value.and_then(|v| Some(v != value)).unwrap_or(true) {
-                setting_updated.send(LocalSettingUpdated::new(link.get(), input_entity));
+                setting_updated.send(LocalSettingUpdated::new_set(link.get(), value));
             }
         }
     }
@@ -181,7 +181,7 @@ pub fn set_local_option_setting<T: Copy + PartialEq + Component>(
     mut setting: Query<&mut LocalSetting<T>>,
     source: Query<(&T, &LocalSettingLink)>,
     mut setting_pressed: EventReader<SettingOptionPressed>,
-    mut setting_updated: EventWriter<LocalSettingUpdated>,
+    mut setting_updated: EventWriter<LocalSettingUpdated<T>>,
 ) {
     for event in setting_pressed.read() {
         let Ok((value, link)) = source.get(event.get()) else {
@@ -192,21 +192,21 @@ pub fn set_local_option_setting<T: Copy + PartialEq + Component>(
         };
         let old_value = setting.replace(*value);
         if old_value.and_then(|v| Some(v != *value)).unwrap_or(true) {
-            setting_updated.send(LocalSettingUpdated::new(link.get(), event.get()));
+            setting_updated.send(LocalSettingUpdated::new_set(link.get(), *value));
         }
     }
 }
 
-pub fn update_option_buttons_border(
-    mut button: Query<(Entity, &mut BorderColor, &LocalSettingLink), With<SettingOption>>,
-    mut setting_updated: EventReader<LocalSettingUpdated>,
+pub fn update_option_buttons_border<T: PartialEq + Component>(
+    mut button: Query<(&mut BorderColor, &T, &LocalSettingLink), With<SettingOption>>,
+    mut setting_updated: EventReader<LocalSettingUpdated<T>>,
 ) {
     for event in setting_updated.read() {
-        for (button_entity, mut border_color, _) in button
+        for (mut border_color, button_value, _) in button
             .iter_mut()
             .filter(|(.., link)| link.get() == event.setting())
         {
-            *border_color = if button_entity == event.source() {
+            *border_color = if matches!(event.value(), Some(value) if value == button_value) {
                 SECONDARY_COLOR.into()
             } else {
                 Color::NONE.into()
