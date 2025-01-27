@@ -7,6 +7,7 @@ mod grpc;
 mod interface;
 mod resources;
 mod systems;
+mod util;
 
 use bevy::prelude::*;
 use clap::Parser;

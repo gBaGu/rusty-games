@@ -10,20 +10,23 @@ use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
 use crate::app_state::{AppState, MenuState};
-use crate::grpc::NetworkSystems;
+use crate::grpc;
 use events::PlayerGamesReady;
 use systems::*;
 
 pub use components::{
-    CreateGame, GameSettings, GameSettingsLink, GameTag, JoinGameButtonBundle, PlayerColor,
-    Playground, SubmitButtonBundle, TextBundle, UserIdInput, UserIdTextInputBundle,
+    CreateGame, GameSettingsContainer, GameTag, JoinGameButtonBundle, PlayerColor, Playground,
+    SettingOptionButtonBundle, StorageLink, SubmitButtonBundle, TextBundle, TextInputBundle,
 };
 pub use events::{
     GameLeft, GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed,
 };
 pub use game_list::GameList;
 pub use resources::RefreshGamesTimer;
-pub use systems::{enter_game_page, remove_game_page_context};
+pub use systems::{
+    enter_game_page, remove_game_page_context, set_local_option_setting,
+    update_option_buttons_border,
+};
 
 pub struct InterfacePlugin;
 
@@ -90,12 +93,12 @@ impl Plugin for InterfacePlugin {
                     toggle_pause,
                     state_transition,
                     submit_press,
-                    setting_press,
-                    update_difficulty_button_border,
+                    setting_option_pressed,
+                    set_local_text_input_setting::<u64>,
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (
-                        join_press.in_set(NetworkSystems),
+                        join_press.in_set(grpc::NetworkSystems),
                         handle_get_player_games,
                         handle_player_games,
                     )

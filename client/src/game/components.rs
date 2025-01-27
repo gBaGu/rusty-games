@@ -1,3 +1,4 @@
+use std::fmt;
 use std::marker::PhantomData;
 
 use bevy::prelude::*;
@@ -5,19 +6,24 @@ use game_server::core;
 use smallvec::SmallVec;
 
 use super::{ConfirmationStatus, PendingAction, ACTION_RESEND_INTERVAL_SEC};
-use crate::interface::common::{PRIMARY_COLOR, SECONDARY_COLOR};
-use crate::interface::GameSettingsLink;
+use crate::interface;
 
 /// Empty component to indicate that an entity is a board.
 #[derive(Component)]
 pub struct Board;
 
 /// Component that specifies a difficulty of a bot.
-#[derive(Clone, Copy, Debug, Component)]
+#[derive(Clone, Copy, Debug, PartialEq, Component)]
 pub enum BotDifficulty {
     Easy,
     Medium,
     Hard,
+}
+
+impl fmt::Display for BotDifficulty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl BotDifficulty {
@@ -185,33 +191,12 @@ impl BoardBundle {
         Self {
             game_link: GameLink::new(game),
             sprite: Sprite {
-                color: SECONDARY_COLOR,
+                color: interface::common::SECONDARY_COLOR,
                 custom_size: Some(size),
                 ..default()
             },
             transform: Transform::from_translation(translation),
             board: Board,
-        }
-    }
-}
-
-#[derive(Debug, Bundle)]
-pub struct BotDifficultyButtonBundle {
-    node: Node,
-    background_color: BackgroundColor,
-    button: Button,
-    difficulty: BotDifficulty,
-    settings_link: GameSettingsLink,
-}
-
-impl BotDifficultyButtonBundle {
-    pub fn new(node: Node, difficulty: BotDifficulty, settings: Entity) -> Self {
-        Self {
-            node,
-            background_color: PRIMARY_COLOR.into(),
-            button: Button,
-            difficulty,
-            settings_link: GameSettingsLink::new(settings),
         }
     }
 }

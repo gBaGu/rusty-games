@@ -6,10 +6,10 @@ use bevy::prelude::*;
 
 use super::{LocalGame, PlayerActionInitialized, TTTBoard};
 use components::Delay;
-use resources::QLearningModel;
 use systems::*;
 
 pub use components::{BotBundle, NoDifficultyBotBundle, Strategy};
+pub use resources::QLearningModel;
 
 pub struct BotPlugin;
 

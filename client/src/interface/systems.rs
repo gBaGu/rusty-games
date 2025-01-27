@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use bevy::app::AppExit;
 use bevy::prelude::*;
 use bevy_simple_text_input::{TextInputInactive, TextInputSubmitEvent, TextInputValue};
@@ -11,18 +13,17 @@ use super::common::{
 use super::components::{
     CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, ImageBundle, JoinGame,
     MenuNavigationButtonBundle, Overlay, OverlayNodeBundle, Playground, PlaygroundBundle, Setting,
-    SettingTextInputBundle, SubmitButton, SubmitButtonBundle, TextBundle,
+    SettingOption, SettingTextInputBundle, StorageLink, SubmitButton, SubmitButtonBundle,
+    TextBundle,
 };
 use super::events::{GameLeft, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
 use super::game_list::{GameList, GameListBundle};
 use super::resources::RefreshGamesTimer;
-use super::{GameReady, GameReadyToExit, GameSettingsLink, GameTag, JoinPressed};
+use super::{GameReady, GameReadyToExit, GameTag, JoinPressed};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::CommandsExt;
-use crate::game::{
-    ActiveGame, Board, BotDifficulty, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner,
-};
-use crate::grpc::RpcResultReady;
+use crate::game::{ActiveGame, Board, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner};
+use crate::{grpc, util::watched_value};
 use crate::{Settings, UserIdChanged};
 
 /// Whenever game page button is pressed create [`GameMenuContext`] resource and
@@ -134,34 +135,82 @@ pub fn submit_press(
     }
 }
 
-pub fn setting_press(
+/// Whenever the button with [`SettingOption`] tag is pressed send [`SettingOptionPressed`] event.
+pub fn setting_option_pressed(
     setting_button: Query<
-        (Entity, &Interaction, &GameSettingsLink),
-        (With<Button>, Changed<Interaction>),
+        (Entity, &Interaction),
+        (With<Button>, With<SettingOption>, Changed<Interaction>),
     >,
     mut setting_pressed: EventWriter<SettingOptionPressed>,
 ) {
-    for (button_entity, interaction, setting_link) in setting_button.iter() {
+    for (button_entity, interaction) in setting_button.iter() {
         if *interaction == Interaction::Pressed {
-            setting_pressed.send(SettingOptionPressed::new(button_entity, setting_link.get()));
+            setting_pressed.send(SettingOptionPressed::new(button_entity));
         }
     }
 }
 
-pub fn update_difficulty_button_border(
-    mut button: Query<(Entity, &mut BorderColor), (With<Button>, With<BotDifficulty>)>,
+
+/// Receive [`SubmitPressed`] event, find [`TextInputValue`] and try to convert its value to `T`.
+/// On success set [`watched_value::WatchedValue`] pointed by [`StorageLink`] of input entity.
+pub fn set_local_text_input_setting<T: FromStr + Send + Sync + 'static>(
+    mut setting: Query<&mut watched_value::WatchedValue<T>>,
+    input: Query<(&TextInputValue, &StorageLink)>,
+    mut submit_pressed: EventReader<SubmitPressed>,
+    mut text_input_submit: EventReader<TextInputSubmitEvent>,
+) {
+    let submit_pressed_iter = submit_pressed
+        .read()
+        .filter_map(|e| input.get(e.source).ok());
+    let text_input_submit_iter = text_input_submit
+        .read()
+        .filter_map(|e| input.get(e.entity).ok());
+    for (input_value, link) in submit_pressed_iter.chain(text_input_submit_iter) {
+        let Ok(mut setting) = setting.get_mut(link.get()) else {
+            continue;
+        };
+        if let Ok(value) = input_value.0.parse::<T>() {
+            setting.set(value);
+        }
+    }
+}
+
+/// Receive [`SettingOptionPressed`] event, find value of type `T` stored in
+/// [`SettingOption`] entity and set [`watched_value::WatchedValue`] pointed by its [`StorageLink`].
+pub fn set_local_option_setting<T: Copy + Component>(
+    mut setting: Query<&mut watched_value::WatchedValue<T>>,
+    source: Query<(&T, &StorageLink), With<SettingOption>>,
     mut setting_pressed: EventReader<SettingOptionPressed>,
 ) {
     for event in setting_pressed.read() {
-        if !button.contains(event.source) {
+        let Ok((value, link)) = source.get(event.get()) else {
             continue;
-        }
-        for (entity, mut border) in button.iter_mut() {
-            if entity == event.source {
-                *border = SECONDARY_COLOR.into();
+        };
+        let Ok(mut setting) = setting.get_mut(link.get()) else {
+            continue;
+        };
+        setting.set(*value);
+    }
+}
+
+/// Receive [`watched_value::ValueUpdated`] event and update border color of option buttons
+/// that are pointing by [`StorageLink`] to the event source.
+/// If the button value is equal to the one in the event set the color to `SECONDARY_COLOR`,
+/// otherwise set it to `Color::NONE`.
+pub fn update_option_buttons_border<T: PartialEq + Component>(
+    mut button: Query<(&mut BorderColor, &T, &StorageLink), With<SettingOption>>,
+    mut setting_updated: EventReader<watched_value::ValueUpdated<T>>,
+) {
+    for event in setting_updated.read() {
+        for (mut border_color, button_value, _) in button
+            .iter_mut()
+            .filter(|(.., link)| link.get() == event.source())
+        {
+            *border_color = if matches!(event.value(), Some(value) if value == button_value) {
+                SECONDARY_COLOR.into()
             } else {
-                *border = Color::NONE.into();
-            }
+                Color::NONE.into()
+            };
         }
     }
 }
@@ -277,9 +326,9 @@ pub fn setup_play_against_bot_menu(mut commands: Commands, asset_server: Res<Ass
     commands
         .spawn(common::root_node())
         .with_children(|builder| {
-            let settings_id = builder.spawn(GameSettingsBundle::new()).id();
+            builder.spawn(GameSettingsBundle::new());
             builder
-                .spawn(CreateGameButtonBundle::new(item_node.clone(), settings_id))
+                .spawn(CreateGameButtonBundle::new(item_node.clone()))
                 .with_child(TextBundle::new("Play", text_font.clone()));
             builder
                 .spawn(MenuNavigationButtonBundle::new(
@@ -300,9 +349,9 @@ pub fn setup_play_over_network_menu(mut commands: Commands, asset_server: Res<As
             builder
                 .spawn(common::column_node())
                 .with_children(|builder| {
-                    let settings_id = builder.spawn(GameSettingsBundle::new()).id();
+                    builder.spawn(GameSettingsBundle::new());
                     builder
-                        .spawn(CreateGameButtonBundle::new(item_node.clone(), settings_id))
+                        .spawn(CreateGameButtonBundle::new(item_node.clone()))
                         .with_child(TextBundle::new("Create game", text_font.clone()));
                 });
             let mut game_list = GameListBundle::default();
@@ -369,7 +418,7 @@ pub fn start_game(
 }
 
 pub fn handle_get_player_games(
-    mut get_games_result: EventReader<RpcResultReady<proto::GetPlayerGamesReply>>,
+    mut get_games_result: EventReader<grpc::RpcResultReady<proto::GetPlayerGamesReply>>,
     mut timer: ResMut<RefreshGamesTimer>,
     mut games_ready: EventWriter<PlayerGamesReady>,
 ) {

@@ -15,7 +15,7 @@ pub struct Playground;
 /// Component that indicates that the ui node contains game settings.
 /// This container will be filled depending on a current game page and app state.
 #[derive(Debug, Component)]
-pub struct GameSettings;
+pub struct GameSettingsContainer;
 
 /// Component that indicates that entity is related to a particular game type T.
 #[derive(Debug, Component)]
@@ -27,13 +27,17 @@ impl<T> Default for GameTag<T> {
     }
 }
 
-/// Component that indicates that entity is related to a settings entity.
+/// Marker component that indicates a button that is used to choose from multiple options.
 #[derive(Debug, Component)]
-pub struct GameSettingsLink(Entity);
+pub struct SettingOption;
 
-impl GameSettingsLink {
-    pub fn new(settings: Entity) -> Self {
-        Self(settings)
+/// Points to entity that stores value chosen by interface component.
+#[derive(Debug, Component)]
+pub struct StorageLink(Entity);
+
+impl StorageLink {
+    pub fn new(setting: Entity) -> Self {
+        Self(setting)
     }
 
     pub fn get(&self) -> Entity {
@@ -67,10 +71,6 @@ pub enum Setting {
     UserId,
 }
 
-/// Component that indicates that input entity is used to create user id value.
-#[derive(Component)]
-pub struct UserIdInput;
-
 /// Tag type to mark input components that they are used to create game
 #[derive(Debug, Component)]
 pub struct CreateGame;
@@ -101,14 +101,14 @@ impl PlaygroundBundle {
 #[derive(Debug, Bundle)]
 pub struct GameSettingsBundle {
     node: Node,
-    game_settings: GameSettings,
+    game_settings: GameSettingsContainer,
 }
 
 impl GameSettingsBundle {
     pub fn new() -> Self {
         Self {
             node: common::column_node(),
-            game_settings: GameSettings,
+            game_settings: GameSettingsContainer,
         }
     }
 }
@@ -137,17 +137,15 @@ pub struct CreateGameButtonBundle {
     node: Node,
     background_color: BackgroundColor,
     button: Button,
-    game_settings_link: GameSettingsLink,
     create_game: CreateGame,
 }
 
 impl CreateGameButtonBundle {
-    pub fn new(node: Node, settings: Entity) -> Self {
+    pub fn new(node: Node) -> Self {
         Self {
             node,
             background_color: PRIMARY_COLOR.into(),
             button: Button,
-            game_settings_link: GameSettingsLink(settings),
             create_game: CreateGame,
         }
     }
@@ -265,22 +263,54 @@ impl SettingTextInputBundle {
 }
 
 #[derive(Bundle)]
-pub struct UserIdTextInputBundle {
+pub struct TextInputBundle {
     node: Node,
     text_font: TextInputTextFont,
     text_color: TextInputTextColor,
     text_input: TextInput,
-    user_id_input: UserIdInput,
+    local_setting: StorageLink,
 }
 
-impl UserIdTextInputBundle {
-    pub fn new(node: Node, text_font: TextFont) -> Self {
+impl TextInputBundle {
+    pub fn new(node: Node, text_font: TextFont, setting: Entity) -> Self {
         Self {
             node,
             text_font: TextInputTextFont(text_font),
             text_color: TextInputTextColor(SECONDARY_COLOR.into()),
             text_input: TextInput,
-            user_id_input: UserIdInput,
+            local_setting: StorageLink::new(setting),
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct SettingOptionButtonBundle<T: Component> {
+    node: Node,
+    visibility: Visibility,
+    background_color: BackgroundColor,
+    button: Button,
+    setting_option: SettingOption,
+    local_setting: StorageLink,
+    value: T,
+}
+
+impl<T: Component> SettingOptionButtonBundle<T> {
+    pub fn new(value: T, setting: Entity, border_size: Val, visible: bool) -> Self {
+        let mut node = common::menu_item_node();
+        node.border = UiRect::all(border_size);
+        let visibility = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        Self {
+            node,
+            visibility,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
+            setting_option: SettingOption,
+            local_setting: StorageLink::new(setting),
+            value,
         }
     }
 }

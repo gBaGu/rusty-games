@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use game_server::core;
 use game_server::core::tic_tac_toe::TicTacToe;
 
-use crate::grpc::NetworkSystems;
+use crate::{grpc, interface, util};
 use components::{
     BotAuthority, CurrentPlayer, CurrentUserPlayerBundle, LocalGame, LocalGameBundle,
     NetworkGameBundle, NetworkPlayerBundle, PendingExistingGameBundle, PendingNewGameBundle,
@@ -67,9 +67,9 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
-                    initialize_game_session::<TicTacToe>.in_set(NetworkSystems),
+                    initialize_game_session::<TicTacToe>.in_set(grpc::NetworkSystems),
                     network_game_initialization_finished,
-                    send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
+                    send_pending_action::<core::GridIndex>.in_set(grpc::NetworkSystems),
                     action_confirmation_failed::<core::GridIndex>,
                     handle_action_from_server::<core::GridIndex>,
                     close_session,
@@ -104,6 +104,15 @@ impl Plugin for GamePlugin {
                     log_confirmed_action::<core::GridIndex>,
                     log_dropped_action::<core::GridIndex>,
                 ),
+            )
+            .add_systems(
+                Update,
+                (
+                    interface::set_local_option_setting::<BotDifficulty>,
+                    interface::update_option_buttons_border::<BotDifficulty>,
+                ),
             );
+        util::watched_value::setup::<u64>(app);
+        util::watched_value::setup::<BotDifficulty>(app);
     }
 }
