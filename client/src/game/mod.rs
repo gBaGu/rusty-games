@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use game_server::core;
 use game_server::core::tic_tac_toe::TicTacToe;
 
-use crate::{grpc, interface};
+use crate::{grpc, interface, util};
 use components::{
     BotAuthority, CurrentPlayer, CurrentUserPlayerBundle, LocalGame, LocalGameBundle,
     NetworkGameBundle, NetworkPlayerBundle, PendingExistingGameBundle, PendingNewGameBundle,
@@ -105,7 +105,6 @@ impl Plugin for GamePlugin {
                     log_dropped_action::<core::GridIndex>,
                 ),
             )
-            .add_event::<interface::LocalSettingUpdated<BotDifficulty>>()
             .add_systems(
                 Update,
                 (
@@ -113,5 +112,7 @@ impl Plugin for GamePlugin {
                     interface::update_option_buttons_border::<BotDifficulty>,
                 ),
             );
+        util::watched_value::setup::<u64>(app);
+        util::watched_value::setup::<BotDifficulty>(app);
     }
 }

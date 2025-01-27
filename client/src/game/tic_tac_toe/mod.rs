@@ -10,6 +10,7 @@ use bevy::prelude::*;
 use game_server::core;
 use game_server::core::tic_tac_toe::TicTacToe;
 
+use crate::util;
 use resources::Images;
 use systems::*;
 
@@ -45,5 +46,6 @@ impl Plugin for TicTacToePlugin {
                 create,
             ),
         );
+        util::watched_value::setup::<bot::Strategy>(app);
     }
 }

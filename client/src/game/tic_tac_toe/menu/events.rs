@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use crate::game::BotDifficulty;
 
 /// Event that signals that strategy setting was updated.
-/// Stores setting entity and difficulty options available for new strategy.
+/// Stores setting entity and [`BotDifficulty`] options available for new strategy.
 #[derive(Debug, Event)]
 pub struct StrategyUpdated {
     setting: Entity,

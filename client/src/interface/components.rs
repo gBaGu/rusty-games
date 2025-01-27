@@ -27,45 +27,20 @@ impl<T> Default for GameTag<T> {
     }
 }
 
-/// Component that indicates that entity is related to a settings entity.
-#[derive(Debug, PartialEq, Component)]
-pub struct GameSettingsLink(Entity); // TODO: consider making single SettingLink or SettingParent
-
-impl From<Entity> for GameSettingsLink {
-    fn from(value: Entity) -> Self {
-        Self(value)
-    }
-}
-
-impl GameSettingsLink {
-    #[allow(dead_code)]
-    pub fn get(&self) -> Entity {
-        self.0
-    }
-}
-
 #[derive(Debug, Component)]
 pub struct SettingOption;
 
+/// Points to entity that stores value chosen by interface component.
 #[derive(Debug, Component)]
-pub struct LocalSettingLink(Entity);
+pub struct StorageLink(Entity);
 
-impl LocalSettingLink {
+impl StorageLink {
     pub fn new(setting: Entity) -> Self {
         Self(setting)
     }
 
     pub fn get(&self) -> Entity {
         self.0
-    }
-}
-
-#[derive(Debug, Default, Component, Deref, DerefMut)]
-pub struct LocalSetting<T>(Option<T>);
-
-impl<T> From<Option<T>> for LocalSetting<T> {
-    fn from(value: Option<T>) -> Self {
-        Self(value)
     }
 }
 
@@ -138,59 +113,6 @@ impl GameSettingsBundle {
 }
 
 #[derive(Debug, Bundle)]
-pub struct SettingOptionButtonBundle<T: Component> {
-    node: Node,
-    visibility: Visibility,
-    background_color: BackgroundColor,
-    button: Button,
-    setting_option: SettingOption,
-    local_setting: LocalSettingLink,
-    value: T,
-}
-
-impl<T: Component> SettingOptionButtonBundle<T> {
-    pub fn new(value: T, setting: Entity, border_size: Val, visible: bool) -> Self {
-        let mut node = common::menu_item_node();
-        node.border = UiRect::all(border_size);
-        let visibility = if visible {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        Self {
-            node,
-            visibility,
-            background_color: PRIMARY_COLOR.into(),
-            button: Button,
-            setting_option: SettingOption,
-            local_setting: LocalSettingLink::new(setting),
-            value,
-        }
-    }
-}
-
-#[derive(Debug, Bundle)]
-pub struct CreateGameSettingBundle<T: Send + Sync + 'static> {
-    node: Node,
-    game_settings: GameSettingsLink,
-    setting: LocalSetting<T>,
-}
-
-impl<T: Send + Sync + 'static> CreateGameSettingBundle<T> {
-    fn new(node: Node, game_settings: GameSettingsLink, value: Option<T>) -> Self {
-        Self {
-            node,
-            game_settings,
-            setting: LocalSetting::from(value),
-        }
-    }
-
-    pub fn new_empty(node: Node, game_settings: GameSettingsLink) -> Self {
-        Self::new(node, game_settings, None)
-    }
-}
-
-#[derive(Debug, Bundle)]
 pub struct GamePageButtonBundle<T: Send + Sync + 'static> {
     node: Node,
     background_color: BackgroundColor,
@@ -214,17 +136,15 @@ pub struct CreateGameButtonBundle {
     node: Node,
     background_color: BackgroundColor,
     button: Button,
-    game_settings_link: GameSettingsLink,
     create_game: CreateGame,
 }
 
 impl CreateGameButtonBundle {
-    pub fn new(node: Node, settings: Entity) -> Self {
+    pub fn new(node: Node) -> Self {
         Self {
             node,
             background_color: PRIMARY_COLOR.into(),
             button: Button,
-            game_settings_link: GameSettingsLink(settings),
             create_game: CreateGame,
         }
     }
@@ -342,22 +262,54 @@ impl SettingTextInputBundle {
 }
 
 #[derive(Bundle)]
-pub struct LocalSettingTextInputBundle {
+pub struct TextInputBundle {
     node: Node,
     text_font: TextInputTextFont,
     text_color: TextInputTextColor,
     text_input: TextInput,
-    local_setting: LocalSettingLink,
+    local_setting: StorageLink,
 }
 
-impl LocalSettingTextInputBundle {
+impl TextInputBundle {
     pub fn new(node: Node, text_font: TextFont, setting: Entity) -> Self {
         Self {
             node,
             text_font: TextInputTextFont(text_font),
             text_color: TextInputTextColor(SECONDARY_COLOR.into()),
             text_input: TextInput,
-            local_setting: LocalSettingLink::new(setting),
+            local_setting: StorageLink::new(setting),
+        }
+    }
+}
+
+#[derive(Debug, Bundle)]
+pub struct SettingOptionButtonBundle<T: Component> {
+    node: Node,
+    visibility: Visibility,
+    background_color: BackgroundColor,
+    button: Button,
+    setting_option: SettingOption,
+    local_setting: StorageLink,
+    value: T,
+}
+
+impl<T: Component> SettingOptionButtonBundle<T> {
+    pub fn new(value: T, setting: Entity, border_size: Val, visible: bool) -> Self {
+        let mut node = common::menu_item_node();
+        node.border = UiRect::all(border_size);
+        let visibility = if visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        Self {
+            node,
+            visibility,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
+            setting_option: SettingOption,
+            local_setting: StorageLink::new(setting),
+            value,
         }
     }
 }

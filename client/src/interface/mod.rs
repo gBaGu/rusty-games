@@ -15,13 +15,11 @@ use events::PlayerGamesReady;
 use systems::*;
 
 pub use components::{
-    CreateGame, CreateGameSettingBundle, GameSettingsContainer, GameSettingsLink, GameTag,
-    JoinGameButtonBundle, LocalSetting, LocalSettingLink, LocalSettingTextInputBundle, PlayerColor,
-    Playground, SettingOptionButtonBundle, SubmitButtonBundle, TextBundle,
+    CreateGame, GameSettingsContainer, GameTag, JoinGameButtonBundle, PlayerColor, Playground,
+    SettingOptionButtonBundle, StorageLink, SubmitButtonBundle, TextBundle, TextInputBundle,
 };
 pub use events::{
-    GameLeft, GameReady, GameReadyToExit, JoinPressed, LocalSettingUpdated, SettingOptionPressed,
-    SubmitPressed,
+    GameLeft, GameReady, GameReadyToExit, JoinPressed, SettingOptionPressed, SubmitPressed,
 };
 pub use game_list::GameList;
 pub use resources::RefreshGamesTimer;
@@ -41,7 +39,6 @@ impl Plugin for InterfacePlugin {
             .add_event::<GameLeft>()
             .add_event::<SubmitPressed>()
             .add_event::<SettingOptionPressed>()
-            .add_event::<LocalSettingUpdated<u64>>()
             .add_event::<JoinPressed>()
             .add_event::<PlayerGamesReady>()
             .add_systems(OnEnter(AppState::Menu(MenuState::Main)), setup_main_menu)

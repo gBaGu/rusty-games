@@ -12,20 +12,18 @@ use super::common::{
 };
 use super::components::{
     CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, ImageBundle, JoinGame,
-    LocalSetting, LocalSettingLink, MenuNavigationButtonBundle, Overlay, OverlayNodeBundle,
-    Playground, PlaygroundBundle, Setting, SettingOption, SettingTextInputBundle, SubmitButton,
-    SubmitButtonBundle, TextBundle,
+    MenuNavigationButtonBundle, Overlay, OverlayNodeBundle, Playground, PlaygroundBundle, Setting,
+    SettingOption, SettingTextInputBundle, StorageLink, SubmitButton, SubmitButtonBundle,
+    TextBundle,
 };
-use super::events::{
-    GameLeft, LocalSettingUpdated, PlayerGamesReady, SettingOptionPressed, SubmitPressed,
-};
+use super::events::{GameLeft, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
 use super::game_list::{GameList, GameListBundle};
 use super::resources::RefreshGamesTimer;
 use super::{GameReady, GameReadyToExit, GameTag, JoinPressed};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::CommandsExt;
 use crate::game::{ActiveGame, Board, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner};
-use crate::grpc;
+use crate::{grpc, util::watched_value};
 use crate::{Settings, UserIdChanged};
 
 /// Whenever game page button is pressed create [`GameMenuContext`] resource and
@@ -151,12 +149,11 @@ pub fn setting_option_pressed(
     }
 }
 
-pub fn set_local_text_input_setting<T: Copy + FromStr + PartialEq + Send + Sync + 'static>(
-    mut setting: Query<&mut LocalSetting<T>>,
-    input: Query<(&TextInputValue, &LocalSettingLink)>,
+pub fn set_local_text_input_setting<T: FromStr + Send + Sync + 'static>(
+    mut setting: Query<&mut watched_value::WatchedValue<T>>,
+    input: Query<(&TextInputValue, &StorageLink)>,
     mut submit_pressed: EventReader<SubmitPressed>,
     mut text_input_submit: EventReader<TextInputSubmitEvent>,
-    mut setting_updated: EventWriter<LocalSettingUpdated<T>>,
 ) {
     let submit_pressed_iter = submit_pressed
         .read()
@@ -169,19 +166,15 @@ pub fn set_local_text_input_setting<T: Copy + FromStr + PartialEq + Send + Sync 
             continue;
         };
         if let Ok(value) = input_value.0.parse::<T>() {
-            let old_value = setting.replace(value);
-            if old_value.and_then(|v| Some(v != value)).unwrap_or(true) {
-                setting_updated.send(LocalSettingUpdated::new_set(link.get(), value));
-            }
+            setting.set(value);
         }
     }
 }
 
-pub fn set_local_option_setting<T: Copy + PartialEq + Component>(
-    mut setting: Query<&mut LocalSetting<T>>,
-    source: Query<(&T, &LocalSettingLink)>,
+pub fn set_local_option_setting<T: Copy + Component>(
+    mut setting: Query<&mut watched_value::WatchedValue<T>>,
+    source: Query<(&T, &StorageLink)>,
     mut setting_pressed: EventReader<SettingOptionPressed>,
-    mut setting_updated: EventWriter<LocalSettingUpdated<T>>,
 ) {
     for event in setting_pressed.read() {
         let Ok((value, link)) = source.get(event.get()) else {
@@ -190,21 +183,18 @@ pub fn set_local_option_setting<T: Copy + PartialEq + Component>(
         let Ok(mut setting) = setting.get_mut(link.get()) else {
             continue;
         };
-        let old_value = setting.replace(*value);
-        if old_value.and_then(|v| Some(v != *value)).unwrap_or(true) {
-            setting_updated.send(LocalSettingUpdated::new_set(link.get(), *value));
-        }
+        setting.set(*value);
     }
 }
 
 pub fn update_option_buttons_border<T: PartialEq + Component>(
-    mut button: Query<(&mut BorderColor, &T, &LocalSettingLink), With<SettingOption>>,
-    mut setting_updated: EventReader<LocalSettingUpdated<T>>,
+    mut button: Query<(&mut BorderColor, &T, &StorageLink), With<SettingOption>>,
+    mut setting_updated: EventReader<watched_value::ValueUpdated<T>>,
 ) {
     for event in setting_updated.read() {
         for (mut border_color, button_value, _) in button
             .iter_mut()
-            .filter(|(.., link)| link.get() == event.setting())
+            .filter(|(.., link)| link.get() == event.source())
         {
             *border_color = if matches!(event.value(), Some(value) if value == button_value) {
                 SECONDARY_COLOR.into()
@@ -326,9 +316,9 @@ pub fn setup_play_against_bot_menu(mut commands: Commands, asset_server: Res<Ass
     commands
         .spawn(common::root_node())
         .with_children(|builder| {
-            let settings_id = builder.spawn(GameSettingsBundle::new()).id();
+            builder.spawn(GameSettingsBundle::new());
             builder
-                .spawn(CreateGameButtonBundle::new(item_node.clone(), settings_id))
+                .spawn(CreateGameButtonBundle::new(item_node.clone()))
                 .with_child(TextBundle::new("Play", text_font.clone()));
             builder
                 .spawn(MenuNavigationButtonBundle::new(
@@ -349,9 +339,9 @@ pub fn setup_play_over_network_menu(mut commands: Commands, asset_server: Res<As
             builder
                 .spawn(common::column_node())
                 .with_children(|builder| {
-                    let settings_id = builder.spawn(GameSettingsBundle::new()).id();
+                    builder.spawn(GameSettingsBundle::new());
                     builder
-                        .spawn(CreateGameButtonBundle::new(item_node.clone(), settings_id))
+                        .spawn(CreateGameButtonBundle::new(item_node.clone()))
                         .with_child(TextBundle::new("Create game", text_font.clone()));
                 });
             let mut game_list = GameListBundle::default();

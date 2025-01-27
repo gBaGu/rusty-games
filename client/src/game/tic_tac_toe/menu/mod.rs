@@ -1,3 +1,4 @@
+mod components;
 mod events;
 mod systems;
 
@@ -8,6 +9,7 @@ use super::bot::Strategy;
 use crate::app_state::{AppState, MenuState};
 use crate::game::GameMenuContext;
 use crate::{grpc, interface};
+use components::{BotGameSettings, NetworkGameSettings};
 use events::StrategyUpdated;
 use systems::*;
 
@@ -16,6 +18,8 @@ pub struct GameMenuPlugin;
 impl Plugin for GameMenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<StrategyUpdated>()
+            .add_systems(OnExit(AppState::Menu(MenuState::PlayAgainstBot)), cleanup)
+            .add_systems(OnExit(AppState::Menu(MenuState::PlayOverNetwork)), cleanup)
             .add_systems(
                 Update,
                 (
@@ -35,7 +39,6 @@ impl Plugin for GameMenuPlugin {
                 )
                     .run_if(resource_exists::<GameMenuContext<TicTacToe>>),
             )
-            .add_event::<interface::LocalSettingUpdated<Strategy>>()
             .add_systems(
                 Update,
                 (
