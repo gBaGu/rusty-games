@@ -135,6 +135,7 @@ pub fn submit_press(
     }
 }
 
+/// Whenever the button with [`SettingOption`] tag is pressed send [`SettingOptionPressed`] event.
 pub fn setting_option_pressed(
     setting_button: Query<
         (Entity, &Interaction),
@@ -149,6 +150,9 @@ pub fn setting_option_pressed(
     }
 }
 
+
+/// Receive [`SubmitPressed`] event, find [`TextInputValue`] and try to convert its value to `T`.
+/// On success set [`watched_value::WatchedValue`] pointed by [`StorageLink`] of input entity.
 pub fn set_local_text_input_setting<T: FromStr + Send + Sync + 'static>(
     mut setting: Query<&mut watched_value::WatchedValue<T>>,
     input: Query<(&TextInputValue, &StorageLink)>,
@@ -171,9 +175,11 @@ pub fn set_local_text_input_setting<T: FromStr + Send + Sync + 'static>(
     }
 }
 
+/// Receive [`SettingOptionPressed`] event, find value of type `T` stored in
+/// [`SettingOption`] entity and set [`watched_value::WatchedValue`] pointed by its [`StorageLink`].
 pub fn set_local_option_setting<T: Copy + Component>(
     mut setting: Query<&mut watched_value::WatchedValue<T>>,
-    source: Query<(&T, &StorageLink)>,
+    source: Query<(&T, &StorageLink), With<SettingOption>>,
     mut setting_pressed: EventReader<SettingOptionPressed>,
 ) {
     for event in setting_pressed.read() {
@@ -187,6 +193,10 @@ pub fn set_local_option_setting<T: Copy + Component>(
     }
 }
 
+/// Receive [`watched_value::ValueUpdated`] event and update border color of option buttons
+/// that are pointing by [`StorageLink`] to the event source.
+/// If the button value is equal to the one in the event set the color to `SECONDARY_COLOR`,
+/// otherwise set it to `Color::NONE`.
 pub fn update_option_buttons_border<T: PartialEq + Component>(
     mut button: Query<(&mut BorderColor, &T, &StorageLink), With<SettingOption>>,
     mut setting_updated: EventReader<watched_value::ValueUpdated<T>>,

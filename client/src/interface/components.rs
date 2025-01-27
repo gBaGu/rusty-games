@@ -27,6 +27,7 @@ impl<T> Default for GameTag<T> {
     }
 }
 
+/// Marker component that indicates a button that is used to choose from multiple options.
 #[derive(Debug, Component)]
 pub struct SettingOption;
 

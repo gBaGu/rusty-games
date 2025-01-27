@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+/// Structures setting values required to create new game with bot.
 #[derive(Debug, Component)]
 pub struct BotGameSettings {
     strategy: Entity,
@@ -23,6 +24,7 @@ impl BotGameSettings {
     }
 }
 
+/// Structures setting values required to create new network game.
 #[derive(Debug, Component)]
 pub struct NetworkGameSettings {
     opponent: Entity,
