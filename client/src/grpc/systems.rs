@@ -423,6 +423,7 @@ pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) 
 
 #[cfg(test)]
 mod test {
+    use async_channel::unbounded as unbounded_channel;
     use bevy::tasks::TaskPool;
 
     use super::*;
@@ -546,36 +547,28 @@ mod test {
             (close_session::<DummyGame>, session_closed::<DummyGame>),
         );
 
-        let (s_action, r_action) = async_channel::unbounded();
-        let (s_update, r_update) = async_channel::unbounded();
+        let make_session_task = |s: async_channel::Sender<_>, r: async_channel::Receiver<_>| {
+            IoTaskPool::get().spawn(async move {
+                let _s = s; // move it here
+                while let Ok(_) = r.recv().await {}
+            })
+        };
+        let (s_action, r_action) = unbounded_channel();
+        let (s_update, active_session_receiver) = unbounded_channel::<()>();
+        let task = make_session_task(s_update, r_action);
         let session_active = app
             .world_mut()
             .spawn((
-                DummySession::new(
-                    IoTaskPool::get().spawn(async move {
-                        let _s_update = s_update; // move it here
-                        while let Ok(_) = r_action.recv().await {}
-                        info!("active session is closed");
-                    }),
-                    s_action,
-                    r_update,
-                ),
+                DummySession::new(task, s_action, unbounded_channel().1),
                 ActiveGame,
             ))
             .id();
-        let (s_action, r_action) = async_channel::unbounded();
-        let (s_update, r_update) = async_channel::unbounded();
+        let (s_action, r_action) = unbounded_channel();
+        let (s_update, inactive_session_receiver) = unbounded_channel::<()>();
+        let task = make_session_task(s_update, r_action);
         let session_inactive = app
             .world_mut()
-            .spawn(DummySession::new(
-                IoTaskPool::get().spawn(async move {
-                    let _s_update = s_update; // move it here
-                    while let Ok(_) = r_action.recv().await {}
-                    info!("inactive session is closed");
-                }),
-                s_action,
-                r_update,
-            ))
+            .spawn(DummySession::new(task, s_action, unbounded_channel().1))
             .id();
 
         app.world_mut()
@@ -595,21 +588,7 @@ mod test {
             .entity(session_inactive)
             .contains::<DummySession>());
 
-        while !(app
-            .world()
-            .entity(session_active)
-            .get::<DummySession>()
-            .unwrap()
-            .update_receiver()
-            .is_closed()
-            && app
-                .world()
-                .entity(session_inactive)
-                .get::<DummySession>()
-                .unwrap()
-                .update_receiver()
-                .is_closed())
-        {
+        while !(active_session_receiver.is_closed() && inactive_session_receiver.is_closed()) {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
 
@@ -683,8 +662,8 @@ mod test {
         // ensure old events are dropped
         app.world_mut().resource_mut::<SendFailedEvents>().clear();
 
-        let (s, r) = async_channel::unbounded();
-        let (notify_sender, notify_receiver) = async_channel::unbounded();
+        let (s, r) = unbounded_channel();
+        let (notify_sender, notify_receiver) = unbounded_channel();
         let r_cloned = r.clone();
         app.world_mut()
             .entity_mut(session)
@@ -696,7 +675,7 @@ mod test {
                     }
                 }),
                 s,
-                async_channel::unbounded().1,
+                unbounded_channel().1,
             ));
 
         // insert send action task and check that another one cannot be created
@@ -767,14 +746,11 @@ mod test {
             ),
         );
 
-        let (s, r) = async_channel::unbounded();
+        let (s, r) = unbounded_channel();
+        let ready_task = IoTaskPool::get().spawn(future::ready(()));
         let session = app
             .world_mut()
-            .spawn(DummySession::new(
-                IoTaskPool::get().spawn(future::ready(())),
-                async_channel::unbounded().0,
-                r,
-            ))
+            .spawn(DummySession::new(ready_task, unbounded_channel().0, r))
             .id();
 
         // this should spawn receive task
