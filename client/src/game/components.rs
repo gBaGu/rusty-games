@@ -1,5 +1,4 @@
 use std::fmt;
-use std::fmt::Formatter;
 use std::marker::PhantomData;
 
 use bevy::prelude::*;
@@ -22,7 +21,7 @@ pub enum BotDifficulty {
 }
 
 impl fmt::Display for BotDifficulty {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }

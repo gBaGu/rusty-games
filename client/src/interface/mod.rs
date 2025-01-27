@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
 
 use crate::app_state::{AppState, MenuState};
-use crate::grpc::NetworkSystems;
+use crate::grpc;
 use events::PlayerGamesReady;
 use systems::*;
 
@@ -101,7 +101,7 @@ impl Plugin for InterfacePlugin {
                     text_input_focus,
                     submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (
-                        join_press.in_set(NetworkSystems),
+                        join_press.in_set(grpc::NetworkSystems),
                         handle_get_player_games,
                         handle_player_games,
                     )

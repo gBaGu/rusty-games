@@ -1,5 +1,4 @@
 use std::fmt;
-use std::fmt::Formatter;
 use std::time::Duration;
 
 use bevy::prelude::*;
@@ -37,7 +36,7 @@ pub enum Strategy {
 }
 
 impl fmt::Display for Strategy {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }

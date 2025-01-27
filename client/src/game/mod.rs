@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use game_server::core;
 use game_server::core::tic_tac_toe::TicTacToe;
 
-use crate::grpc::NetworkSystems;
+use crate::{grpc, interface};
 use components::{
     BotAuthority, CurrentPlayer, CurrentUserPlayerBundle, LocalGame, LocalGameBundle,
     NetworkGameBundle, NetworkPlayerBundle, PendingExistingGameBundle, PendingNewGameBundle,
@@ -24,7 +24,6 @@ use pending_action::{ConfirmationStatus, PendingAction};
 use resources::RefreshGameTimer;
 use systems::*;
 
-use crate::interface;
 pub use components::{
     ActiveGame, Board, BotDifficulty, CurrentUser, GameLink, NetworkGame, PendingActionQueue,
     Winner,
@@ -68,9 +67,9 @@ impl Plugin for GamePlugin {
             .add_systems(
                 Update,
                 (
-                    initialize_game_session::<TicTacToe>.in_set(NetworkSystems),
+                    initialize_game_session::<TicTacToe>.in_set(grpc::NetworkSystems),
                     network_game_initialization_finished,
-                    send_pending_action::<core::GridIndex>.in_set(NetworkSystems),
+                    send_pending_action::<core::GridIndex>.in_set(grpc::NetworkSystems),
                     action_confirmation_failed::<core::GridIndex>,
                     handle_action_from_server::<core::GridIndex>,
                     close_session,

@@ -25,7 +25,7 @@ use super::{GameReady, GameReadyToExit, GameTag, JoinPressed};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::CommandsExt;
 use crate::game::{ActiveGame, Board, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner};
-use crate::grpc::RpcResultReady;
+use crate::grpc;
 use crate::{Settings, UserIdChanged};
 
 /// Whenever game page button is pressed create [`GameMenuContext`] resource and
@@ -418,7 +418,7 @@ pub fn start_game(
 }
 
 pub fn handle_get_player_games(
-    mut get_games_result: EventReader<RpcResultReady<proto::GetPlayerGamesReply>>,
+    mut get_games_result: EventReader<grpc::RpcResultReady<proto::GetPlayerGamesReply>>,
     mut timer: ResMut<RefreshGamesTimer>,
     mut games_ready: EventWriter<PlayerGamesReady>,
 ) {
