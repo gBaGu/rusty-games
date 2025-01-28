@@ -423,6 +423,9 @@ pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) 
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use async_channel::unbounded as unbounded_channel;
     use bevy::tasks::TaskPool;
 
     use super::*;
@@ -484,6 +487,10 @@ mod test {
         fn set_state(&mut self, _state: core::GameState) {}
     }
 
+    fn clear_events<E: Event>(world: &mut World) {
+        world.resource_mut::<Events<E>>().clear();
+    }
+
     fn send_action_ready_to_send<T>(world: &mut World, session: Entity, action: T)
     where
         T: Send + Sync + 'static,
@@ -491,6 +498,20 @@ mod test {
         world
             .resource_mut::<Events<SessionActionReadyToSend<T>>>()
             .send(SessionActionReadyToSend::new(session, action));
+    }
+
+    fn update_while<F1, F2>(app: &mut App, condition: F1, mut post_update: F2)
+    where
+        F1: Fn(&World) -> bool,
+        F2: FnMut(&mut World),
+    {
+        let mut update_retry = 0;
+        while condition(app.world()) && update_retry < 10 {
+            std::thread::sleep(Duration::from_millis(1 * update_retry));
+            app.update();
+            post_update(app.world_mut());
+            update_retry += 1;
+        }
     }
 
     /// Send [`OpenSession`] event and check that all required components were inserted.
@@ -535,7 +556,7 @@ mod test {
         IoTaskPool::get_or_init(|| TaskPool::default());
         let mut app = App::new();
         let mut timer = SessionCheckTimer::default();
-        timer.pause();
+        timer.set_duration(Duration::ZERO);
         app.init_resource::<Time>();
         app.insert_resource(timer);
         app.add_event::<CloseSession>();
@@ -546,37 +567,18 @@ mod test {
             (close_session::<DummyGame>, session_closed::<DummyGame>),
         );
 
-        let (s_action, r_action) = async_channel::unbounded();
-        let (s_update, r_update) = async_channel::unbounded();
-        let session_active = app
-            .world_mut()
-            .spawn((
-                DummySession::new(
-                    IoTaskPool::get().spawn(async move {
-                        let _s_update = s_update; // move it here
-                        while let Ok(_) = r_action.recv().await {}
-                        info!("active session is closed");
-                    }),
-                    s_action,
-                    r_update,
-                ),
-                ActiveGame,
-            ))
-            .id();
-        let (s_action, r_action) = async_channel::unbounded();
-        let (s_update, r_update) = async_channel::unbounded();
-        let session_inactive = app
-            .world_mut()
-            .spawn(DummySession::new(
-                IoTaskPool::get().spawn(async move {
-                    let _s_update = s_update; // move it here
-                    while let Ok(_) = r_action.recv().await {}
-                    info!("inactive session is closed");
-                }),
-                s_action,
-                r_update,
-            ))
-            .id();
+        let contains_session = |w: &World, s: Entity| w.entity(s).contains::<DummySession>();
+        let make_session_task = |r: async_channel::Receiver<_>| {
+            IoTaskPool::get().spawn(async move { while let Ok(_) = r.recv().await {} })
+        };
+        let (s_action, r_action) = unbounded_channel();
+        let session =
+            DummySession::new(make_session_task(r_action), s_action, unbounded_channel().1);
+        let session_active = app.world_mut().spawn((session, ActiveGame)).id();
+        let (s_action, r_action) = unbounded_channel();
+        let session =
+            DummySession::new(make_session_task(r_action), s_action, unbounded_channel().1);
+        let session_inactive = app.world_mut().spawn(session).id();
 
         app.world_mut()
             .resource_mut::<Events<CloseSession>>()
@@ -586,71 +588,41 @@ mod test {
             .send(CloseSession::new(session_inactive));
         // this should just close action sender for each session
         app.update();
-        assert!(app
-            .world()
-            .entity(session_active)
-            .contains::<DummySession>());
-        assert!(app
-            .world()
-            .entity(session_inactive)
-            .contains::<DummySession>());
+        assert!(contains_session(app.world(), session_active));
+        assert!(contains_session(app.world(), session_inactive));
 
-        while !(app
-            .world()
-            .entity(session_active)
-            .get::<DummySession>()
-            .unwrap()
-            .update_receiver()
-            .is_closed()
-            && app
-                .world()
-                .entity(session_inactive)
-                .get::<DummySession>()
-                .unwrap()
-                .update_receiver()
-                .is_closed())
-        {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-
-        let mut timer = app.world_mut().resource_mut::<SessionCheckTimer>();
-        let duration = timer.duration();
-        timer.set_elapsed(duration);
-        timer.unpause();
-        // this should remove game session component and trigger SessionClosed
-        app.update();
-        assert!(!app
-            .world()
-            .entity(session_active)
-            .contains::<DummySession>());
-        assert!(!app
-            .world()
-            .entity(session_inactive)
-            .contains::<DummySession>());
-        let session_closed_events = app.world().resource::<Events<SessionClosed>>();
-        let mut cursor = session_closed_events.get_cursor();
-        assert_eq!(
-            **cursor.read(session_closed_events).next().unwrap(),
-            session_active
-        );
-        assert_eq!(
-            **cursor.read(session_closed_events).next().unwrap(),
-            session_inactive
-        );
-        let open_session_events = app.world().resource::<Events<OpenSession>>();
-        let mut cursor = open_session_events.get_cursor();
-        assert_eq!(
-            cursor.read(open_session_events).next().unwrap().game(),
-            session_active
-        );
+        // this should remove game session component and trigger SessionClosed/OpenSession
+        let mut closed_sessions = Vec::new();
+        let mut opened_sessions = Vec::new();
+        let contain_sessions = |w: &World| {
+            contains_session(w, session_active) || contains_session(w, session_inactive)
+        };
+        let collect_events = |w: &mut World| {
+            let session_closed_events = w.resource::<Events<SessionClosed>>();
+            let mut cursor = session_closed_events.get_cursor();
+            closed_sessions.append(&mut cursor.read(session_closed_events).map(|e| **e).collect());
+            let open_session_events = w.resource::<Events<OpenSession>>();
+            let mut cursor = open_session_events.get_cursor();
+            opened_sessions
+                .append(&mut cursor.read(open_session_events).map(|e| e.game()).collect());
+            clear_events::<SessionClosed>(w);
+            clear_events::<OpenSession>(w);
+        };
+        update_while(&mut app, contain_sessions, collect_events);
+        assert!(!contains_session(app.world(), session_active));
+        assert!(!contains_session(app.world(), session_inactive));
+        assert_eq!(closed_sessions.len(), 2);
+        assert_eq!(opened_sessions.len(), 1);
+        assert!(closed_sessions.contains(&session_active));
+        assert!(closed_sessions.contains(&session_inactive));
+        assert!(opened_sessions.contains(&session_active));
     }
 
     /// Initialize action send by SessionActionReadyToSend event.
     /// Check that send task is deleted after [`handle_session_action_send`].
     /// Check that [`SessionActionSendFailed`] event is triggered when:  
     ///  - [`GameSession`] component is missing;  
-    ///  - [`SendActionTask`] component is present;  
-    ///  - the actions channel is closed.
+    ///  - [`SendActionTask`] component is present.
     #[test]
     fn session_send_action() {
         type SendFailedEvents = Events<SessionActionSendFailed<()>>;
@@ -675,29 +647,25 @@ mod test {
         app.update();
         let err_events = app.world().resource::<SendFailedEvents>();
         let mut cursor = err_events.get_cursor();
-        assert_eq!(
-            cursor.read(err_events).next().unwrap().session_entity(),
-            session
-        ); // got error event
-        assert!(cursor.read(err_events).next().is_none());
+        itertools::assert_equal(
+            cursor.read(err_events).map(|e| e.session_entity()),
+            std::iter::once(session),
+        );
         // ensure old events are dropped
-        app.world_mut().resource_mut::<SendFailedEvents>().clear();
+        clear_events::<SessionActionSendFailed<()>>(app.world_mut());
 
-        let (s, r) = async_channel::unbounded();
-        let (notify_sender, notify_receiver) = async_channel::unbounded();
+        let (s, r) = unbounded_channel();
+        let (notify_sender, notify_receiver) = unbounded_channel();
         let r_cloned = r.clone();
+        let task = IoTaskPool::get().spawn(async move {
+            while let Ok(_) = r_cloned.recv().await {
+                info!("action is sent!");
+                notify_sender.send(()).await.expect("notification failed");
+            }
+        });
         app.world_mut()
             .entity_mut(session)
-            .insert(DummySession::new(
-                IoTaskPool::get().spawn(async move {
-                    while let Ok(_) = r_cloned.recv().await {
-                        info!("action is sent!");
-                        notify_sender.send(()).await.expect("notification failed");
-                    }
-                }),
-                s,
-                async_channel::unbounded().1,
-            ));
+            .insert(DummySession::new(task, s, unbounded_channel().1));
 
         // insert send action task and check that another one cannot be created
         let pending_task: SendActionTask = IoTaskPool::get().spawn(future::pending()).into();
@@ -707,11 +675,10 @@ mod test {
         app.update();
         let err_events = app.world().resource::<SendFailedEvents>();
         let mut cursor = err_events.get_cursor();
-        assert_eq!(
-            cursor.read(err_events).next().unwrap().session_entity(),
-            session
-        ); // got error event
-        assert!(cursor.read(err_events).next().is_none());
+        itertools::assert_equal(
+            cursor.read(err_events).map(|e| e.session_entity()),
+            std::iter::once(session),
+        );
         // remove infinite task
         app.world_mut()
             .entity_mut(session)
@@ -729,23 +696,50 @@ mod test {
         // this should remove send task
         app.update();
         assert!(!app.world().entity(session).contains::<SendActionTask>());
+    }
+
+    /// Initialize session.
+    /// Check that failed channel send task is handled properly.
+    #[test]
+    fn session_send_action_to_closed_channel() {
+        type SendFailedEvents = Events<SessionActionSendFailed<()>>;
+
+        IoTaskPool::get_or_init(|| TaskPool::default());
+        let mut app = App::new();
+        app.add_event::<SessionActionSendFailed<()>>();
+        app.add_systems(Update, handle_session_action_send::<()>);
+
+        let (s, r) = unbounded_channel();
+        let r_cloned = r.clone();
+        let task =
+            IoTaskPool::get().spawn(async move { while let Ok(_) = r_cloned.recv().await {} });
+        let session = DummySession::new(task, s, unbounded_channel().1);
+        let session = app.world_mut().spawn(session).id();
 
         r.close();
-        send_action_ready_to_send(app.world_mut(), session, ());
-        // this should create send task
-        app.update();
-        assert!(app.world().entity(session).contains::<SendActionTask>());
+        // create send task
+        {
+            let mut session_mut = app.world_mut().entity_mut(session);
+            let session_sender = session_mut.get::<DummySession>().unwrap().action_sender();
+            let res = tasks::block_on(
+                IoTaskPool::get().spawn(async move { session_sender.send(vec![]).await }),
+            );
+            assert!(res.is_err());
+            let task = SendActionTask::from(IoTaskPool::get().spawn(future::ready(res)));
+            session_mut.insert(task);
+            assert!(session_mut.contains::<SendActionTask>());
+        }
 
-        // this should remove send task and trigger error event because the channel is closed
-        app.update();
+        // it's possible that couple of updates needed for the send task to complete
+        let contains_task = |w: &World| w.entity(session).contains::<SendActionTask>();
+        update_while(&mut app, contains_task, |_| {});
         assert!(!app.world().entity(session).contains::<SendActionTask>());
         let err_events = app.world().resource::<SendFailedEvents>();
         let mut cursor = err_events.get_cursor();
-        assert_eq!(
-            cursor.read(err_events).next().unwrap().session_entity(),
-            session
-        ); // got error event
-        assert!(cursor.read(err_events).next().is_none());
+        itertools::assert_equal(
+            cursor.read(err_events).map(|e| e.session_entity()),
+            std::iter::once(session),
+        );
     }
 
     /// Spawn game session with receiver that will receive some predefined updates.
@@ -767,85 +761,80 @@ mod test {
             ),
         );
 
-        let (s, r) = async_channel::unbounded();
-        let session = app
-            .world_mut()
-            .spawn(DummySession::new(
-                IoTaskPool::get().spawn(future::ready(())),
-                async_channel::unbounded().0,
-                r,
-            ))
-            .id();
+        let contains_task = |w: &World, s: Entity| w.entity(s).contains::<ReceiveUpdateTask>();
+        let make_send_update_task = |s: async_channel::Sender<_>, msg| {
+            IoTaskPool::get().spawn(async move { s.send(msg).await.unwrap() })
+        };
+        let (s, r) = unbounded_channel();
+        let ready_task = IoTaskPool::get().spawn(future::ready(()));
+        let session = DummySession::new(ready_task, unbounded_channel().0, r);
+        let session = app.world_mut().spawn(session).id();
 
         // this should spawn receive task
         app.update();
         assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
 
-        let s_cloned = s.clone();
-        tasks::block_on(IoTaskPool::get().spawn(async move {
-            s_cloned
-                .send(Ok(GameSessionUpdate::new(0, ())))
-                .await
-                .unwrap();
-        }));
+        // send GameSessionUpdate
+        tasks::block_on(make_send_update_task(
+            s.clone(),
+            Ok(GameSessionUpdate::new(0, ())),
+        ));
 
         // this should trigger session update event and remove receive task
-        app.update();
+        update_while(&mut app, |w| contains_task(w, session), |_| {});
         assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
         let err_events = app.world().resource::<Events<SessionErrorReceived>>();
         let mut cursor = update_events.get_cursor();
-        assert!(cursor.read(update_events).next().is_some()); // got update event
-        assert!(cursor.read(update_events).next().is_none());
+        itertools::assert_equal(
+            cursor.read(update_events).map(|e| e.session_entity()),
+            std::iter::once(session),
+        );
         assert!(err_events.get_cursor().read(err_events).next().is_none());
 
         // this should spawn receive task
         app.update();
         assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
 
-        let s_cloned = s.clone();
-        tasks::block_on(IoTaskPool::get().spawn(async move {
-            s_cloned
-                .send(Ok(GameSessionUpdate::new(0, ())))
-                .await
-                .unwrap();
-        }));
+        // send GameSessionUpdate
+        tasks::block_on(make_send_update_task(
+            s.clone(),
+            Ok(GameSessionUpdate::new(0, ())),
+        ));
 
         // this should trigger session update event and remove receive task
-        app.update();
+        update_while(&mut app, |w| contains_task(w, session), |_| {});
         assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
         let err_events = app.world().resource::<Events<SessionErrorReceived>>();
         let mut cursor = update_events.get_cursor();
-        assert!(cursor.read(update_events).next().is_some()); // got update event
-        assert!(cursor.read(update_events).next().is_none());
+        itertools::assert_equal(
+            cursor.read(update_events).map(|e| e.session_entity()),
+            std::iter::once(session),
+        );
         assert!(err_events.get_cursor().read(err_events).next().is_none());
 
         // this should spawn receive task
         app.update();
         assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
 
-        let s_cloned = s.clone();
-        tasks::block_on(IoTaskPool::get().spawn(async move {
-            s_cloned
-                .send(Err(GrpcError::GameSessionUpdateFailed("".into())))
-                .await
-                .unwrap();
-        }));
+        tasks::block_on(make_send_update_task(
+            s.clone(),
+            Err(GrpcError::GameSessionUpdateFailed("".into())),
+        ));
 
         // this should trigger session error event and remove receive task
-        app.update();
+        update_while(&mut app, |w| contains_task(w, session), |_| {});
         assert!(!app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let mut cursor = update_events.get_cursor();
+        assert!(cursor.read(update_events).next().is_none());
         let err_events = app.world().resource::<Events<SessionErrorReceived>>();
-        assert!(update_events
-            .get_cursor()
-            .read(update_events)
-            .next()
-            .is_none());
         let mut cursor = err_events.get_cursor();
-        assert!(cursor.read(err_events).next().is_some()); // got error event
-        assert!(cursor.read(err_events).next().is_none());
+        itertools::assert_equal(
+            cursor.read(err_events).map(|e| e.session_entity()),
+            std::iter::once(session),
+        );
 
         // this should spawn receive task
         app.update();
@@ -855,24 +844,18 @@ mod test {
         app.update();
         assert!(app.world().entity(session).contains::<ReceiveUpdateTask>());
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let mut cursor = update_events.get_cursor();
+        assert!(cursor.read(update_events).next().is_none());
         let err_events = app.world().resource::<Events<SessionErrorReceived>>();
-        assert!(update_events
-            .get_cursor()
-            .read(update_events)
-            .next()
-            .is_none());
         assert!(err_events.get_cursor().read(err_events).next().is_none());
 
         s.close();
         // this should just print a message
         app.update();
         let update_events = app.world().resource::<Events<SessionUpdateReceived<()>>>();
+        let mut cursor = update_events.get_cursor();
+        assert!(cursor.read(update_events).next().is_none());
         let err_events = app.world().resource::<Events<SessionErrorReceived>>();
-        assert!(update_events
-            .get_cursor()
-            .read(update_events)
-            .next()
-            .is_none());
         assert!(err_events.get_cursor().read(err_events).next().is_none());
     }
 }
