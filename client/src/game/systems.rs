@@ -24,7 +24,7 @@ pub fn handle_game_spawn(
     mut game_entity_ready: EventWriter<GameEntityReady>,
 ) {
     for game_entity in game.iter() {
-        game_entity_ready.send(GameEntityReady::new(game_entity));
+        game_entity_ready.send(game_entity.into());
     }
 }
 
@@ -36,8 +36,8 @@ pub fn handle_local_game_creation(
     mut game_ready: EventWriter<interface::GameReady>,
 ) {
     for event in game_entity_ready.read() {
-        if local_game.contains(**event) {
-            game_ready.send(interface::GameReady::new(**event));
+        if local_game.contains(event.get()) {
+            game_ready.send(event.get().into());
         }
     }
 }
@@ -53,8 +53,8 @@ pub fn initialize_game_session<T>(
     T::TurnData: Send,
 {
     for event in game_entity_ready.read() {
-        if network_game.contains(**event) {
-            open_session.send(grpc::OpenSession::new(**event));
+        if network_game.contains(event.get()) {
+            open_session.send(grpc::OpenSession::new(event.get()));
         }
     }
 }
@@ -68,9 +68,9 @@ pub fn network_game_initialization_finished(
     mut game_ready: EventWriter<interface::GameReady>,
 ) {
     for event in session_opened.read() {
-        if network_game.contains(**event) {
-            info!("session is initialized for game {}", **event);
-            game_ready.send(interface::GameReady::new(**event));
+        if network_game.contains(event.get()) {
+            info!("session is initialized for game {}", event.get());
+            game_ready.send(event.get().into());
         }
     }
 }
@@ -86,7 +86,7 @@ pub fn action_queue_next_changed<T: Send + Sync + 'static>(
     let mut dropped = SmallVec::<[_; 8]>::new();
     for game_entity in action_dropped.read().map(|e| e.game()) {
         if !dropped.contains(&game_entity) {
-            next_changed.send(ActionQueueNextChanged::new(game_entity));
+            next_changed.send(game_entity.into());
             dropped.push(game_entity);
         }
     }
@@ -103,7 +103,7 @@ pub fn action_queue_next_changed<T: Send + Sync + 'static>(
             continue;
         }
         if matches!(queue.get(game_entity), Ok(queue) if queue.len() == new_actions) {
-            next_changed.send(ActionQueueNextChanged::new(game_entity));
+            next_changed.send(game_entity.into());
         }
     }
 }
@@ -171,7 +171,7 @@ pub fn send_pending_action<T: Copy + Send + Sync + 'static>(
     mut resend: RemovedComponents<ActionResendTimer>,
     mut action_ready: EventWriter<grpc::SessionActionReadyToSend<T>>,
 ) {
-    for game_entity in resend.read().chain(next_changed.read().map(|e| **e)) {
+    for game_entity in resend.read().chain(next_changed.read().map(|e| e.get())) {
         let Ok(mut queue) = game.get_mut(game_entity) else {
             continue;
         };
@@ -257,7 +257,7 @@ pub fn action_confirmation_failed<T: Copy + Send + Sync + 'static>(
     mut confirmation_failed: EventWriter<ActionConfirmationFailed<T>>,
 ) {
     let closed_sessions =
-        SmallVec::<[_; 8]>::from_iter(session_closed.read().map(|e| **e).inspect(|e| {
+        SmallVec::<[_; 8]>::from_iter(session_closed.read().map(|e| e.get()).inspect(|e| {
             confirmation_failed.send(ActionConfirmationFailed::revert_all(*e));
         }));
     for event in action_send_failed.read() {
@@ -342,7 +342,7 @@ pub fn apply_confirmed<T>(
     let to_confirm = action_confirmed
         .read()
         .map(|e| e.game())
-        .chain(next_changed.read().map(|e| **e));
+        .chain(next_changed.read().map(|e| e.get()));
     for game_entity in to_confirm {
         let Ok((mut game, mut queue)) = game.get_mut(game_entity) else {
             continue;
@@ -429,7 +429,7 @@ pub fn handle_draw(
             let mut player_cmds = commands.entity(player_entity);
             player_cmds.remove::<CurrentPlayer>();
         }
-        ready_to_exit.send(interface::GameReadyToExit::new(event.game()));
+        ready_to_exit.send(event.game().into());
     }
 }
 
@@ -537,7 +537,7 @@ pub fn close_session(
     mut close_session: EventWriter<grpc::CloseSession>,
 ) {
     for entity in deactivated_game.read() {
-        close_session.send(grpc::CloseSession::new(entity));
+        close_session.send(entity.into());
     }
 }
 
@@ -695,8 +695,10 @@ mod test {
     /// GameLeft clears every local game and every finished network game
     #[test]
     fn game_left_event_clears_games() {
+        use interface::GameLeft;
+
         let mut app = App::new();
-        app.add_event::<interface::GameLeft>();
+        app.add_event::<GameLeft>();
         app.add_systems(Update, clear_game_on_exit);
 
         let game1 = app.world_mut().spawn(TTTLocalGameBundle::default()).id();
@@ -712,15 +714,10 @@ mod test {
             .id();
 
         // emit GameLeft events for games 1, 3, 4
-        app.world_mut()
-            .resource_mut::<Events<interface::GameLeft>>()
-            .send(interface::GameLeft::new(game1));
-        app.world_mut()
-            .resource_mut::<Events<interface::GameLeft>>()
-            .send(interface::GameLeft::new(game3));
-        app.world_mut()
-            .resource_mut::<Events<interface::GameLeft>>()
-            .send(interface::GameLeft::new(game4));
+        let mut events = app.world_mut().resource_mut::<Events<GameLeft>>();
+        events.send(game1.into());
+        events.send(game3.into());
+        events.send(game4.into());
         app.update();
 
         // games 1, 3 are despawned, 2 and 4 remain in the world
@@ -830,7 +827,7 @@ mod test {
 
         app.world_mut()
             .resource_mut::<Events<grpc::SessionClosed>>()
-            .send(grpc::SessionClosed::new(entity1));
+            .send(entity1.into());
         app.update();
 
         let confirmation_failed_events = app
@@ -863,7 +860,7 @@ mod test {
             .send(grpc::SessionActionSendFailed::new(entity1, 1));
         app.world_mut()
             .resource_mut::<Events<grpc::SessionClosed>>()
-            .send(grpc::SessionClosed::new(entity2));
+            .send(entity2.into());
         app.update();
 
         let confirmation_failed_events = app
@@ -884,7 +881,7 @@ mod test {
             .send(grpc::SessionActionSendFailed::new(entity2, 1));
         app.world_mut()
             .resource_mut::<Events<grpc::SessionClosed>>()
-            .send(grpc::SessionClosed::new(entity2));
+            .send(entity2.into());
         app.update();
 
         let confirmation_failed_events = app
@@ -927,7 +924,7 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue1);
         assert!(cursor.read(events).next().is_none());
         clear_events::<ActionQueueNextChanged>(app.world_mut());
 
@@ -956,7 +953,7 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue1);
         assert!(cursor.read(events).next().is_none());
     }
 
@@ -993,7 +990,7 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue2);
         assert!(cursor.read(events).next().is_none());
         clear_events::<ActionQueueNextChanged>(app.world_mut());
 
@@ -1005,7 +1002,7 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue1);
         assert!(cursor.read(events).next().is_none());
         clear_events::<ActionQueueNextChanged>(app.world_mut());
 
@@ -1017,8 +1014,8 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
-        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue1);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue2);
         assert!(cursor.read(events).next().is_none());
         clear_events::<ActionQueueNextChanged>(app.world_mut());
 
@@ -1030,7 +1027,7 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue1);
         assert!(cursor.read(events).next().is_none());
         clear_events::<ActionQueueNextChanged>(app.world_mut());
     }
@@ -1068,7 +1065,7 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue2);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue2);
         assert!(cursor.read(events).next().is_none());
         clear_events::<ActionQueueNextChanged>(app.world_mut());
 
@@ -1083,7 +1080,7 @@ mod test {
 
         let events = app.world().resource::<Events<ActionQueueNextChanged>>();
         let mut cursor = events.get_cursor();
-        assert_eq!(**cursor.read(events).next().unwrap(), queue1);
+        assert_eq!(cursor.read(events).next().unwrap().get(), queue1);
         assert!(cursor.read(events).next().is_none());
         clear_events::<ActionQueueNextChanged>(app.world_mut());
     }

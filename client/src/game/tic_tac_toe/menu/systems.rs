@@ -374,7 +374,7 @@ pub fn join_game(
 ) {
     for event in join_pressed.read() {
         if let Some((game_entity, _)) = game.iter().find(|(_, &game)| *game == event.game_id()) {
-            game_entity_ready.send(GameEntityReady::new(game_entity));
+            game_entity_ready.send(game_entity.into());
             return;
         }
         if let Some(client) = client.as_ref() {

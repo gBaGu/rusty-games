@@ -297,7 +297,7 @@ pub fn update_win_animation(
             commands.entity(animation_entity).despawn();
             if let Ok(game_link) = board.get(parent.get()) {
                 debug!("game is ready to exit: {}", game_link.get());
-                ready_to_exit.send(interface::GameReadyToExit::new(game_link.get()));
+                ready_to_exit.send(game_link.get().into());
             }
         }
     }

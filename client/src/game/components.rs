@@ -6,7 +6,12 @@ use game_server::core;
 use smallvec::SmallVec;
 
 use super::{ConfirmationStatus, PendingAction, ACTION_RESEND_INTERVAL_SEC};
-use crate::interface;
+use crate::{interface, util};
+
+util::entity_type!(
+    /// Component that indicates that entity is related to a particular game.
+    GameLink, Component
+);
 
 /// Empty component to indicate that an entity is a board.
 #[derive(Component)]
@@ -33,20 +38,6 @@ impl BotDifficulty {
             Self::Medium => "medium".to_string(),
             Self::Hard => "hard".to_string(),
         }
-    }
-}
-
-/// Component that indicates that entity is related to a particular game.
-#[derive(Debug, Component, Deref)]
-pub struct GameLink(Entity);
-
-impl GameLink {
-    pub fn new(game: Entity) -> Self {
-        Self(game)
-    }
-
-    pub fn get(&self) -> Entity {
-        self.0
     }
 }
 
@@ -189,7 +180,7 @@ pub struct BoardBundle {
 impl BoardBundle {
     pub fn new(game: Entity, size: Vec2, translation: Vec3) -> Self {
         Self {
-            game_link: GameLink::new(game),
+            game_link: game.into(),
             sprite: Sprite {
                 color: interface::common::SECONDARY_COLOR,
                 custom_size: Some(size),

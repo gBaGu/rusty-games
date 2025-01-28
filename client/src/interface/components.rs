@@ -6,6 +6,7 @@ use bevy_simple_text_input::{TextInput, TextInputTextColor, TextInputTextFont};
 use super::common::{self, OVERLAY_BACKGROUND_COLOR, PRIMARY_COLOR, SECONDARY_COLOR};
 use crate::app_state::{AppState, AppStateTransition};
 use crate::game::{GameInfo, GameLink};
+use crate::util;
 
 /// Component that indicates that the game is being shawn on the screen.
 /// Board and in-game ui will be connected to this component.
@@ -31,19 +32,10 @@ impl<T> Default for GameTag<T> {
 #[derive(Debug, Component)]
 pub struct SettingOption;
 
-/// Points to entity that stores value chosen by interface component.
-#[derive(Debug, Component)]
-pub struct StorageLink(Entity);
-
-impl StorageLink {
-    pub fn new(setting: Entity) -> Self {
-        Self(setting)
-    }
-
-    pub fn get(&self) -> Entity {
-        self.0
-    }
-}
+util::entity_type!(
+    /// Points to entity that stores value chosen by interface component.
+    StorageLink, Component
+);
 
 /// Component that stores color that will be used in in-game ui to identify a player.
 #[derive(Clone, Copy, Debug, Deref, DerefMut, Component)]
@@ -92,7 +84,7 @@ impl PlaygroundBundle {
     pub fn new(game: Entity) -> Self {
         Self {
             node: common::root_node(),
-            game_link: GameLink::new(game),
+            game_link: game.into(),
             playground: Playground,
         }
     }
@@ -278,7 +270,7 @@ impl TextInputBundle {
             text_font: TextInputTextFont(text_font),
             text_color: TextInputTextColor(SECONDARY_COLOR.into()),
             text_input: TextInput,
-            local_setting: StorageLink::new(setting),
+            local_setting: setting.into(),
         }
     }
 }
@@ -309,7 +301,7 @@ impl<T: Component> SettingOptionButtonBundle<T> {
             background_color: PRIMARY_COLOR.into(),
             button: Button,
             setting_option: SettingOption,
-            local_setting: StorageLink::new(setting),
+            local_setting: setting.into(),
             value,
         }
     }

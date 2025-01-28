@@ -3,6 +3,7 @@ use game_server::core;
 use game_server::rpc_server::rpc::RpcResult;
 
 use super::error::GrpcError;
+use crate::util;
 
 #[derive(Event)]
 pub struct Connected;
@@ -65,38 +66,23 @@ impl OpenSession {
     }
 }
 
-/// Event that is required to trigger game session to be closed.
-/// Contains an [`Entity`] of a game session.
-#[derive(Debug, Deref, Event)]
-pub struct CloseSession(Entity);
+util::entity_type!(
+    /// Event that is required to trigger game session to be closed.
+    /// Contains an [`Entity`] of a game session.
+    CloseSession, Event
+);
 
-impl CloseSession {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-}
+util::entity_type!(
+    /// Event that indicates that session initialization is finished.
+    /// Contains an [`Entity`] of a game session.
+    SessionOpened, Event
+);
 
-/// Event that indicates that session initialization is finished.
-/// Contains an [`Entity`] of a game session.
-#[derive(Debug, Deref, Event)]
-pub struct SessionOpened(Entity);
-
-impl SessionOpened {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-}
-
-/// Event that indicates that game session task is finished.
-/// Contains an [`Entity`] of a game session.
-#[derive(Debug, Deref, Event)]
-pub struct SessionClosed(Entity);
-
-impl SessionClosed {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-}
+util::entity_type!(
+    /// Event that indicates that game session task is finished.
+    /// Contains an [`Entity`] of a game session.
+    SessionClosed, Event
+);
 
 /// Event that indicates that an error occurred during action send attempt.  
 /// Contains an [`Entity`] of a game session and an action of type `T` that is failed to send.
