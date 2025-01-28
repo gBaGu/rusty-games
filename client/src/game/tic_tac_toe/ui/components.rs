@@ -41,7 +41,7 @@ impl GameStateInfoBundle {
     pub fn new(game: Entity) -> Self {
         Self {
             node: ui_info_node(),
-            game_link: GameLink::new(game),
+            game_link: game.into(),
             game_state_box: GameStateBox,
         }
     }
@@ -61,7 +61,7 @@ impl PlayerInfoBundle {
         Self {
             node: ui_info_node(),
             border_color: color.into(),
-            game_link: GameLink::new(game),
+            game_link: game.into(),
             player: PlayerPosition::new(player),
             color: color.into(),
         }
@@ -71,7 +71,7 @@ impl PlayerInfoBundle {
         Self {
             node: ui_info_node(),
             border_color: Default::default(),
-            game_link: GameLink::new(game),
+            game_link: game.into(),
             player: PlayerPosition::new(player),
             color: color.into(),
         }
@@ -105,7 +105,7 @@ impl NextPlayerImageBundle {
     pub fn new(game: Entity, img: Handle<Image>) -> Self {
         Self {
             node: image_node(),
-            game_link: GameLink::new(game),
+            game_link: game.into(),
             image: ImageNode::new(img),
             next_player: NextPlayer,
         }

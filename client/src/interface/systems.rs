@@ -128,9 +128,7 @@ pub fn submit_press(
 ) {
     for (interaction, submit) in submit_button.iter() {
         if *interaction == Interaction::Pressed {
-            submit_pressed.send(SubmitPressed {
-                source: submit.source,
-            });
+            submit_pressed.send(submit.source.into());
         }
     }
 }
@@ -145,11 +143,10 @@ pub fn setting_option_pressed(
 ) {
     for (button_entity, interaction) in setting_button.iter() {
         if *interaction == Interaction::Pressed {
-            setting_pressed.send(SettingOptionPressed::new(button_entity));
+            setting_pressed.send(button_entity.into());
         }
     }
 }
-
 
 /// Receive [`SubmitPressed`] event, find [`TextInputValue`] and try to convert its value to `T`.
 /// On success set [`watched_value::WatchedValue`] pointed by [`StorageLink`] of input entity.
@@ -161,7 +158,7 @@ pub fn set_local_text_input_setting<T: FromStr + Send + Sync + 'static>(
 ) {
     let submit_pressed_iter = submit_pressed
         .read()
-        .filter_map(|e| input.get(e.source).ok());
+        .filter_map(|e| input.get(e.get()).ok());
     let text_input_submit_iter = text_input_submit
         .read()
         .filter_map(|e| input.get(e.entity).ok());
@@ -238,7 +235,7 @@ pub fn submit_setting(
         }
     };
     for event in submit_pressed.read() {
-        let Some((_, input, setting)) = text_input.iter().find(|(e, _, _)| *e == event.source)
+        let Some((_, input, setting)) = text_input.iter().find(|(e, _, _)| *e == event.get())
         else {
             continue;
         };
@@ -515,7 +512,7 @@ pub fn clear_game_visuals(
 ) {
     for (playground, game_link) in playground.iter() {
         commands.entity(playground).despawn_recursive();
-        game_left.send(GameLeft::new(game_link.get()));
+        game_left.send(game_link.get().into());
     }
     for board in board.iter() {
         commands.entity(board).despawn_recursive();

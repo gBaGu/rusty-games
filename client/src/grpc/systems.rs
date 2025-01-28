@@ -126,7 +126,7 @@ pub fn close_session<T>(
     T::TurnData: Send,
 {
     for event in close_session.read() {
-        if let Ok(session) = session.get(**event) {
+        if let Ok(session) = session.get(event.get()) {
             session.action_sender().close();
         }
     }
@@ -155,7 +155,7 @@ pub fn session_closed<T>(
                 commands
                     .entity(session_entity)
                     .remove::<GameSession<T, T::TurnData>>();
-                session_closed.send(SessionClosed::new(session_entity));
+                session_closed.send(session_entity.into());
                 if active.is_some() {
                     open_session.send(OpenSession::new_delayed(session_entity));
                 }
@@ -272,7 +272,7 @@ pub fn connect_session<T>(
             Ok(_) => match client.game_session::<T>(**network_game, user) {
                 Ok(session) => {
                     commands.entity(event.entity()).insert(session);
-                    session_opened.send(SessionOpened::new(event.entity()));
+                    session_opened.send(event.entity().into());
                 }
                 Err(err) => error!(
                     "unable to connect session: GameSession call failed: {}",
@@ -580,12 +580,9 @@ mod test {
             DummySession::new(make_session_task(r_action), s_action, unbounded_channel().1);
         let session_inactive = app.world_mut().spawn(session).id();
 
-        app.world_mut()
-            .resource_mut::<Events<CloseSession>>()
-            .send(CloseSession::new(session_active));
-        app.world_mut()
-            .resource_mut::<Events<CloseSession>>()
-            .send(CloseSession::new(session_inactive));
+        let mut events = app.world_mut().resource_mut::<Events<CloseSession>>();
+        events.send(session_active.into());
+        events.send(session_inactive.into());
         // this should just close action sender for each session
         app.update();
         assert!(contains_session(app.world(), session_active));
@@ -600,11 +597,10 @@ mod test {
         let collect_events = |w: &mut World| {
             let session_closed_events = w.resource::<Events<SessionClosed>>();
             let mut cursor = session_closed_events.get_cursor();
-            closed_sessions.append(&mut cursor.read(session_closed_events).map(|e| **e).collect());
+            closed_sessions.extend(cursor.read(session_closed_events).map(|e| e.get()));
             let open_session_events = w.resource::<Events<OpenSession>>();
             let mut cursor = open_session_events.get_cursor();
-            opened_sessions
-                .append(&mut cursor.read(open_session_events).map(|e| e.game()).collect());
+            opened_sessions.extend(cursor.read(open_session_events).map(|e| e.game()));
             clear_events::<SessionClosed>(w);
             clear_events::<OpenSession>(w);
         };

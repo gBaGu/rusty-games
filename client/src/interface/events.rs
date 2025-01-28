@@ -1,78 +1,42 @@
 use bevy::prelude::*;
 
 use crate::game::GameInfo;
+use crate::util;
 
-/// Event that indicates that the game is ready to be played.
-/// Contains game entity.
-#[derive(Debug, Deref, DerefMut, Event)]
-pub struct GameReady(Entity);
+util::entity_type!(
+    /// Event that indicates that the game is ready to be played.
+    /// Contains game entity.
+    GameReady, Event
+);
 
-impl GameReady {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
+util::entity_type!(
+    /// Event that indicates that all gameplay and visual processes are finished
+    /// and game is ready to be closed.
+    /// Contains game entity.
+    GameReadyToExit, Event
+);
 
-    pub fn get(&self) -> Entity {
-        self.0
-    }
-}
+util::entity_type!(
+    /// Event that indicates that the app had left `AppState::Game` and
+    /// game visuals has been despawned.
+    /// Contains game entity.
+    GameLeft, Event
+);
 
-/// Event that indicates that all gameplay and visual processes are finished
-/// and game is ready to be closed.
-/// Contains game entity.
-#[derive(Clone, Copy, Debug, Deref, DerefMut, Event)]
-pub struct GameReadyToExit(Entity);
+util::entity_type!(
+    /// Event that indicates that submit button is pressed.
+    SubmitPressed, Event
+);
 
-impl GameReadyToExit {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-
-    pub fn get(&self) -> Entity {
-        self.0
-    }
-}
-
-/// Event that indicates that the app had left `AppState::Game` and
-/// game visuals has been despawned.
-/// Contains game entity.
-#[derive(Clone, Copy, Debug, Deref, DerefMut, Event)]
-pub struct GameLeft(Entity);
-
-impl GameLeft {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-
-    pub fn get(&self) -> Entity {
-        self.0
-    }
-}
+util::entity_type!(
+    /// Event that indicates that the button related to a particular setting option is pressed.
+    SettingOptionPressed, Event
+);
 
 /// Event that indicates that the list of games this player can play is ready.
 #[derive(Debug, Event)]
 pub struct PlayerGamesReady {
     pub games: Result<Vec<GameInfo>, String>,
-}
-
-/// Event that indicates that submit button is pressed.
-#[derive(Debug, Event)]
-pub struct SubmitPressed {
-    pub source: Entity,
-}
-
-/// Event that indicates that the button related to a particular setting option is pressed.
-#[derive(Debug, Event)]
-pub struct SettingOptionPressed(Entity);
-
-impl SettingOptionPressed {
-    pub fn new(source: Entity) -> Self {
-        Self(source)
-    }
-
-    pub fn get(&self) -> Entity {
-        self.0
-    }
 }
 
 /// Event that indicates that join game button is pressed.

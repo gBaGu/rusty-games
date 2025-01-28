@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use game_server::core;
 
+use crate::util;
+
 /// Event that signals that all data required to create a game entity is ready.
 #[derive(Debug, Event)]
 pub struct GameDataReady {
@@ -39,17 +41,12 @@ impl GameDataReady {
     }
 }
 
-/// Event that signals that game [`Entity`] is ready for interaction.
-/// Triggered during game creation process when the game entity is spawned or
-/// found within existing game entities.
-#[derive(Debug, Deref, Event)]
-pub struct GameEntityReady(Entity);
-
-impl GameEntityReady {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-}
+util::entity_type!(
+    /// Event that signals that game [`Entity`] is ready for interaction.
+    /// Triggered during game creation process when the game entity is spawned or
+    /// found within existing game entities.
+    GameEntityReady, Event
+);
 
 /// Event that signals that particular bot is ready to make some action in a game.
 #[derive(Debug, Event)]
@@ -81,15 +78,10 @@ impl BotReady {
     }
 }
 
-/// Event that signals that the first pending action in the queue has changed.
-#[derive(Debug, Deref, Event)]
-pub struct ActionQueueNextChanged(Entity);
-
-impl ActionQueueNextChanged {
-    pub fn new(entity: Entity) -> Self {
-        Self(entity)
-    }
-}
+util::entity_type!(
+    /// Event that signals that the first pending action in the queue has changed.
+    ActionQueueNextChanged, Event
+);
 
 /// Event that signals that `player` wants to make game action.
 #[derive(Debug, Event)]
