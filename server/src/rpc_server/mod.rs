@@ -1,5 +1,6 @@
 pub mod rpc;
 
+mod auth;
 mod error;
 mod game_storage;
 mod lobby;
