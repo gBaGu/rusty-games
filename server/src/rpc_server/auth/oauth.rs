@@ -6,10 +6,11 @@ use std::time::Instant;
 use oauth2::basic::BasicClient;
 use oauth2::url;
 use oauth2::{
-    AuthUrl, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet, PkceCodeVerifier,
-    RedirectUrl, RevocationUrl, TokenUrl,
+    AuthUrl, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, TokenUrl,
 };
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::oneshot;
 use tokio::task::JoinError;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::StreamExt;
@@ -27,6 +28,7 @@ pub struct ClientSettings {
     token_url: TokenUrl,
     redirect_url: RedirectUrl,
     revocation_url: RevocationUrl,
+    access_token_scopes: Vec<Scope>,
 }
 
 impl ClientSettings {
@@ -37,6 +39,7 @@ impl ClientSettings {
         token_url: impl Into<String>,
         redirect_url: impl Into<String>,
         revocation_url: impl Into<String>,
+        access_token_scopes: impl IntoIterator<Item = impl Into<String>>,
     ) -> Result<Self, url::ParseError> {
         Ok(Self {
             client_id: ClientId::new(client_id.into()),
@@ -45,6 +48,11 @@ impl ClientSettings {
             token_url: TokenUrl::new(token_url.into())?,
             redirect_url: RedirectUrl::new(redirect_url.into())?,
             revocation_url: RevocationUrl::new(revocation_url.into())?,
+            access_token_scopes: access_token_scopes
+                .into_iter()
+                .map(Into::<String>::into)
+                .map(Scope::new)
+                .collect(),
         })
     }
 }
@@ -53,12 +61,23 @@ impl ClientSettings {
 pub struct OAuth2Meta {
     started_at: Instant,
     pkce_verifier: PkceCodeVerifier,
-    // token_channel
+    token_sender: oneshot::Sender<String>,
+}
+
+impl OAuth2Meta {
+    pub fn new(pkce_verifier: PkceCodeVerifier, token_sender: oneshot::Sender<String>) -> Self {
+        Self {
+            started_at: Instant::now(),
+            pkce_verifier,
+            token_sender,
+        }
+    }
 }
 
 pub struct OAuth2Manager {
     auth_map: Mutex<HashMap<CsrfToken, OAuth2Meta>>,
     client: OAuth2Client,
+    access_token_scopes: Vec<Scope>,
 }
 
 impl OAuth2Manager {
@@ -72,7 +91,19 @@ impl OAuth2Manager {
         Self {
             auth_map: Default::default(),
             client,
+            access_token_scopes: settings.access_token_scopes,
         }
+    }
+
+    pub fn generate_auth_url(&self) -> (url::Url, CsrfToken, PkceCodeVerifier) {
+        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+        let (auth_url, csrf_token) = self
+            .client
+            .authorize_url(CsrfToken::new_random)
+            .add_scopes(self.access_token_scopes.clone())
+            .set_pkce_challenge(pkce_challenge)
+            .url();
+        (auth_url, csrf_token, pkce_verifier)
     }
 
     pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> RpcInnerResult<()> {

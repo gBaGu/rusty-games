@@ -13,7 +13,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .file_descriptor_set_path(PathBuf::from(out_dir).join("game_descriptor.bin"))
         .compile_protos(
             &[
-                format!("{}/rpc.proto", PROTO_FOLDER),
+                format!("{}/game_service.proto", PROTO_FOLDER),
+                format!("{}/auth_service.proto", PROTO_FOLDER),
                 format!("{}/common.proto", PROTO_FOLDER),
                 format!("{}/chess.proto", PROTO_FOLDER),
             ],

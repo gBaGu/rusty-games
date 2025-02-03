@@ -6,6 +6,7 @@ use tokio_stream::{Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status, Streaming};
 
+use super::RpcResult;
 use super::error::RpcError;
 use super::lobby_manager::LobbyManager;
 use crate::core::chess::Chess;
@@ -15,7 +16,6 @@ use crate::proto;
 pub type GameId = u64;
 pub type UserId = u64;
 
-pub type RpcResult<T> = Result<Response<T>, Status>;
 pub type RpcInnerResult<T> = Result<T, RpcError>;
 
 #[derive(Default)]
