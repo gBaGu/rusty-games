@@ -5,6 +5,10 @@ use tonic::Status;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
+    #[error("trying to insert authentication meta for the same state")]
+    DuplicateAuthMeta,
+    #[error("requested authentication meta is missing")]
+    MissingAuthMeta,
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -30,6 +34,9 @@ impl AuthError {
 impl From<AuthError> for Status {
     fn from(value: AuthError) -> Self {
         match value {
+            AuthError::DuplicateAuthMeta | AuthError::MissingAuthMeta => {
+                Status::internal(value.to_string())
+            }
             AuthError::Internal(msg) => Status::internal(msg),
         }
     }

@@ -93,3 +93,17 @@ impl TryFrom<chess::TurnData> for PositionPair {
         })
     }
 }
+
+impl LogInReply {
+    pub fn auth_link(url: impl Into<String>) -> Self {
+        Self {
+            reply: Some(log_in_reply::Reply::Link(url.into())),
+        }
+    }
+
+    pub fn token(token: impl Into<String>) -> Self {
+        Self {
+            reply: Some(log_in_reply::Reply::Token(token.into())),
+        }
+    }
+}

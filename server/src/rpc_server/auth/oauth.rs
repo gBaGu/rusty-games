@@ -1,8 +1,10 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::rpc_server::auth::error::AuthError;
 use oauth2::basic::BasicClient;
 use oauth2::url;
 use oauth2::{
@@ -111,12 +113,27 @@ impl OAuth2Manager {
 
     pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> AuthResult<()> {
         let mut guard = self.auth_map.lock()?;
-        todo!()
+        match guard.entry(key) {
+            Entry::Vacant(e) => {
+                e.insert(value);
+            }
+            Entry::Occupied(_) => Err(AuthError::DuplicateAuthMeta)?,
+        }
+        Ok(())
+    }
+
+    pub fn remove(&self, key: CsrfToken) -> AuthResult<()> {
+        let mut guard = self.auth_map.lock()?;
+        guard.remove(&key);
+        Ok(())
     }
 
     pub fn take(&self, key: CsrfToken) -> AuthResult<OAuth2Meta> {
         let mut guard = self.auth_map.lock()?;
-        todo!()
+        match guard.entry(key) {
+            Entry::Occupied(e) => Ok(e.remove()),
+            Entry::Vacant(_) => Err(AuthError::MissingAuthMeta),
+        }
     }
 }
 
