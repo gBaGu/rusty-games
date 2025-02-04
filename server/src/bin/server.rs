@@ -6,7 +6,6 @@ use tonic_health::ServingStatus;
 
 use server::proto::game_server::GameServer;
 use server::rpc_server;
-use server::rpc_server::rpc::GameImpl;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         health_reporter.set_service_status("", ServingStatus::NotServing).await;
         health_reporter.clear_service_status("").await;
     };
-    let mut game_impl = GameImpl::default();
+    let mut game_impl = rpc_server::GameImpl::default();
     let workers = game_impl.start_workers(ct.clone());
     let shutdown_signal = async move {
         health.await;

@@ -16,7 +16,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use crate::rpc_server::rpc::RpcInnerResult;
+use super::AuthResult;
 
 type OAuth2Client =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointSet, EndpointSet>;
@@ -61,11 +61,14 @@ impl ClientSettings {
 pub struct OAuth2Meta {
     started_at: Instant,
     pkce_verifier: PkceCodeVerifier,
-    token_sender: oneshot::Sender<String>,
+    token_sender: oneshot::Sender<AuthResult<String>>,
 }
 
 impl OAuth2Meta {
-    pub fn new(pkce_verifier: PkceCodeVerifier, token_sender: oneshot::Sender<String>) -> Self {
+    pub fn new(
+        pkce_verifier: PkceCodeVerifier,
+        token_sender: oneshot::Sender<AuthResult<String>>,
+    ) -> Self {
         Self {
             started_at: Instant::now(),
             pkce_verifier,
@@ -106,12 +109,12 @@ impl OAuth2Manager {
         (auth_url, csrf_token, pkce_verifier)
     }
 
-    pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> RpcInnerResult<()> {
+    pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> AuthResult<()> {
         let mut guard = self.auth_map.lock()?;
         todo!()
     }
 
-    pub fn take(&self, key: CsrfToken) -> RpcInnerResult<OAuth2Meta> {
+    pub fn take(&self, key: CsrfToken) -> AuthResult<OAuth2Meta> {
         let mut guard = self.auth_map.lock()?;
         todo!()
     }
