@@ -13,7 +13,7 @@ use server::core::{BoardCell, GridIndex, ToProtobuf};
 use server::proto::game_client::GameClient;
 use server::proto::game_server::GameServer;
 use server::proto::*;
-use server::rpc_server::rpc::GameImpl;
+use server::rpc_server::GameImpl;
 
 fn create_game_session_request_stream<S, T>(
     game_type: i32,
