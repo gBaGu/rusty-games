@@ -21,17 +21,20 @@ async fn listen_ctrl_c(ct: CancellationToken) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() != 3 {
-        println!("usage: server <rpc-port> <oauth2-redirect-port> <oauth2-settings.json>");
+    if args.len() != 2 {
+        println!("usage: server <rpc-port> <oauth2-settings.json>");
         return Ok(());
     }
     let rpc_port = &args[0];
     let rpc_addr = format!("[::1]:{}", rpc_port).parse()?;
-    let redirect_port = &args[1];
-    let redirect_addr = format!("[::1]:{}", redirect_port).parse()?;
-    let oauth2_settings_file = File::open(&args[2])?;
+    let oauth2_settings_file = File::open(&args[1])?;
     let auth_settings: rpc_server::OAuth2Settings =
         serde_json::from_reader(BufReader::new(oauth2_settings_file))?;
+    let Some(redirect_port) = auth_settings.redirect_url().split(':').skip(1).last() else {
+        println!("redirect url doesn't contain port");
+        return Ok(());
+    };
+    let redirect_addr = format!("[::1]:{}", redirect_port).parse()?;
     println!("listening for connections on {}", rpc_addr);
 
     let ct = CancellationToken::new();

@@ -50,6 +50,10 @@ impl OAuth2Settings {
                 .collect(),
         })
     }
+
+    pub fn redirect_url(&self) -> &RedirectUrl {
+        &self.redirect_url
+    }
 }
 
 #[derive(Debug)]
@@ -69,8 +73,17 @@ impl OAuth2Meta {
         }
     }
 
-    pub fn into_jwt_sender(self) -> oneshot::Sender<AuthResult<String>> {
-        self.jwt_sender
+    pub fn send_error(self, err: AuthError) {
+        if let Err(err) = self.jwt_sender.send(Err(err)) {
+            // SAFETY: unwrap_err here is safe because we were trying to send Err() value
+            println!("failed to send error back to rpc: {}", err.unwrap_err());
+        }
+    }
+
+    pub fn send_token(self, token: String) {
+        if let Err(_) = self.jwt_sender.send(Ok(token)) {
+            println!("failed to send jwt token back to rpc");
+        }
     }
 
     pub fn pkce_verifier(&self) -> &PkceCodeVerifier {

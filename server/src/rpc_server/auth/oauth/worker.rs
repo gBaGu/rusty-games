@@ -23,16 +23,6 @@ impl From<GoogleUserInfo> for UserInfo {
     }
 }
 
-fn send_google_api_error_to_rpc(meta: OAuth2Meta, msg: String) {
-    if let Err(err) = meta
-        .into_jwt_sender()
-        .send(Err(AuthError::GoogleApiFetchFailed(msg)))
-    {
-        // SAFETY: unwrap_err here is safe because we were trying to send Err() value
-        println!("GoogleApiWorker: failed to send error back to rpc: {}", err.unwrap_err());
-    }
-}
-
 pub struct GoogleApiWorker(JoinHandle<()>);
 
 impl IntoFuture for GoogleApiWorker {
@@ -60,27 +50,31 @@ impl GoogleApiWorker {
                 {
                     Ok(response) => response,
                     Err(err) => {
-                        send_google_api_error_to_rpc(meta, err.to_string());
+                        meta.send_error(AuthError::GoogleApiFetchFailed(err.to_string()));
                         continue;
                     }
                 };
                 let text = match response.text().await {
                     Ok(text) => text,
                     Err(err) => {
-                        send_google_api_error_to_rpc(meta, err.to_string());
+                        meta.send_error(AuthError::GoogleApiFetchFailed(err.to_string()));
                         continue;
                     }
                 };
                 let user_info: GoogleUserInfo = match serde_json::from_str(&text) {
                     Ok(info) => info,
                     Err(err) => {
-                        send_google_api_error_to_rpc(meta, err.to_string());
+                        meta.send_error(AuthError::GoogleApiFetchFailed(err.to_string()));
                         continue;
                     }
                 };
+                println!(
+                    "got user info: name={}, email={}",
+                    user_info.name, user_info.email
+                );
                 if let Err(err) = user_info_sender.send((meta, user_info.into())) {
                     let msg = err.to_string();
-                    send_google_api_error_to_rpc(err.0 .0, msg);
+                    err.0 .0.send_error(AuthError::GoogleApiFetchFailed(msg));
                 }
             }
         });

@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status};
 
 use super::oauth::{GoogleApiWorker, OAuth2Manager, OAuth2Meta, OAuth2Settings, RedirectListener};
-use super::AuthError;
+use super::{worker::LogInWorker, AuthError};
 use crate::proto;
 use crate::rpc_server::RpcResult;
 
@@ -38,13 +38,12 @@ impl AuthImpl {
             google_token_channel.0,
             ct,
         );
-        let google_api_worker = GoogleApiWorker::new(
-            google_token_channel.1,
-            user_info_channel.0,
-        );
+        let google_api_worker = GoogleApiWorker::new(google_token_channel.1, user_info_channel.0);
+        let log_in_worker = LogInWorker::new(user_info_channel.1);
         async move {
             redirect_listener.await?;
-            google_api_worker.await
+            google_api_worker.await?;
+            log_in_worker.await
         }
     }
 }
@@ -59,6 +58,7 @@ impl proto::auth_server::Auth for AuthImpl {
         let (s, token_receiver) = oneshot::channel();
         self.auth_manager
             .insert(csrf_token.clone(), OAuth2Meta::new(pkce_verifier, s))?;
+        println!("log in url: {}", auth_url);
         let auth_manager_cloned = self.auth_manager.clone();
         let stream = tokio_stream::once(Ok(proto::LogInReply::auth_link(auth_url.to_string())))
             .chain(async_stream::try_stream! {
