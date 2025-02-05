@@ -33,7 +33,7 @@ impl RedirectListener {
     pub fn new(
         addr: SocketAddr,
         auth_manager: Arc<OAuth2Manager>,
-        token_sender: mpsc::UnboundedSender<BasicTokenResponse>,
+        token_sender: mpsc::UnboundedSender<(CsrfToken, BasicTokenResponse)>,
         ct: CancellationToken,
     ) -> Self {
         let inner = tokio::spawn(async move {
@@ -88,7 +88,7 @@ async fn send_tcp_stream_reply(stream: &mut TcpStream, message: &str) {
 async fn handle_connection(
     stream: TcpStream,
     auth_manager: Arc<OAuth2Manager>,
-    token_sender: mpsc::UnboundedSender<BasicTokenResponse>,
+    token_sender: mpsc::UnboundedSender<(CsrfToken, BasicTokenResponse)>,
 ) {
     let mut reader = BufReader::new(stream);
     let mut request_line = String::new();
@@ -171,7 +171,7 @@ async fn handle_connection(
         }
     };
     send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_SUCCESS).await;
-    if let Err(err) = token_sender.send(token_response) {
+    if let Err(err) = token_sender.send((state, token_response)) {
         println!("handle_connection: unable to send oauth2 token: {}", err);
     }
 }

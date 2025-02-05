@@ -114,6 +114,13 @@ impl OAuth2Manager {
             .ok_or(AuthError::MissingAuthMeta)
     }
 
+    pub fn send_auth_result(&self, key: &CsrfToken, result: AuthResult<String>) -> AuthResult<()> {
+        let meta = self.remove(key)?.ok_or(AuthError::MissingAuthMeta)?;
+        meta.jwt_sender.send(result).map_err(|err| {
+            AuthError::internal(format!("unable to send result to auth rpc: {:?}", err))
+        })
+    }
+
     pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> AuthResult<()> {
         let mut guard = self.auth_map.lock()?;
         match guard.entry(key) {
@@ -125,9 +132,8 @@ impl OAuth2Manager {
         Ok(())
     }
 
-    pub fn remove(&self, key: CsrfToken) -> AuthResult<()> {
+    pub fn remove(&self, key: &CsrfToken) -> AuthResult<Option<OAuth2Meta>> {
         let mut guard = self.auth_map.lock()?;
-        guard.remove(&key);
-        Ok(())
+        Ok(guard.remove(key))
     }
 }

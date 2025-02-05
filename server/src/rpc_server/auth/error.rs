@@ -9,6 +9,8 @@ pub enum AuthError {
     DuplicateAuthMeta,
     #[error("requested authentication meta is missing")]
     MissingAuthMeta,
+    #[error("failed to get data from google api: {0}")]
+    GoogleApiFetchFailed(String),
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -37,6 +39,7 @@ impl From<AuthError> for Status {
             AuthError::DuplicateAuthMeta | AuthError::MissingAuthMeta => {
                 Status::internal(value.to_string())
             }
+            AuthError::GoogleApiFetchFailed(msg) => Status::internal(msg),
             AuthError::Internal(msg) => Status::internal(msg),
         }
     }

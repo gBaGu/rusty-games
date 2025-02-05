@@ -9,7 +9,7 @@ use tokio_stream::{Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status};
 
-use super::oauth::{OAuth2Manager, OAuth2Meta, OAuth2Settings, RedirectListener};
+use super::oauth::{GoogleApiWorker, OAuth2Manager, OAuth2Meta, OAuth2Settings, RedirectListener};
 use super::AuthError;
 use crate::proto;
 use crate::rpc_server::RpcResult;
@@ -30,11 +30,22 @@ impl AuthImpl {
         redirect_addr: SocketAddr,
         ct: CancellationToken,
     ) -> impl Future<Output = Result<(), JoinError>> {
-        let (s, _r) = mpsc::unbounded_channel();
-        let redirect_listener =
-            RedirectListener::new(redirect_addr, self.auth_manager.clone(), s, ct);
+        let google_token_channel = mpsc::unbounded_channel();
+        let user_info_channel = mpsc::unbounded_channel();
+        let redirect_listener = RedirectListener::new(
+            redirect_addr,
+            self.auth_manager.clone(),
+            google_token_channel.0,
+            ct,
+        );
+        let google_api_worker = GoogleApiWorker::new(
+            self.auth_manager.clone(),
+            google_token_channel.1,
+            user_info_channel.0,
+        );
         async move {
-            redirect_listener.await
+            redirect_listener.await?;
+            google_api_worker.await
         }
     }
 }
@@ -53,7 +64,7 @@ impl proto::auth_server::Auth for AuthImpl {
         let stream = tokio_stream::once(Ok(proto::LogInReply::auth_link(auth_url.to_string())))
             .chain(async_stream::try_stream! {
                 let res = token_receiver.await;
-                auth_manager_cloned.remove(csrf_token)?;
+                let _ = auth_manager_cloned.remove(&csrf_token)?;
                 let token = res.map_err(AuthError::from)??;
                 yield proto::LogInReply::token(token)
             });
