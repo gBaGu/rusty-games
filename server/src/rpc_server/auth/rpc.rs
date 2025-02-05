@@ -39,7 +39,6 @@ impl AuthImpl {
             ct,
         );
         let google_api_worker = GoogleApiWorker::new(
-            self.auth_manager.clone(),
             google_token_channel.1,
             user_info_channel.0,
         );

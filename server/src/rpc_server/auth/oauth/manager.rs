@@ -68,6 +68,14 @@ impl OAuth2Meta {
             jwt_sender,
         }
     }
+
+    pub fn into_jwt_sender(self) -> oneshot::Sender<AuthResult<String>> {
+        self.jwt_sender
+    }
+
+    pub fn pkce_verifier(&self) -> &PkceCodeVerifier {
+        &self.pkce_verifier
+    }
 }
 
 pub struct OAuth2Manager {
@@ -104,21 +112,6 @@ impl OAuth2Manager {
             .set_pkce_challenge(pkce_challenge)
             .url();
         (auth_url, csrf_token, pkce_verifier)
-    }
-
-    pub fn get_pkce_verifier(&self, key: &CsrfToken) -> AuthResult<PkceCodeVerifier> {
-        let guard = self.auth_map.lock()?;
-        guard
-            .get(key)
-            .map(|meta| PkceCodeVerifier::new(meta.pkce_verifier.secret().clone()))
-            .ok_or(AuthError::MissingAuthMeta)
-    }
-
-    pub fn send_auth_result(&self, key: &CsrfToken, result: AuthResult<String>) -> AuthResult<()> {
-        let meta = self.remove(key)?.ok_or(AuthError::MissingAuthMeta)?;
-        meta.jwt_sender.send(result).map_err(|err| {
-            AuthError::internal(format!("unable to send result to auth rpc: {:?}", err))
-        })
     }
 
     pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> AuthResult<()> {

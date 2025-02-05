@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use oauth2::basic::BasicTokenResponse;
 use oauth2::{reqwest, url};
-use oauth2::{AuthorizationCode, CsrfToken};
+use oauth2::{AuthorizationCode, PkceCodeVerifier, CsrfToken};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -13,7 +13,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use super::OAuth2Manager;
+use super::{OAuth2Manager, OAuth2Meta};
 
 const REDIRECT_REPLY_SUCCESS: &str = "Success!\nYou may now close this page.";
 const REDIRECT_REPLY_ERROR: &str = "Something went wrong!";
@@ -33,7 +33,7 @@ impl RedirectListener {
     pub fn new(
         addr: SocketAddr,
         auth_manager: Arc<OAuth2Manager>,
-        token_sender: mpsc::UnboundedSender<(CsrfToken, BasicTokenResponse)>,
+        token_sender: mpsc::UnboundedSender<(OAuth2Meta, BasicTokenResponse)>,
         ct: CancellationToken,
     ) -> Self {
         let inner = tokio::spawn(async move {
@@ -88,7 +88,7 @@ async fn send_tcp_stream_reply(stream: &mut TcpStream, message: &str) {
 async fn handle_connection(
     stream: TcpStream,
     auth_manager: Arc<OAuth2Manager>,
-    token_sender: mpsc::UnboundedSender<(CsrfToken, BasicTokenResponse)>,
+    token_sender: mpsc::UnboundedSender<(OAuth2Meta, BasicTokenResponse)>,
 ) {
     let mut reader = BufReader::new(stream);
     let mut request_line = String::new();
@@ -136,14 +136,20 @@ async fn handle_connection(
             return;
         }
     };
-    let pkce_verifier = match auth_manager.get_pkce_verifier(&state) {
-        Ok(verifier) => verifier,
+    let meta = match auth_manager.remove(&state) {
+        Ok(Some(meta)) => meta,
+        Ok(None) => {
+            println!("handle_connection: auth metadata is missing");
+            send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_ERROR).await;
+            return;
+        }
         Err(err) => {
             println!("handle_connection: unable to get auth metadata: {}", err);
             send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_ERROR).await;
             return;
         }
     };
+    let pkce_verifier = PkceCodeVerifier::new(meta.pkce_verifier().secret().clone());
 
     let http_client = match reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
@@ -170,8 +176,10 @@ async fn handle_connection(
             return;
         }
     };
-    send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_SUCCESS).await;
-    if let Err(err) = token_sender.send((state, token_response)) {
+    if let Err(err) = token_sender.send((meta, token_response)) {
         println!("handle_connection: unable to send oauth2 token: {}", err);
+        send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_ERROR).await;
+        return;
     }
+    send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_SUCCESS).await;
 }
