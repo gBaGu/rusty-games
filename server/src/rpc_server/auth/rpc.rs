@@ -1,11 +1,15 @@
+use std::future::Future;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinError;
 use tokio_stream::{Stream, StreamExt};
+use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status};
 
-use super::oauth::{OAuth2Manager, OAuth2Meta};
+use super::oauth::{OAuth2Manager, OAuth2Meta, OAuth2Settings, RedirectListener};
 use super::AuthError;
 use crate::proto;
 use crate::rpc_server::RpcResult;
@@ -15,8 +19,23 @@ pub struct AuthImpl {
 }
 
 impl AuthImpl {
-    pub fn new(auth_manager: Arc<OAuth2Manager>) -> Self {
-        Self { auth_manager }
+    pub fn new(oauth2_settings: OAuth2Settings) -> Self {
+        Self {
+            auth_manager: Arc::new(OAuth2Manager::new(oauth2_settings)),
+        }
+    }
+
+    pub fn start(
+        &mut self,
+        redirect_addr: SocketAddr,
+        ct: CancellationToken,
+    ) -> impl Future<Output = Result<(), JoinError>> {
+        let (s, _r) = mpsc::unbounded_channel();
+        let redirect_listener =
+            RedirectListener::new(redirect_addr, self.auth_manager.clone(), s, ct);
+        async move {
+            redirect_listener.await
+        }
     }
 }
 
@@ -34,9 +53,7 @@ impl proto::auth_server::Auth for AuthImpl {
         let stream = tokio_stream::once(Ok(proto::LogInReply::auth_link(auth_url.to_string())))
             .chain(async_stream::try_stream! {
                 let res = token_receiver.await;
-                if res.is_err() {
-                    auth_manager_cloned.remove(csrf_token)?;
-                }
+                auth_manager_cloned.remove(csrf_token)?;
                 let token = res.map_err(AuthError::from)??;
                 yield proto::LogInReply::token(token)
             });

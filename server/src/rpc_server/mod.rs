@@ -10,6 +10,7 @@ use tonic_reflection::server::{Builder, Error, ServerReflection, ServerReflectio
 
 use crate::proto::FILE_DESCRIPTOR_SET;
 
+pub use auth::{AuthImpl, OAuth2Settings};
 pub use rpc::{GameId, GameImpl};
 
 pub type RpcResult<T> = Result<Response<T>, Status>;

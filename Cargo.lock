@@ -4706,6 +4706,8 @@ dependencies = [
  "itertools 0.14.0",
  "oauth2",
  "prost",
+ "serde",
+ "serde_json",
  "serial_test",
  "smallvec",
  "thiserror 2.0.11",

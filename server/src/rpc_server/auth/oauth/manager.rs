@@ -1,29 +1,22 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::collections::hash_map::{Entry as HashMapEntry, HashMap};
+use std::sync::Mutex;
 
-use crate::rpc_server::auth::error::AuthError;
 use oauth2::basic::BasicClient;
 use oauth2::url;
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge,
     PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, TokenUrl,
 };
-use tokio::net::{TcpListener, TcpStream};
+use serde::Deserialize;
 use tokio::sync::oneshot;
-use tokio::task::JoinError;
-use tokio_stream::wrappers::TcpListenerStream;
-use tokio_stream::StreamExt;
-use tokio_util::sync::CancellationToken;
 
-use super::AuthResult;
+use crate::rpc_server::auth::{AuthError, AuthResult};
 
 type OAuth2Client =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointSet, EndpointSet>;
 
-pub struct ClientSettings {
+#[derive(Debug, Deserialize)]
+pub struct OAuth2Settings {
     client_id: ClientId,
     client_secret: ClientSecret,
     auth_url: AuthUrl,
@@ -33,7 +26,7 @@ pub struct ClientSettings {
     access_token_scopes: Vec<Scope>,
 }
 
-impl ClientSettings {
+impl OAuth2Settings {
     pub fn new(
         client_id: impl Into<String>,
         client_secret: impl Into<String>,
@@ -61,20 +54,18 @@ impl ClientSettings {
 
 #[derive(Debug)]
 pub struct OAuth2Meta {
-    started_at: Instant,
     pkce_verifier: PkceCodeVerifier,
-    token_sender: oneshot::Sender<AuthResult<String>>,
+    jwt_sender: oneshot::Sender<AuthResult<String>>,
 }
 
 impl OAuth2Meta {
     pub fn new(
         pkce_verifier: PkceCodeVerifier,
-        token_sender: oneshot::Sender<AuthResult<String>>,
+        jwt_sender: oneshot::Sender<AuthResult<String>>,
     ) -> Self {
         Self {
-            started_at: Instant::now(),
             pkce_verifier,
-            token_sender,
+            jwt_sender,
         }
     }
 }
@@ -86,7 +77,7 @@ pub struct OAuth2Manager {
 }
 
 impl OAuth2Manager {
-    pub fn new(settings: ClientSettings) -> Self {
+    pub fn new(settings: OAuth2Settings) -> Self {
         let client = BasicClient::new(settings.client_id)
             .set_client_secret(settings.client_secret)
             .set_auth_uri(settings.auth_url)
@@ -100,6 +91,10 @@ impl OAuth2Manager {
         }
     }
 
+    pub fn client(&self) -> &OAuth2Client {
+        &self.client
+    }
+
     pub fn generate_auth_url(&self) -> (url::Url, CsrfToken, PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
         let (auth_url, csrf_token) = self
@@ -111,13 +106,21 @@ impl OAuth2Manager {
         (auth_url, csrf_token, pkce_verifier)
     }
 
+    pub fn get_pkce_verifier(&self, key: &CsrfToken) -> AuthResult<PkceCodeVerifier> {
+        let guard = self.auth_map.lock()?;
+        guard
+            .get(key)
+            .map(|meta| PkceCodeVerifier::new(meta.pkce_verifier.secret().clone()))
+            .ok_or(AuthError::MissingAuthMeta)
+    }
+
     pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> AuthResult<()> {
         let mut guard = self.auth_map.lock()?;
         match guard.entry(key) {
-            Entry::Vacant(e) => {
+            HashMapEntry::Vacant(e) => {
                 e.insert(value);
             }
-            Entry::Occupied(_) => Err(AuthError::DuplicateAuthMeta)?,
+            HashMapEntry::Occupied(_) => Err(AuthError::DuplicateAuthMeta)?,
         }
         Ok(())
     }
@@ -127,65 +130,4 @@ impl OAuth2Manager {
         guard.remove(&key);
         Ok(())
     }
-
-    pub fn take(&self, key: CsrfToken) -> AuthResult<OAuth2Meta> {
-        let mut guard = self.auth_map.lock()?;
-        match guard.entry(key) {
-            Entry::Occupied(e) => Ok(e.remove()),
-            Entry::Vacant(_) => Err(AuthError::MissingAuthMeta),
-        }
-    }
 }
-
-pub struct RedirectListener {
-    addr: SocketAddr,
-    auth_manager: Arc<OAuth2Manager>,
-}
-
-impl RedirectListener {
-    pub fn new(addr: SocketAddr, auth_manager: Arc<OAuth2Manager>) -> Self {
-        Self { addr, auth_manager }
-    }
-
-    pub async fn start(&mut self, ct: CancellationToken) -> Result<(), JoinError> {
-        let addr = self.addr;
-        let auth_manager = self.auth_manager.clone();
-        tokio::spawn(async move {
-            let listener = match TcpListener::bind(addr).await {
-                Ok(listener) => listener,
-                Err(err) => {
-                    println!("redirect listener: failed to bind to {}: {}", addr, err);
-                    return;
-                }
-            };
-            let mut listener = TcpListenerStream::new(listener);
-            loop {
-                tokio::select! {
-                    biased;
-                    _ = ct.cancelled() => {
-                        println!("redirect listener: cancelled");
-                        break;
-                    }
-                    next = listener.next() => {
-                        let Some(stream) = next else {
-                            break;
-                        };
-                        match stream {
-                            Ok(stream) => {
-                                println!("redirect listener: received connection");
-                                tokio::spawn(handle_connection(stream, auth_manager.clone()));
-                            }
-                            Err(err) => {
-                                println!("redirect listener: connection failed");
-                            }
-                        }
-                    }
-                }
-            }
-            println!("redirect listener: finished");
-        })
-        .await
-    }
-}
-
-async fn handle_connection(stream: TcpStream, auth_manager: Arc<OAuth2Manager>) {}
