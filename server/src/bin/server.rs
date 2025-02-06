@@ -21,8 +21,8 @@ async fn listen_ctrl_c(ct: CancellationToken) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() != 2 {
-        println!("usage: server <rpc-port> <oauth2-settings.json>");
+    if args.len() != 3 {
+        println!("usage: server <rpc-port> <oauth2-settings.json> <secret-file>");
         return Ok(());
     }
     let rpc_port = &args[0];
@@ -30,6 +30,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let oauth2_settings_file = File::open(&args[1])?;
     let auth_settings: rpc_server::OAuth2Settings =
         serde_json::from_reader(BufReader::new(oauth2_settings_file))?;
+    let Ok(Ok(secret)) = std::fs::read_to_string(&args[2]).and_then(|s| Ok(hex::decode(s))) else {
+        println!("unable to read secret");
+        return Ok(());
+    };
     let Some(redirect_port) = auth_settings.redirect_url().split(':').skip(1).last() else {
         println!("redirect url doesn't contain port");
         return Ok(());
@@ -50,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut game_impl = rpc_server::GameImpl::default();
     let game_workers = game_impl.start_workers(ct.clone());
     let mut auth_impl = rpc_server::AuthImpl::new(auth_settings);
-    let auth_workers = auth_impl.start(redirect_addr, ct.clone());
+    let auth_workers = auth_impl.start(secret, redirect_addr, ct.clone());
     let shutdown_signal = async move {
         health.await;
         if let Err(err) = game_workers.await {

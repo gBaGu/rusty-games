@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 async-stream = "0.3"
 generic-array = "1"
+hex = "0.4"
 hmac = "0.12"
 jwt = "0.16"
 oauth2 = { version = "5.0", features = ["timing-resistant-secret-traits"] }

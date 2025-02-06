@@ -9,6 +9,8 @@ pub enum AuthError {
     DuplicateAuthMeta,
     #[error("requested authentication meta is missing")]
     MissingAuthMeta,
+    #[error("failed to generate jwt token: {0}")]
+    TokenGenerationFailed(String),
     #[error("failed to get data from google api: {0}")]
     GoogleApiFetchFailed(String),
     #[error("internal error: {0}")]
@@ -36,10 +38,10 @@ impl AuthError {
 impl From<AuthError> for Status {
     fn from(value: AuthError) -> Self {
         match value {
-            AuthError::DuplicateAuthMeta | AuthError::MissingAuthMeta => {
-                Status::internal(value.to_string())
-            }
-            AuthError::GoogleApiFetchFailed(msg) => Status::internal(msg),
+            AuthError::DuplicateAuthMeta
+            | AuthError::MissingAuthMeta
+            | AuthError::TokenGenerationFailed(_)
+            | AuthError::GoogleApiFetchFailed(_) => Status::internal(value.to_string()),
             AuthError::Internal(msg) => Status::internal(msg),
         }
     }

@@ -27,6 +27,7 @@ impl AuthImpl {
 
     pub fn start(
         &mut self,
+        jwt_secret: Vec<u8>,
         redirect_addr: SocketAddr,
         ct: CancellationToken,
     ) -> impl Future<Output = Result<(), JoinError>> {
@@ -39,7 +40,7 @@ impl AuthImpl {
             ct,
         );
         let google_api_worker = GoogleApiWorker::new(google_token_channel.1, user_info_channel.0);
-        let log_in_worker = LogInWorker::new(user_info_channel.1);
+        let log_in_worker = LogInWorker::new(jwt_secret, user_info_channel.1);
         async move {
             redirect_listener.await?;
             google_api_worker.await?;
