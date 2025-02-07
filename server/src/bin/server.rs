@@ -9,7 +9,7 @@ use tonic_health::ServingStatus;
 
 use server::proto::auth_server::AuthServer;
 use server::proto::game_server::GameServer;
-use server::rpc_server;
+use server::{db, rpc_server};
 
 async fn listen_ctrl_c(ct: CancellationToken) {
     if let Err(err) = signal::ctrl_c().await {
@@ -20,6 +20,7 @@ async fn listen_ctrl_c(ct: CancellationToken) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv::dotenv().ok();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() != 3 {
         println!("usage: server <rpc-port> <oauth2-settings.json> <secret-file>");
@@ -53,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut game_impl = rpc_server::GameImpl::default();
     let game_workers = game_impl.start_workers(ct.clone());
-    let mut auth_impl = rpc_server::AuthImpl::new(auth_settings);
+    let mut auth_impl = rpc_server::AuthImpl::new(auth_settings, db::Connection::new());
     let auth_workers = auth_impl.start(secret, redirect_addr, ct.clone());
     let shutdown_signal = async move {
         health.await;

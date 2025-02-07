@@ -1,4 +1,5 @@
 use std::future::{Future, IntoFuture};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use hmac::{Hmac, Mac};
@@ -9,8 +10,7 @@ use tokio::task::JoinHandle;
 
 use super::oauth::{OAuth2Meta, UserInfo};
 use super::{AuthError, JWTClaims};
-
-const JWT_LIFETIME_SECS: u64 = 60 * 60;
+use crate::db;
 
 pub struct LogInWorker(JoinHandle<()>);
 
@@ -25,13 +25,30 @@ impl IntoFuture for LogInWorker {
 
 impl LogInWorker {
     pub fn new(
+        db_connection: Arc<Mutex<db::Connection>>,
         secret: Vec<u8>,
         mut user_info_receiver: mpsc::UnboundedReceiver<(OAuth2Meta, UserInfo)>,
     ) -> Self {
         let worker = tokio::spawn(async move {
             let key: Hmac<Sha256> = Hmac::new_from_slice(&secret).unwrap();
             while let Some((meta, user_info)) = user_info_receiver.recv().await {
-                // todo: save user_info to database and get user_id
+                let mut db_lock = match db_connection.lock() {
+                    Ok(guard) => guard,
+                    Err(err) => {
+                        meta.send_error(err.into());
+                        continue;
+                    }
+                };
+                let user_id = match db_lock.get_or_insert_user(user_info.name(), user_info.email())
+                {
+                    Some(user) => user.user_id,
+                    None => {
+                        meta.send_error(AuthError::Internal("todo: change to db error".into()));
+                        continue;
+                    }
+                };
+                drop(db_lock);
+                println!("generating token for user: {}", user_id);
 
                 let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
                     meta.send_error(AuthError::TokenGenerationFailed(
@@ -39,8 +56,7 @@ impl LogInWorker {
                     ));
                     continue;
                 };
-                let now = now.as_secs();
-                let claims = JWTClaims::new(0, now, now + JWT_LIFETIME_SECS);
+                let claims = JWTClaims::new(user_id.try_into().unwrap(), now);
                 let token_str = claims.sign_with_key(&key).unwrap();
                 meta.send_token(token_str);
             }

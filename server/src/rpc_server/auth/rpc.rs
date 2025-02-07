@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
@@ -11,17 +11,19 @@ use tonic::{Request, Response, Status};
 
 use super::oauth::{GoogleApiWorker, OAuth2Manager, OAuth2Meta, OAuth2Settings, RedirectListener};
 use super::{worker::LogInWorker, AuthError};
-use crate::proto;
 use crate::rpc_server::RpcResult;
+use crate::{db, proto};
 
 pub struct AuthImpl {
     auth_manager: Arc<OAuth2Manager>,
+    db_connection: Arc<Mutex<db::Connection>>,
 }
 
 impl AuthImpl {
-    pub fn new(oauth2_settings: OAuth2Settings) -> Self {
+    pub fn new(oauth2_settings: OAuth2Settings, db_connection: db::Connection) -> Self {
         Self {
             auth_manager: Arc::new(OAuth2Manager::new(oauth2_settings)),
+            db_connection: Arc::new(Mutex::new(db_connection)),
         }
     }
 
@@ -40,7 +42,8 @@ impl AuthImpl {
             ct,
         );
         let google_api_worker = GoogleApiWorker::new(google_token_channel.1, user_info_channel.0);
-        let log_in_worker = LogInWorker::new(jwt_secret, user_info_channel.1);
+        let log_in_worker =
+            LogInWorker::new(self.db_connection.clone(), jwt_secret, user_info_channel.1);
         async move {
             redirect_listener.await?;
             google_api_worker.await?;

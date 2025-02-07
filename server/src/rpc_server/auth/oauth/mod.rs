@@ -16,4 +16,12 @@ impl UserInfo {
     pub fn new(name: String, email: String) -> Self {
         Self { name, email }
     }
+
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn email(&self) -> &String {
+        &self.email
+    }
 }
