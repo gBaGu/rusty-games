@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
@@ -16,14 +16,14 @@ use crate::{db, proto};
 
 pub struct AuthImpl {
     auth_manager: Arc<OAuth2Manager>,
-    db_connection: Arc<Mutex<db::Connection>>,
+    db_connection: Arc<db::Connection>,
 }
 
 impl AuthImpl {
     pub fn new(oauth2_settings: OAuth2Settings, db_connection: db::Connection) -> Self {
         Self {
             auth_manager: Arc::new(OAuth2Manager::new(oauth2_settings)),
-            db_connection: Arc::new(Mutex::new(db_connection)),
+            db_connection: Arc::new(db_connection),
         }
     }
 

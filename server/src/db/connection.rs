@@ -1,13 +1,17 @@
 use std::env;
+use std::sync::Mutex;
 
 use diesel::prelude::*;
 use diesel::Connection as _;
 
 use super::models::*;
 use super::schema::users;
+use super::DbError;
+
+type DbResult<T> = Result<T, DbError>;
 
 pub struct Connection {
-    inner: PgConnection,
+    inner: Mutex<PgConnection>,
 }
 
 impl Connection {
@@ -15,47 +19,36 @@ impl Connection {
         let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let conn = PgConnection::establish(&database_url)
             .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
-        Self { inner: conn }
-    }
-
-    pub fn get_or_insert_user(&mut self, name: &str, email: &str) -> Option<User> {
-        let results = users::table
-            .filter(users::email.eq(email))
-            .select(User::as_select())
-            .load(&mut self.inner)
-            .ok()?;
-        if results.is_empty() {
-            println!("inserting new user: {}", name);
-            let new_user = NewUser { name, email };
-            return diesel::insert_into(users::table)
-                .values(&new_user)
-                .returning(User::as_returning())
-                .get_result(&mut self.inner)
-                .ok();
+        Self {
+            inner: Mutex::new(conn),
         }
-        let [user]: [User; 1] = results.try_into().ok()?;
-        Some(user)
     }
 
-    pub fn get_user_by_email(&mut self, email: &str) -> Option<User> {
-        let results = users::table
-            .filter(users::email.eq(email))
-            .select(User::as_select())
-            .load(&mut self.inner)
-            .expect("Error loading posts");
-        let [user]: [User; 1] = match results.try_into() {
-            Ok(val) => val,
-            Err(_) => return None,
+    pub fn get_or_insert_user(&self, name: &str, email: &str) -> DbResult<User> {
+        let mut guard = self.inner.lock()?;
+        let results = get_user_by_email(&mut *guard, email)?;
+        let user = match results.into_iter().next() {
+            Some(user) => user,
+            None => {
+                println!("inserting new user: {}", name);
+                create_user(&mut *guard, name, email)?
+            }
         };
-        Some(user)
+        Ok(user)
     }
+}
 
-    pub fn create_user(&mut self, name: &str, email: &str) -> Option<User> {
-        let new_user = NewUser { name, email };
-        diesel::insert_into(users::table)
-            .values(&new_user)
-            .returning(User::as_returning())
-            .get_result(&mut self.inner)
-            .ok()
-    }
+fn get_user_by_email(conn: &mut PgConnection, email: &str) -> QueryResult<Vec<User>> {
+    users::table
+        .filter(users::email.eq(email))
+        .select(User::as_select())
+        .load(conn)
+}
+
+fn create_user(conn: &mut PgConnection, name: &str, email: &str) -> QueryResult<User> {
+    let new_user = NewUser { name, email };
+    diesel::insert_into(users::table)
+        .values(&new_user)
+        .returning(User::as_returning())
+        .get_result(conn)
 }

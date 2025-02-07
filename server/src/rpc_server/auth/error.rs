@@ -3,6 +3,8 @@ use std::sync::PoisonError;
 use tokio::sync::oneshot;
 use tonic::Status;
 
+use crate::db::DbError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
     #[error("trying to insert authentication meta for the same state")]
@@ -13,6 +15,8 @@ pub enum AuthError {
     TokenGenerationFailed(String),
     #[error("failed to get data from google api: {0}")]
     GoogleApiFetchFailed(String),
+    #[error("database query failed: {0}")]
+    Db(#[from] DbError),
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -41,7 +45,8 @@ impl From<AuthError> for Status {
             AuthError::DuplicateAuthMeta
             | AuthError::MissingAuthMeta
             | AuthError::TokenGenerationFailed(_)
-            | AuthError::GoogleApiFetchFailed(_) => Status::internal(value.to_string()),
+            | AuthError::GoogleApiFetchFailed(_)
+            | AuthError::Db(_) => Status::internal(value.to_string()),
             AuthError::Internal(msg) => Status::internal(msg),
         }
     }

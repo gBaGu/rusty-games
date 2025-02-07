@@ -2,7 +2,7 @@ use diesel::prelude::*;
 
 use super::schema;
 
-#[derive(Clone, Queryable, Selectable)]
+#[derive(Clone, Debug, Queryable, Selectable)]
 #[diesel(table_name = schema::users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
