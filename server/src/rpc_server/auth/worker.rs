@@ -2,7 +2,7 @@ use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use hmac::{Hmac, Mac};
+use hmac::Hmac;
 use jwt::SignWithKey;
 use sha2::Sha256;
 use tokio::sync::mpsc;
@@ -26,10 +26,9 @@ impl IntoFuture for LogInWorker {
 impl LogInWorker {
     pub fn new(
         db_connection: Arc<db::Connection>,
-        secret: Vec<u8>,
+        secret: Hmac<Sha256>,
         mut user_info_receiver: mpsc::UnboundedReceiver<(OAuth2Meta, UserInfo)>,
     ) -> Self {
-        let key: Hmac<Sha256> = Hmac::new_from_slice(&secret).unwrap();
         let worker = tokio::spawn(async move {
             while let Some((meta, user_info)) = user_info_receiver.recv().await {
                 let user_id =
@@ -58,7 +57,7 @@ impl LogInWorker {
                     }
                 };
                 let claims = JWTClaims::new(user_id, now);
-                let token_str = match claims.sign_with_key(&key) {
+                let token_str = match claims.sign_with_key(&secret) {
                     Ok(token) => token,
                     Err(err) => {
                         meta.send_error(AuthError::TokenGenerationFailed(format!(

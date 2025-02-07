@@ -3,6 +3,7 @@ extern crate server;
 use std::fs::File;
 use std::io::BufReader;
 
+use hmac::{Hmac, Mac};
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 use tonic_health::ServingStatus;
@@ -35,6 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("unable to read secret");
         return Ok(());
     };
+    let secret = Hmac::new_from_slice(&secret).unwrap();
     let Some(redirect_port) = auth_settings.redirect_url().split(':').skip(1).last() else {
         println!("redirect url doesn't contain port");
         return Ok(());
@@ -55,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut game_impl = rpc_server::GameImpl::default();
     let game_workers = game_impl.start_workers(ct.clone());
     let mut auth_impl = rpc_server::AuthImpl::new(auth_settings, db::Connection::new());
-    let auth_workers = auth_impl.start(secret, redirect_addr, ct.clone());
+    let auth_workers = auth_impl.start(secret.clone(), redirect_addr, ct.clone());
     let shutdown_signal = async move {
         health.await;
         if let Err(err) = game_workers.await {
@@ -69,7 +71,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic::transport::Server::builder()
         .add_service(rpc_server::spec_service()?)
         .add_service(health_service)
-        .add_service(GameServer::new(game_impl))
+        .add_service(GameServer::with_interceptor(
+            game_impl,
+            rpc_server::ValidateJWT::new(secret),
+        ))
         .add_service(AuthServer::new(auth_impl))
         .serve_with_shutdown(rpc_addr, shutdown_signal)
         .await?;

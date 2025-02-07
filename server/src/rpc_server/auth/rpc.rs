@@ -3,6 +3,8 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use hmac::Hmac;
+use sha2::Sha256;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
 use tokio_stream::{Stream, StreamExt};
@@ -29,7 +31,7 @@ impl AuthImpl {
 
     pub fn start(
         &mut self,
-        jwt_secret: Vec<u8>,
+        jwt_secret: Hmac<Sha256>,
         redirect_addr: SocketAddr,
         ct: CancellationToken,
     ) -> impl Future<Output = Result<(), JoinError>> {
