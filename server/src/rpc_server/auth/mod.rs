@@ -13,7 +13,7 @@ pub use interceptor::ValidateJWT;
 pub use oauth::OAuth2Settings;
 pub use rpc::AuthImpl;
 
-pub const METADATA_KEY_USER_ID: &str = "user_id";
+pub const METADATA_KEY_USER_ID: &str = "user-id";
 
 const JWT_LIFETIME_SECS: u64 = 60 * 60;
 

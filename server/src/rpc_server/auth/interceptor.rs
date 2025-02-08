@@ -18,6 +18,7 @@ pub struct ValidateJWT {
 impl Interceptor for ValidateJWT {
     fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
         let Some(Ok(token)) = request.metadata().get("authorization").map(|v| v.to_str()) else {
+            request.metadata_mut().remove(METADATA_KEY_USER_ID);
             return Ok(request);
         };
         let claims: JWTClaims = token
