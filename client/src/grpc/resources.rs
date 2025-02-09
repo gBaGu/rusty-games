@@ -47,12 +47,11 @@ impl GrpcClient {
         }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
-            client
-                .create_game(Request::new(proto::CreateGameRequest {
-                    game_type: T::get_game_type().into(),
-                    player_ids: vec![player_id, opponent_id],
-                }))
-                .await
+            let request = Request::new(proto::CreateGameRequest::new(
+                T::get_game_type().into(),
+                vec![player_id, opponent_id],
+            ));
+            client.create_game(request).await
         });
         Ok(task.into())
     }
@@ -72,14 +71,13 @@ impl GrpcClient {
         let move_data = move_data.to_protobuf()?;
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
-            client
-                .make_turn(Request::new(proto::MakeTurnRequest {
-                    game_type: T::get_game_type().into(),
-                    game_id,
-                    player_id,
-                    turn_data: move_data,
-                }))
-                .await
+            let request = Request::new(proto::MakeTurnRequest::new(
+                T::get_game_type().into(),
+                game_id,
+                player_id,
+                move_data,
+            ));
+            client.make_turn(request).await
         });
         Ok(task.into())
     }
@@ -100,19 +98,14 @@ impl GrpcClient {
         let (action_s, action_r) = async_channel::unbounded::<Vec<u8>>();
         let (update_s, update_r) = async_channel::unbounded();
         let task = IoTaskPool::get().spawn(async move {
-            let request_stream = tokio_stream::once(proto::GameSessionRequest {
-                request: Some(proto::game_session_request::Request::Init(
-                    proto::GameSession {
-                        game_type: T::get_game_type().into(),
-                        game_id,
-                        player_id,
-                    },
-                )),
-            })
-            .chain(action_r.map(|data| proto::GameSessionRequest {
-                request: Some(proto::game_session_request::Request::TurnData(data)),
-            }));
-            let mut reply_stream = match client.game_session(request_stream).await {
+            let request_stream = tokio_stream::once(proto::GameSessionRequest::init(
+                T::get_game_type().into(),
+                game_id,
+                player_id,
+            ))
+            .chain(action_r.map(|data| proto::GameSessionRequest::turn_data(data)));
+            let request = Request::new(request_stream);
+            let mut reply_stream = match client.game_session(request).await {
                 Ok(resp) => resp.into_inner(),
                 Err(err) => {
                     error!("failed to execute GameSession request: {}", err);
@@ -146,12 +139,11 @@ impl GrpcClient {
         }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
-            client
-                .get_game(Request::new(proto::GetGameRequest {
-                    game_type: T::get_game_type().into(),
-                    game_id,
-                }))
-                .await
+            let request = Request::new(proto::GetGameRequest::new(
+                T::get_game_type().into(),
+                game_id,
+            ));
+            client.get_game(request).await
         });
         Ok(task.into())
     }
@@ -165,12 +157,11 @@ impl GrpcClient {
         }
         let mut client = self.game.clone();
         let task = IoTaskPool::get().spawn(async move {
-            client
-                .get_player_games(Request::new(proto::GetPlayerGamesRequest {
-                    game_type: T::get_game_type().into(),
-                    player_id,
-                }))
-                .await
+            let request = Request::new(proto::GetPlayerGamesRequest::new(
+                T::get_game_type().into(),
+                player_id,
+            ));
+            client.get_player_games(request).await
         });
         Ok(task.into())
     }
