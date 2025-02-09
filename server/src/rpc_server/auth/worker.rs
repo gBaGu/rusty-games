@@ -46,17 +46,7 @@ impl LogInWorker {
                     ));
                     continue;
                 };
-                let user_id = match user_id.try_into() {
-                    Ok(id) => id,
-                    Err(err) => {
-                        meta.send_error(AuthError::TokenGenerationFailed(format!(
-                            "invalid user id: {}",
-                            err
-                        )));
-                        continue;
-                    }
-                };
-                let claims = JWTClaims::new(user_id, now);
+                let claims = JWTClaims::new(user_id.to_string(), now);
                 let token_str = match claims.sign_with_key(&secret) {
                     Ok(token) => token,
                     Err(err) => {

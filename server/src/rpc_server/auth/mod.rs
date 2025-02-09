@@ -23,13 +23,13 @@ type AuthResult<T> = Result<T, AuthError>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct JWTClaims {
-    sub: u64,
+    sub: String,
     iat: u64,
     exp: u64,
 }
 
 impl JWTClaims {
-    pub fn new(sub: u64, now: Duration) -> Self {
+    pub fn new(sub: String, now: Duration) -> Self {
         Self {
             sub,
             iat: now.as_secs(),

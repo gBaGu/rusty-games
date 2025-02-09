@@ -21,6 +21,11 @@ impl Interceptor for ValidateJWT {
             request.metadata_mut().remove(METADATA_KEY_USER_ID);
             return Ok(request);
         };
+        let Some(token) = token.strip_prefix("Bearer ") else {
+            return Err(Status::unauthenticated(
+                "'Bearer ' prefix is missing in authorization header",
+            ));
+        };
         let claims: JWTClaims = token
             .verify_with_key(&self.secret)
             .map_err(|err| Status::unauthenticated(err.to_string()))?;
@@ -30,7 +35,7 @@ impl Interceptor for ValidateJWT {
         if !claims.is_fresh(now) {
             return Err(Status::unauthenticated("token is expired"));
         }
-        let user_id = MetadataValue::from_str(&claims.sub.to_string())
+        let user_id = MetadataValue::from_str(&claims.sub)
             .map_err(|_e| Status::internal("failed to convert user_id to header value"))?;
         request.metadata_mut().insert(METADATA_KEY_USER_ID, user_id);
         Ok(request)
