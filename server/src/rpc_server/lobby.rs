@@ -10,10 +10,11 @@ use tonic::Streaming;
 
 use super::error::RpcError;
 use super::lobby_manager::WorkerCommand;
-use super::rpc::{RpcInnerResult, UserId};
+use super::rpc::RpcInnerResult;
 use super::GameId;
 use crate::core::{FromProtobuf, Game, GameState, PlayerPosition};
 use crate::proto::{game_session_request, GameSessionRequest};
+use crate::rpc_server::UserId;
 
 type ChannelSendResult<T> = Result<(), SendError<T>>;
 

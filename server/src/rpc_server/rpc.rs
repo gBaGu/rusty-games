@@ -6,15 +6,15 @@ use tokio_stream::{Stream, StreamExt};
 use tokio_util::sync::CancellationToken;
 use tonic::{Request, Response, Status, Streaming};
 
-use super::RpcResult;
+use super::auth;
 use super::error::RpcError;
 use super::lobby_manager::LobbyManager;
+use super::RpcResult;
 use crate::core::chess::Chess;
 use crate::core::tic_tac_toe::TicTacToe;
 use crate::proto;
 
 pub type GameId = u64;
-pub type UserId = u64;
 
 pub type RpcInnerResult<T> = Result<T, RpcError>;
 
@@ -45,8 +45,9 @@ impl proto::game_server::Game for GameImpl {
         request: Request<proto::CreateGameRequest>,
     ) -> RpcResult<proto::CreateGameReply> {
         println!("Got request {:?}", request);
+        let (metadata, _, request) = request.into_parts();
+        auth::check_credentials(&metadata, auth::Check::OneOf(&request.player_ids))?;
 
-        let request = request.into_inner();
         let game_type =
             proto::GameType::try_from(request.game_type).map_err(|_| RpcError::InvalidGameType)?;
         let player1 = *request
@@ -68,8 +69,9 @@ impl proto::game_server::Game for GameImpl {
         request: Request<proto::MakeTurnRequest>,
     ) -> RpcResult<proto::MakeTurnReply> {
         println!("Got request {:?}", request);
+        let (metadata, _, request) = request.into_parts();
+        auth::check_credentials(&metadata, auth::Check::Single(request.player_id))?;
 
-        let request = request.into_inner();
         let game_type =
             proto::GameType::try_from(request.game_type).map_err(|_| RpcError::InvalidGameType)?;
         let game = request.game_id;
@@ -94,8 +96,7 @@ impl proto::game_server::Game for GameImpl {
         request: Request<Streaming<proto::GameSessionRequest>>,
     ) -> RpcResult<Self::GameSessionStream> {
         println!("Got GameSession request");
-
-        let mut input_stream = request.into_inner();
+        let (metadata, _, mut input_stream) = request.into_parts();
         let Some(request) = input_stream.next().await else {
             // got empty stream, return empty
             return Ok(Response::new(Box::pin(tokio_stream::empty())));
@@ -104,6 +105,8 @@ impl proto::game_server::Game for GameImpl {
         let proto::game_session_request::Request::Init(session) = request else {
             return Err(RpcError::unexpected_request("Init", request.name()).into());
         };
+        auth::check_credentials(&metadata, auth::Check::Single(session.player_id))?;
+
         let game_type =
             proto::GameType::try_from(session.game_type).map_err(|_| RpcError::InvalidGameType)?;
         let game = session.game_id;

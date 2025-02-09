@@ -14,6 +14,7 @@ pub use auth::{AuthImpl, OAuth2Settings, ValidateJWT};
 pub use rpc::{GameId, GameImpl};
 
 pub type RpcResult<T> = Result<Response<T>, Status>;
+pub type UserId = u64;
 
 pub fn spec_service() -> Result<ServerReflectionServer<impl ServerReflection>, Error> {
     let spec = Builder::configure()

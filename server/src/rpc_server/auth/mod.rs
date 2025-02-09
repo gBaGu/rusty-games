@@ -1,3 +1,4 @@
+mod checks;
 mod error;
 mod interceptor;
 mod oauth;
@@ -6,9 +7,10 @@ mod worker;
 
 use std::time::Duration;
 
-use error::AuthError;
 use serde::{Deserialize, Serialize};
 
+pub use checks::{check_credentials, Check};
+pub use error::AuthError;
 pub use interceptor::ValidateJWT;
 pub use oauth::OAuth2Settings;
 pub use rpc::AuthImpl;

@@ -4,13 +4,18 @@ use tokio::sync::oneshot;
 use tonic::Status;
 
 use crate::db::DbError;
+use crate::rpc_server::UserId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
     #[error("trying to insert authentication meta for the same state")]
     DuplicateAuthMeta,
-    #[error("requested authentication meta is missing")]
-    MissingAuthMeta,
+    #[error("credentials data is missing")]
+    MissingCredentials,
+    #[error("invalid credentials: {0}")]
+    InvalidCredentials(String),
+    #[error("expected credentials: {}, found: {}", .expected, .found)]
+    WrongCredentials { expected: String, found: UserId },
     #[error("failed to generate jwt token: {0}")]
     TokenGenerationFailed(String),
     #[error("failed to get data from google api: {0}")]
@@ -37,13 +42,23 @@ impl AuthError {
     pub fn internal(reason: impl Into<String>) -> Self {
         Self::Internal(reason.into())
     }
+
+    pub fn wrong_credentials(expected: impl Into<String>, found: UserId) -> Self {
+        Self::WrongCredentials {
+            expected: expected.into(),
+            found,
+        }
+    }
 }
 
 impl From<AuthError> for Status {
     fn from(value: AuthError) -> Self {
         match value {
+            AuthError::InvalidCredentials(_) | AuthError::MissingCredentials => {
+                Status::unauthenticated(value.to_string())
+            }
+            AuthError::WrongCredentials { .. } => Status::permission_denied(value.to_string()),
             AuthError::DuplicateAuthMeta
-            | AuthError::MissingAuthMeta
             | AuthError::TokenGenerationFailed(_)
             | AuthError::GoogleApiFetchFailed(_)
             | AuthError::Db(_) => Status::internal(value.to_string()),
