@@ -1,4 +1,3 @@
-use std::env;
 use std::sync::Mutex;
 
 use diesel::prelude::*;
@@ -15,9 +14,8 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new() -> Self {
-        let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-        let conn = PgConnection::establish(&database_url)
+    pub fn new(database_url: &str) -> Self {
+        let conn = PgConnection::establish(database_url)
             .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
         Self {
             inner: Mutex::new(conn),
