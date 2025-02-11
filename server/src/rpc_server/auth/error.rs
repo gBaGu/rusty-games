@@ -1,5 +1,6 @@
 use std::sync::PoisonError;
 
+use jsonwebtoken::errors::Error as JWTError;
 use tokio::sync::oneshot;
 use tonic::Status;
 
@@ -16,10 +17,8 @@ pub enum AuthError {
     InvalidCredentials(String),
     #[error("expected credentials: {}, found: {}", .expected, .found)]
     WrongCredentials { expected: String, found: UserId },
-    #[error("failed to generate jwt token: {0}")]
-    TokenGenerationFailed(String),
-    #[error("failed to validate jwt token: {0}")]
-    TokenValidationFailed(String),
+    #[error("jwt error: {0}")]
+    JWT(#[from] JWTError),
     #[error("failed to get data from google api: {0}")]
     GoogleApiFetchFailed(String),
     #[error("database query failed: {0}")]
@@ -58,10 +57,9 @@ impl From<AuthError> for Status {
         match value {
             AuthError::InvalidCredentials(_)
             | AuthError::MissingCredentials
-            | AuthError::TokenValidationFailed(_) => Status::unauthenticated(value.to_string()),
+            | AuthError::JWT(_) => Status::unauthenticated(value.to_string()),
             AuthError::WrongCredentials { .. } => Status::permission_denied(value.to_string()),
             AuthError::DuplicateAuthMeta
-            | AuthError::TokenGenerationFailed(_)
             | AuthError::GoogleApiFetchFailed(_)
             | AuthError::Db(_) => Status::internal(value.to_string()),
             AuthError::Internal(msg) => Status::internal(msg),

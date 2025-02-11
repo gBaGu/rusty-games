@@ -13,7 +13,7 @@ dotenv = "0.15"
 generic-array = "1"
 hex = "0.4"
 hmac = "0.12"
-jwt = "0.16"
+jsonwebtoken = "9.3"
 oauth2 = { version = "5.0", features = ["timing-resistant-secret-traits"] }
 prost = "0.13"
 serde = "1"

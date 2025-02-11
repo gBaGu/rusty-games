@@ -4,7 +4,6 @@ use std::net::{Ipv6Addr, SocketAddr};
 use std::{fs, io, path};
 
 use clap::Parser;
-use hmac::{Hmac, Mac};
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 use tonic_health::ServingStatus;
@@ -20,11 +19,6 @@ async fn listen_ctrl_c(ct: CancellationToken) {
     ct.cancel();
 }
 
-fn parse_hash(s: &str) -> Result<Hmac<sha2::Sha256>, String> {
-    let bytes = hex::decode(s).map_err(|e| e.to_string())?;
-    Hmac::new_from_slice(&bytes).map_err(|e| e.to_string())
-}
-
 #[derive(Debug, Parser)]
 struct Args {
     /// Network port to use
@@ -38,8 +32,8 @@ struct Args {
     database_url: String,
     /// Private key to use for JWT signing
     #[arg(long, env)]
-    #[arg(value_parser = parse_hash)]
-    jwt_secret: Hmac<sha2::Sha256>,
+    #[arg(value_parser = |s: &_| hex::decode(s))]
+    jwt_secret: std::vec::Vec<u8>,
 }
 
 #[tokio::main]

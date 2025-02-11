@@ -1,7 +1,5 @@
 use std::str::FromStr;
 
-use hmac::Hmac;
-use sha2::Sha256;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;
 use tonic::{Request, Status};
@@ -34,7 +32,7 @@ impl Interceptor for ValidateJWT {
 }
 
 impl ValidateJWT {
-    pub fn new(secret: Hmac<Sha256>) -> Self {
+    pub fn new(secret: Vec<u8>) -> Self {
         Self {
             validator: JWTValidator::new(secret),
         }

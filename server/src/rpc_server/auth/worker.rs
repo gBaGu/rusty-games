@@ -1,8 +1,6 @@
 use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 
-use hmac::Hmac;
-use sha2::Sha256;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -25,7 +23,7 @@ impl IntoFuture for LogInWorker {
 impl LogInWorker {
     pub fn new(
         db_connection: Arc<db::Connection>,
-        secret: Hmac<Sha256>,
+        secret: Vec<u8>,
         mut user_info_receiver: mpsc::UnboundedReceiver<(OAuth2Meta, UserInfo)>,
     ) -> Self {
         let worker = tokio::spawn(async move {

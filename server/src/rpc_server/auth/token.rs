@@ -1,15 +1,12 @@
 use std::ops::Deref;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use hmac::Hmac;
-use jwt::{SignWithKey, VerifyWithKey};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
 
-use super::{AuthError, AuthResult};
+use super::AuthResult;
 
 const JWT_LIFETIME_SECS: u64 = 60 * 60;
-const SYSTEM_TIME_ERROR_MESSAGE: &str = "SystemTime before UNIX EPOCH";
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct JWTClaims {
@@ -19,28 +16,24 @@ pub struct JWTClaims {
 }
 
 impl JWTClaims {
-    pub fn new(sub: String, now: Duration) -> Self {
+    pub fn new(sub: String, iat: u64) -> Self {
         Self {
             sub,
-            iat: now.as_secs(),
-            exp: now.as_secs() + JWT_LIFETIME_SECS,
+            iat,
+            exp: iat + JWT_LIFETIME_SECS,
         }
     }
 
     pub fn sub(&self) -> &String {
         &self.sub
     }
-
-    pub fn is_fresh(&self, now: Duration) -> bool {
-        (self.iat..self.exp).contains(&now.as_secs())
-    }
 }
 
 #[derive(Clone, Debug)]
-pub struct JWTValidator(Hmac<Sha256>);
+pub struct JWTValidator(Vec<u8>);
 
 impl Deref for JWTValidator {
-    type Target = Hmac<Sha256>;
+    type Target = Vec<u8>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -48,34 +41,24 @@ impl Deref for JWTValidator {
 }
 
 impl JWTValidator {
-    pub fn new(secret: Hmac<Sha256>) -> Self {
+    pub fn new(secret: Vec<u8>) -> Self {
         Self(secret)
     }
 
     pub fn encode_from_sub(&self, sub: impl Into<String>) -> AuthResult<String> {
-        let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
-            return Err(AuthError::TokenGenerationFailed(
-                SYSTEM_TIME_ERROR_MESSAGE.into(),
-            ));
-        };
-        let claims = JWTClaims::new(sub.into(), now);
-        claims
-            .sign_with_key(self.deref())
-            .map_err(|err| AuthError::TokenGenerationFailed(format!("unable to sign: {}", err)))
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        let claims = JWTClaims::new(sub.into(), now.as_secs());
+        let key = EncodingKey::from_secret(self.as_slice());
+        Ok(jsonwebtoken::encode(&Header::default(), &claims, &key)?)
     }
 
     pub fn decode(&self, token: &str) -> AuthResult<JWTClaims> {
-        let claims: JWTClaims = token
-            .verify_with_key(self.deref())
-            .map_err(|err| AuthError::TokenValidationFailed(err.to_string()))?;
-        let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
-            return Err(AuthError::TokenValidationFailed(
-                SYSTEM_TIME_ERROR_MESSAGE.into(),
-            ));
-        };
-        if !claims.is_fresh(now) {
-            return Err(AuthError::TokenValidationFailed("token is expired".into()));
-        }
-        Ok(claims)
+        let key = DecodingKey::from_secret(self.as_slice());
+        let mut validation = Validation::new(Default::default());
+        validation.validate_exp = true;
+        let decoded = jsonwebtoken::decode(token, &key, &validation)?;
+        Ok(decoded.claims)
     }
 }
