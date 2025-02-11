@@ -18,6 +18,8 @@ pub enum AuthError {
     WrongCredentials { expected: String, found: UserId },
     #[error("failed to generate jwt token: {0}")]
     TokenGenerationFailed(String),
+    #[error("failed to validate jwt token: {0}")]
+    TokenValidationFailed(String),
     #[error("failed to get data from google api: {0}")]
     GoogleApiFetchFailed(String),
     #[error("database query failed: {0}")]
@@ -54,9 +56,9 @@ impl AuthError {
 impl From<AuthError> for Status {
     fn from(value: AuthError) -> Self {
         match value {
-            AuthError::InvalidCredentials(_) | AuthError::MissingCredentials => {
-                Status::unauthenticated(value.to_string())
-            }
+            AuthError::InvalidCredentials(_)
+            | AuthError::MissingCredentials
+            | AuthError::TokenValidationFailed(_) => Status::unauthenticated(value.to_string()),
             AuthError::WrongCredentials { .. } => Status::permission_denied(value.to_string()),
             AuthError::DuplicateAuthMeta
             | AuthError::TokenGenerationFailed(_)

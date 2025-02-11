@@ -1,15 +1,14 @@
 use std::future::{Future, IntoFuture};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use hmac::Hmac;
-use jwt::SignWithKey;
 use sha2::Sha256;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use super::oauth::{OAuth2Meta, UserInfo};
-use super::{AuthError, JWTClaims};
+use super::token::JWTValidator;
+use super::AuthError;
 use crate::db;
 
 pub struct LogInWorker(JoinHandle<()>);
@@ -30,6 +29,7 @@ impl LogInWorker {
         mut user_info_receiver: mpsc::UnboundedReceiver<(OAuth2Meta, UserInfo)>,
     ) -> Self {
         let worker = tokio::spawn(async move {
+            let jwt_validator = JWTValidator::new(secret);
             while let Some((meta, user_info)) = user_info_receiver.recv().await {
                 let user_id =
                     match db_connection.get_or_insert_user(user_info.name(), user_info.email()) {
@@ -40,24 +40,14 @@ impl LogInWorker {
                         }
                     };
                 println!("generating token for user: {}", user_id);
-                let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
-                    meta.send_error(AuthError::TokenGenerationFailed(
-                        "SystemTime before UNIX EPOCH".into(),
-                    ));
-                    continue;
-                };
-                let claims = JWTClaims::new(user_id.to_string(), now);
-                let token_str = match claims.sign_with_key(&secret) {
+                let token = match jwt_validator.encode_from_sub(user_id.to_string()) {
                     Ok(token) => token,
                     Err(err) => {
-                        meta.send_error(AuthError::TokenGenerationFailed(format!(
-                            "unable to sign: {}",
-                            err
-                        )));
+                        meta.send_error(err);
                         continue;
                     }
                 };
-                meta.send_token(token_str);
+                meta.send_token(token);
             }
         });
         Self(worker)

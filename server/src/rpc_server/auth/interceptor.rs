@@ -1,18 +1,17 @@
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use hmac::Hmac;
-use jwt::VerifyWithKey;
 use sha2::Sha256;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;
 use tonic::{Request, Status};
 
-use super::{JWTClaims, METADATA_KEY_USER_ID};
+use super::token::{JWTClaims, JWTValidator};
+use super::METADATA_KEY_USER_ID;
 
 #[derive(Clone, Debug)]
 pub struct ValidateJWT {
-    secret: Hmac<Sha256>,
+    validator: JWTValidator,
 }
 
 impl Interceptor for ValidateJWT {
@@ -26,16 +25,8 @@ impl Interceptor for ValidateJWT {
                 "'Bearer ' prefix is missing in authorization header",
             ));
         };
-        let claims: JWTClaims = token
-            .verify_with_key(&self.secret)
-            .map_err(|err| Status::unauthenticated(err.to_string()))?;
-        let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
-            return Err(Status::unauthenticated("SystemTime before UNIX EPOCH"));
-        };
-        if !claims.is_fresh(now) {
-            return Err(Status::unauthenticated("token is expired"));
-        }
-        let user_id = MetadataValue::from_str(&claims.sub)
+        let claims: JWTClaims = self.validator.decode(token)?;
+        let user_id = MetadataValue::from_str(claims.sub())
             .map_err(|_e| Status::internal("failed to convert user_id to header value"))?;
         request.metadata_mut().insert(METADATA_KEY_USER_ID, user_id);
         Ok(request)
@@ -44,6 +35,8 @@ impl Interceptor for ValidateJWT {
 
 impl ValidateJWT {
     pub fn new(secret: Hmac<Sha256>) -> Self {
-        Self { secret }
+        Self {
+            validator: JWTValidator::new(secret),
+        }
     }
 }
