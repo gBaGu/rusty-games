@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use game_server::core;
-use game_server::rpc_server::rpc::RpcResult;
+use game_server::rpc_server::RpcResult;
 
 use super::error::GrpcError;
 use crate::util;

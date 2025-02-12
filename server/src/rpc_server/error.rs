@@ -5,6 +5,7 @@ use tonic::Status;
 
 use super::GameId;
 use crate::core::{GameError, ProtobufError};
+use crate::rpc_server::auth::AuthError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {
@@ -35,6 +36,8 @@ pub enum RpcError {
     EmptyRequest,
     #[error("unexpected request: expected {expected}, found: {found}")]
     UnexpectedRequest { expected: String, found: String },
+    #[error("authentication failed: {0}")]
+    Authentication(#[from] AuthError),
     #[error("`{0}` is missing from request")]
     RequestDataMissing(String),
     #[error("worker is not running")]
@@ -73,6 +76,7 @@ impl From<RpcError> for Status {
             RpcError::EmptyRequest => Status::invalid_argument(value.to_string()),
             RpcError::RequestDataMissing(_) => Status::invalid_argument(value.to_string()),
             RpcError::UnexpectedRequest { .. } => Status::failed_precondition(value.to_string()),
+            RpcError::Authentication { .. } => Status::unauthenticated(value.to_string()),
             RpcError::Internal { .. }
             | RpcError::MutexPoison { .. }
             | RpcError::TurnDataConversion { .. }

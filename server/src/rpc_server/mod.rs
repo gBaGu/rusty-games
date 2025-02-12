@@ -1,15 +1,20 @@
-pub mod rpc;
-
+mod auth;
 mod error;
 mod game_storage;
 mod lobby;
 mod lobby_manager;
+mod rpc;
 
+use tonic::{Response, Status};
 use tonic_reflection::server::{Builder, Error, ServerReflection, ServerReflectionServer};
 
 use crate::proto::FILE_DESCRIPTOR_SET;
 
-pub use rpc::GameId;
+pub use auth::{AuthImpl, OAuth2Settings, ValidateJWT};
+pub use rpc::{GameId, GameImpl};
+
+pub type RpcResult<T> = Result<Response<T>, Status>;
+pub type UserId = u64;
 
 pub fn spec_service() -> Result<ServerReflectionServer<impl ServerReflection>, Error> {
     let spec = Builder::configure()

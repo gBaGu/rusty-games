@@ -1,0 +1,17 @@
+syntax = "proto3";
+package game;
+
+service Auth {
+  rpc LogIn (LogInRequest) returns (stream LogInReply);
+}
+
+message LogInRequest {
+
+}
+
+message LogInReply {
+  oneof reply {
+    string link = 1;
+    string token = 2;
+  }
+}

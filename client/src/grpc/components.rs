@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use bevy::prelude::*;
 use bevy::tasks::Task;
-use game_server::rpc_server::rpc::RpcResult;
+use game_server::rpc_server::RpcResult;
 use tonic::transport;
 
 use super::{GameSessionUpdate, GrpcResult, GAME_SESSION_RECONNECT_INTERVAL_SEC};

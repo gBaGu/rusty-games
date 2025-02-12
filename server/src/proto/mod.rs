@@ -93,3 +93,70 @@ impl TryFrom<chess::TurnData> for PositionPair {
         })
     }
 }
+
+impl CreateGameRequest {
+    pub fn new(game_type: i32, player_ids: Vec<u64>) -> Self {
+        Self {
+            game_type,
+            player_ids,
+        }
+    }
+}
+
+impl MakeTurnRequest {
+    pub fn new(game_type: i32, game_id: u64, player_id: u64, turn_data: Vec<u8>) -> Self {
+        Self {
+            game_type,
+            game_id,
+            player_id,
+            turn_data,
+        }
+    }
+}
+
+impl GameSessionRequest {
+    pub fn init(game_type: i32, game_id: u64, player_id: u64) -> Self {
+        Self {
+            request: Some(game_session_request::Request::Init(GameSession {
+                game_type,
+                game_id,
+                player_id,
+            })),
+        }
+    }
+
+    pub fn turn_data(data: Vec<u8>) -> Self {
+        Self {
+            request: Some(game_session_request::Request::TurnData(data)),
+        }
+    }
+}
+
+impl GetGameRequest {
+    pub fn new(game_type: i32, game_id: u64) -> Self {
+        Self { game_type, game_id }
+    }
+}
+
+impl GetPlayerGamesRequest {
+    pub fn new(game_type: i32, player_id: u64) -> Self {
+        Self {
+            game_type,
+            player_id,
+        }
+    }
+}
+
+impl LogInReply {
+    pub fn auth_link(url: impl Into<String>) -> Self {
+        Self {
+            reply: Some(log_in_reply::Reply::Link(url.into())),
+        }
+    }
+
+    pub fn token(token: impl Into<String>) -> Self {
+        Self {
+            reply: Some(log_in_reply::Reply::Token(token.into())),
+        }
+    }
+}

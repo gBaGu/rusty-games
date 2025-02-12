@@ -9,10 +9,11 @@ use tonic::Streaming;
 use super::error::RpcError;
 use super::game_storage::GameStorage;
 use super::lobby::{Connection, MoveEvent, UpdateRequestReader};
-use super::rpc::{GameImpl, RpcInnerResult, UserId};
+use super::rpc::{GameImpl, RpcInnerResult};
 use super::GameId;
 use crate::core::{Game, GameState};
 use crate::proto;
+use crate::rpc_server::UserId;
 
 #[derive(Debug)]
 pub enum WorkerCommand {
