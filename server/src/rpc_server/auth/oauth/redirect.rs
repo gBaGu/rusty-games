@@ -3,8 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use oauth2::basic::BasicTokenResponse;
-use oauth2::{reqwest, url};
-use oauth2::{AuthorizationCode, PkceCodeVerifier, CsrfToken};
+use oauth2::{url, AuthorizationCode, CsrfToken, PkceCodeVerifier};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -18,6 +17,7 @@ use super::{OAuth2Manager, OAuth2Meta};
 const REDIRECT_REPLY_SUCCESS: &str = "Success!\nYou may now close this page.";
 const REDIRECT_REPLY_ERROR: &str = "Something went wrong!";
 
+/// Task that is listening for Tcp connections and processes them.
 pub struct RedirectListener(JoinHandle<()>);
 
 impl IntoFuture for RedirectListener {
@@ -74,6 +74,7 @@ impl RedirectListener {
     }
 }
 
+/// Write HTTP response to Tcp stream.
 async fn send_tcp_stream_reply(stream: &mut TcpStream, message: &str) {
     let response = format!(
         "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
@@ -85,6 +86,9 @@ async fn send_tcp_stream_reply(stream: &mut TcpStream, message: &str) {
     }
 }
 
+/// Read OAuth2.0 authorization code and state from Tcp stream, exchange code for access token
+/// and pass it over the channel.
+/// Writes success/error message to the stream.
 async fn handle_connection(
     stream: TcpStream,
     auth_manager: Arc<OAuth2Manager>,
@@ -151,27 +155,10 @@ async fn handle_connection(
     };
     let pkce_verifier = PkceCodeVerifier::new(meta.pkce_verifier().secret().clone());
 
-    let http_client = match reqwest::ClientBuilder::new()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-    {
-        Ok(client) => client,
-        Err(err) => {
-            println!("handle_connection: unable to create http client: {}", err);
-            send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_ERROR).await;
-            return;
-        }
-    };
-    let token_response = match auth_manager
-        .client()
-        .exchange_code(code)
-        .set_pkce_verifier(pkce_verifier)
-        .request_async(&http_client)
-        .await
-    {
+    let token_response = match auth_manager.exchange_code(code, pkce_verifier).await {
         Ok(response) => response,
         Err(err) => {
-            println!("handle_connection: unable to get token: {}", err);
+            println!("handle_connection error: {}", err);
             send_tcp_stream_reply(&mut stream, REDIRECT_REPLY_ERROR).await;
             return;
         }

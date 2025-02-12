@@ -19,8 +19,10 @@ pub enum AuthError {
     WrongCredentials { expected: String, found: UserId },
     #[error("jwt error: {0}")]
     JWT(#[from] JWTError),
+    #[error("failed to exchange authorization code: {0}")]
+    ExchangeAuthCodeFailed(String),
     #[error("failed to get data from google api: {0}")]
-    GoogleApiFetchFailed(String),
+    GoogleApiRequestFailed(String),
     #[error("database query failed: {0}")]
     Db(#[from] DbError),
     #[error("internal error: {0}")]
@@ -57,10 +59,11 @@ impl From<AuthError> for Status {
         match value {
             AuthError::InvalidCredentials(_)
             | AuthError::MissingCredentials
-            | AuthError::JWT(_) => Status::unauthenticated(value.to_string()),
+            | AuthError::JWT(_)
+            | AuthError::ExchangeAuthCodeFailed(_) => Status::unauthenticated(value.to_string()),
             AuthError::WrongCredentials { .. } => Status::permission_denied(value.to_string()),
             AuthError::DuplicateAuthMeta
-            | AuthError::GoogleApiFetchFailed(_)
+            | AuthError::GoogleApiRequestFailed(_)
             | AuthError::Db(_) => Status::internal(value.to_string()),
             AuthError::Internal(msg) => Status::internal(msg),
         }

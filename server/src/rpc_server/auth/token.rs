@@ -8,6 +8,7 @@ use super::AuthResult;
 
 const JWT_LIFETIME_SECS: u64 = 60 * 60;
 
+/// JWT payload
 #[derive(Debug, Deserialize, Serialize)]
 pub struct JWTClaims {
     sub: String,
@@ -29,6 +30,7 @@ impl JWTClaims {
     }
 }
 
+/// Validator that can sign/decode jwt using secret.
 #[derive(Clone, Debug)]
 pub struct JWTValidator(Vec<u8>);
 
@@ -45,6 +47,7 @@ impl JWTValidator {
         Self(secret)
     }
 
+    /// Create [`JWTClaims`] from `sub` value, sign and encode the token.
     pub fn encode_from_sub(&self, sub: impl Into<String>) -> AuthResult<String> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -54,6 +57,7 @@ impl JWTValidator {
         Ok(jsonwebtoken::encode(&Header::default(), &claims, &key)?)
     }
 
+    /// Decode and validate jwt, return decoded claims.
     pub fn decode(&self, token: &str) -> AuthResult<JWTClaims> {
         let key = DecodingKey::from_secret(self.as_slice());
         let mut validation = Validation::new(Default::default());

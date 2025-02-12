@@ -6,23 +6,29 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use super::{OAuth2Meta, UserInfo};
+use super::OAuth2Meta;
 use crate::rpc_server::auth::AuthError;
 
 const GOOGLE_USERINFO_API: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
 
+/// User information that is obtained during OAuth2.0 flow.
 #[derive(Debug, Deserialize)]
-struct GoogleUserInfo {
+pub struct UserInfo {
     name: String,
     email: String,
 }
 
-impl From<GoogleUserInfo> for UserInfo {
-    fn from(value: GoogleUserInfo) -> Self {
-        UserInfo::new(value.name, value.email)
+impl UserInfo {
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn email(&self) -> &String {
+        &self.email
     }
 }
 
+/// Task that is using OAuth2.0 access token to obtain [`UserInfo`] and pass it over the channel.
 pub struct GoogleApiWorker(JoinHandle<()>);
 
 impl IntoFuture for GoogleApiWorker {
@@ -50,21 +56,21 @@ impl GoogleApiWorker {
                 {
                     Ok(response) => response,
                     Err(err) => {
-                        meta.send_error(AuthError::GoogleApiFetchFailed(err.to_string()));
+                        meta.send_error(AuthError::GoogleApiRequestFailed(err.to_string()));
                         continue;
                     }
                 };
                 let text = match response.text().await {
                     Ok(text) => text,
                     Err(err) => {
-                        meta.send_error(AuthError::GoogleApiFetchFailed(err.to_string()));
+                        meta.send_error(AuthError::GoogleApiRequestFailed(err.to_string()));
                         continue;
                     }
                 };
-                let user_info: GoogleUserInfo = match serde_json::from_str(&text) {
+                let user_info: UserInfo = match serde_json::from_str(&text) {
                     Ok(info) => info,
                     Err(err) => {
-                        meta.send_error(AuthError::GoogleApiFetchFailed(err.to_string()));
+                        meta.send_error(AuthError::GoogleApiRequestFailed(err.to_string()));
                         continue;
                     }
                 };
@@ -74,7 +80,7 @@ impl GoogleApiWorker {
                 );
                 if let Err(err) = user_info_sender.send((meta, user_info.into())) {
                     let msg = err.to_string();
-                    err.0 .0.send_error(AuthError::GoogleApiFetchFailed(msg));
+                    err.0 .0.send_error(AuthError::GoogleApiRequestFailed(msg));
                 }
             }
         });

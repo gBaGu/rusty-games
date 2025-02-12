@@ -1,11 +1,11 @@
 use std::collections::hash_map::{Entry as HashMapEntry, HashMap};
 use std::sync::Mutex;
 
-use oauth2::basic::BasicClient;
-use oauth2::url;
+use oauth2::basic::{BasicClient, BasicTokenResponse};
+use oauth2::{reqwest, url};
 use oauth2::{
-    AuthUrl, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, TokenUrl,
 };
 use serde::Deserialize;
 use tokio::sync::oneshot;
@@ -15,6 +15,7 @@ use crate::rpc_server::auth::{AuthError, AuthResult};
 type OAuth2Client =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointSet, EndpointSet>;
 
+/// Settings required for OAuth2.0 integration.
 #[derive(Debug, Deserialize)]
 pub struct OAuth2Settings {
     client_id: ClientId,
@@ -56,6 +57,8 @@ impl OAuth2Settings {
     }
 }
 
+/// Metadata that is used to exchange authorization code for access token and send it
+/// over the channel for processing.
 #[derive(Debug)]
 pub struct OAuth2Meta {
     pkce_verifier: PkceCodeVerifier,
@@ -91,6 +94,7 @@ impl OAuth2Meta {
     }
 }
 
+/// Store OAuth2.0 metadata and provide interface to interact with OAuth2.0 api.
 pub struct OAuth2Manager {
     auth_map: Mutex<HashMap<CsrfToken, OAuth2Meta>>,
     client: OAuth2Client,
@@ -112,10 +116,25 @@ impl OAuth2Manager {
         }
     }
 
-    pub fn client(&self) -> &OAuth2Client {
-        &self.client
+    /// Exchange authorization code for an access token.
+    pub async fn exchange_code(
+        &self,
+        code: AuthorizationCode,
+        pkce_verifier: PkceCodeVerifier,
+    ) -> AuthResult<BasicTokenResponse> {
+        let http_client = reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|err| AuthError::ExchangeAuthCodeFailed(err.to_string()))?;
+        self.client
+            .exchange_code(code)
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(&http_client)
+            .await
+            .map_err(|err| AuthError::ExchangeAuthCodeFailed(err.to_string()))
     }
 
+    /// Generate url to trigger OAuth2.0 flow.
     pub fn generate_auth_url(&self) -> (url::Url, CsrfToken, PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
         let (auth_url, csrf_token) = self
@@ -127,6 +146,7 @@ impl OAuth2Manager {
         (auth_url, csrf_token, pkce_verifier)
     }
 
+    /// Insert metadata into inner map.
     pub fn insert(&self, key: CsrfToken, value: OAuth2Meta) -> AuthResult<()> {
         let mut guard = self.auth_map.lock()?;
         match guard.entry(key) {
@@ -138,6 +158,7 @@ impl OAuth2Manager {
         Ok(())
     }
 
+    /// Remove metadata from inner map, return removed value.
     pub fn remove(&self, key: &CsrfToken) -> AuthResult<Option<OAuth2Meta>> {
         let mut guard = self.auth_map.lock()?;
         Ok(guard.remove(key))

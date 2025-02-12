@@ -27,6 +27,7 @@ impl AuthImpl {
         }
     }
 
+    /// Start workers and return the future waiting for them to complete.
     pub fn start(
         &mut self,
         jwt_secret: Vec<u8>,

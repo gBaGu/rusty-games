@@ -7,6 +7,7 @@ use tonic::{Request, Status};
 use super::token::{JWTClaims, JWTValidator};
 use super::METADATA_KEY_USER_ID;
 
+/// Interceptor that validates JWT and inserts `sub` value from its claims into request metadata.
 #[derive(Clone, Debug)]
 pub struct ValidateJWT {
     validator: JWTValidator,

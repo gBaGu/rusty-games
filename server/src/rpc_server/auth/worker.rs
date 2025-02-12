@@ -9,6 +9,7 @@ use super::token::JWTValidator;
 use super::AuthError;
 use crate::db;
 
+/// Task that is using [`UserInfo`] to insert a user into db and generate a token for it.
 pub struct LogInWorker(JoinHandle<()>);
 
 impl IntoFuture for LogInWorker {
