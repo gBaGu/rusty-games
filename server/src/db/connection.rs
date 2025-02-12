@@ -9,6 +9,7 @@ use super::DbError;
 
 type DbResult<T> = Result<T, DbError>;
 
+/// Synchronized PostgreSQL connection.
 pub struct Connection {
     inner: Mutex<PgConnection>,
 }
@@ -22,6 +23,8 @@ impl Connection {
         }
     }
 
+    /// If `users` table has a record with requested `email` return it. Otherwise,
+    /// create a new record with provided `name` and `email` and return inserted user.
     pub fn get_or_insert_user(&self, name: &str, email: &str) -> DbResult<User> {
         let mut guard = self.inner.lock()?;
         let results = get_user_by_email(&mut *guard, email)?;
@@ -36,6 +39,7 @@ impl Connection {
     }
 }
 
+/// Select from `users` table filtering by `email` field.
 fn get_user_by_email(conn: &mut PgConnection, email: &str) -> QueryResult<Vec<User>> {
     users::table
         .filter(users::email.eq(email))
@@ -43,6 +47,7 @@ fn get_user_by_email(conn: &mut PgConnection, email: &str) -> QueryResult<Vec<Us
         .load(conn)
 }
 
+/// Insert into `users` table.
 fn create_user(conn: &mut PgConnection, name: &str, email: &str) -> QueryResult<User> {
     let new_user = NewUser { name, email };
     diesel::insert_into(users::table)

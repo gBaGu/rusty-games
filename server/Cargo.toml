@@ -12,13 +12,11 @@ diesel = { version = "2.2", features = ["postgres"] }
 dotenv = "0.15"
 generic-array = "1"
 hex = "0.4"
-hmac = "0.12"
 jsonwebtoken = "9.3"
 oauth2 = { version = "5.0", features = ["timing-resistant-secret-traits"] }
 prost = "0.13"
 serde = "1"
 serde_json = "1"
-sha2 = "0.10"
 smallvec = "1.13.2"
 thiserror = "2.0"
 tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "signal"] }
