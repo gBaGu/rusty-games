@@ -8,6 +8,7 @@ pub use error::DbError;
 
 type DbResult<T> = Result<T, DbError>;
 
+#[mockall::automock]
 pub trait DbBasic: Send + Sync + 'static {
     /// If `users` table has a record with requested `email` return it. Otherwise,
     /// create a new record with provided `name` and `email` and return inserted user.

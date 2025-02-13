@@ -77,3 +77,93 @@ impl<DB: db::DbBasic> proto::auth_server::Auth for AuthImpl<DB> {
         Ok(Response::new(Box::pin(stream)))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use oauth2::CsrfToken;
+    use regex::Regex;
+    use tonic::Code;
+
+    use super::*;
+    use crate::proto::auth_server::Auth;
+
+    const URL_PARAMS_RE: &str = r"\?response_type=code.*&state=([-_A-Za-z0-9]+)&code_challenge=.*";
+
+    fn reply_unwrap_link(reply: proto::LogInReply) -> String {
+        match reply.reply.unwrap() {
+            proto::log_in_reply::Reply::Link(s) => s,
+            _ => panic!("expected authentication link"),
+        }
+    }
+
+    fn reply_unwrap_token(reply: proto::LogInReply) -> String {
+        match reply.reply.unwrap() {
+            proto::log_in_reply::Reply::Token(s) => s,
+            _ => panic!("expected token"),
+        }
+    }
+
+    #[tokio::test]
+    async fn log_in_success() {
+        let test_url = "http://localhost";
+        let settings =
+            OAuth2Settings::new("", "", test_url, test_url, test_url, test_url, [""]).unwrap();
+        let auth = AuthImpl::new(settings, db::MockDbBasic::new());
+
+        let request = Request::new(proto::LogInRequest {});
+        let mut stream = auth.log_in(request).await.unwrap().into_inner();
+        // receive authentication url
+        let auth_url = reply_unwrap_link(stream.next().await.unwrap().unwrap());
+        let re = Regex::new(&format!(r"{}/{}", test_url, URL_PARAMS_RE)).unwrap();
+        // extract state parameter from url
+        let (_, [state]) = re.captures(&auth_url).unwrap().extract();
+        println!("state: {}", state);
+        let state = CsrfToken::new(state.into());
+        let meta = auth.auth_manager.remove(&state).unwrap().unwrap();
+        // send the token back to rpc
+        meta.send_token("some token".into());
+        // receive the token
+        let token = reply_unwrap_token(stream.next().await.unwrap().unwrap());
+        assert_eq!(token, "some token".to_string());
+    }
+
+    #[tokio::test]
+    async fn log_in_token_generation_error() {
+        let test_url = "http://localhost";
+        let settings =
+            OAuth2Settings::new("", "", test_url, test_url, test_url, test_url, [""]).unwrap();
+        let auth = AuthImpl::new(settings, db::MockDbBasic::new());
+
+        let request = Request::new(proto::LogInRequest {});
+        let mut stream = auth.log_in(request).await.unwrap().into_inner();
+        // receive authentication url
+        let auth_url = reply_unwrap_link(stream.next().await.unwrap().unwrap());
+        let re = Regex::new(&format!(r"{}/{}", test_url, URL_PARAMS_RE)).unwrap();
+        // extract state parameter from url
+        let (_, [state]) = re.captures(&auth_url).unwrap().extract();
+        println!("state: {}", state);
+        let state = CsrfToken::new(state.into());
+        let meta = auth.auth_manager.remove(&state).unwrap().unwrap();
+        // send error back to rpc
+        meta.send_error(AuthError::internal("some error"));
+        let status = stream.next().await.unwrap().unwrap_err();
+        assert_eq!(status.code(), Code::Internal);
+        assert_eq!(status.message(), "some error");
+
+        // the same as above but instead of sending error to rpc sender gets dropped unexpectedly
+        let request = Request::new(proto::LogInRequest {});
+        let mut stream = auth.log_in(request).await.unwrap().into_inner();
+        // receive authentication url
+        let auth_url = reply_unwrap_link(stream.next().await.unwrap().unwrap());
+        let re = Regex::new(&format!(r"{}/{}", test_url, URL_PARAMS_RE)).unwrap();
+        // extract state parameter from url
+        let (_, [state]) = re.captures(&auth_url).unwrap().extract();
+        println!("state: {}", state);
+        let state = CsrfToken::new(state.into());
+        let meta = auth.auth_manager.remove(&state).unwrap().unwrap();
+        drop(meta);
+        let status = stream.next().await.unwrap().unwrap_err();
+        assert_eq!(status.code(), Code::Internal);
+        assert_eq!(status.message(), "channel closed");
+    }
+}
