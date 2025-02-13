@@ -5,9 +5,7 @@ use diesel::Connection as _;
 
 use super::models::*;
 use super::schema::users;
-use super::DbError;
-
-type DbResult<T> = Result<T, DbError>;
+use super::{DbBasic, DbResult};
 
 /// Synchronized PostgreSQL connection.
 pub struct Connection {
@@ -22,10 +20,10 @@ impl Connection {
             inner: Mutex::new(conn),
         }
     }
+}
 
-    /// If `users` table has a record with requested `email` return it. Otherwise,
-    /// create a new record with provided `name` and `email` and return inserted user.
-    pub fn get_or_insert_user(&self, name: &str, email: &str) -> DbResult<User> {
+impl DbBasic for Connection {
+    fn get_or_insert_user(&self, name: &str, email: &str) -> DbResult<User> {
         let mut guard = self.inner.lock()?;
         let results = get_user_by_email(&mut *guard, email)?;
         let user = match results.into_iter().next() {

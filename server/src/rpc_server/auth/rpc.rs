@@ -14,19 +14,21 @@ use super::{worker::LogInWorker, AuthError};
 use crate::rpc_server::RpcResult;
 use crate::{db, proto};
 
-pub struct AuthImpl {
+pub struct AuthImpl<DB> {
     auth_manager: Arc<OAuth2Manager>,
-    db_connection: Arc<db::Connection>,
+    db_connection: Arc<DB>,
 }
 
-impl AuthImpl {
-    pub fn new(oauth2_settings: OAuth2Settings, db_connection: db::Connection) -> Self {
+impl<DB> AuthImpl<DB> {
+    pub fn new(oauth2_settings: OAuth2Settings, db_connection: DB) -> Self {
         Self {
             auth_manager: Arc::new(OAuth2Manager::new(oauth2_settings)),
             db_connection: Arc::new(db_connection),
         }
     }
+}
 
+impl<DB: db::DbBasic> AuthImpl<DB> {
     /// Start workers and return the future waiting for them to complete.
     pub fn start(
         &mut self,
@@ -54,7 +56,7 @@ impl AuthImpl {
 }
 
 #[tonic::async_trait]
-impl proto::auth_server::Auth for AuthImpl {
+impl<DB: db::DbBasic> proto::auth_server::Auth for AuthImpl<DB> {
     type LogInStream =
         Pin<Box<dyn Stream<Item = Result<proto::LogInReply, Status>> + Send + 'static>>;
 

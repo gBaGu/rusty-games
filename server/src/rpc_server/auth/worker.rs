@@ -23,7 +23,7 @@ impl IntoFuture for LogInWorker {
 
 impl LogInWorker {
     pub fn new(
-        db_connection: Arc<db::Connection>,
+        db_connection: Arc<impl db::DbBasic>,
         secret: Vec<u8>,
         mut user_info_receiver: mpsc::UnboundedReceiver<(OAuth2Meta, UserInfo)>,
     ) -> Self {
