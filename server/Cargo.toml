@@ -13,6 +13,7 @@ dotenv = "0.15"
 generic-array = "1"
 hex = "0.4"
 jsonwebtoken = "9.3"
+mockall = "0.13"
 oauth2 = { version = "5.0", features = ["timing-resistant-secret-traits"] }
 prost = "0.13"
 serde = "1"
@@ -31,4 +32,5 @@ tonic-build = "0.12"
 
 [dev-dependencies]
 itertools = "0.14.0"
+regex = "1.11.1"
 serial_test = "3.1.1"

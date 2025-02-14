@@ -42,3 +42,55 @@ pub fn check_credentials(request_metadata: &MetadataMap, check: Check) -> AuthRe
     println!("credentials OK");
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+    use tonic::metadata::MetadataValue;
+
+    use super::*;
+
+    #[test]
+    fn check_matches_correctly() {
+        let single = Check::Single(0);
+        assert!(!single.matches(1));
+        assert!(single.matches(0));
+
+        let one_of = Check::OneOf(&[1, 2, 3]);
+        assert!(!one_of.matches(0));
+        assert!(one_of.matches(1));
+        assert!(one_of.matches(3));
+
+        // empty slice doesn't match anything
+        assert!(!Check::OneOf(&[]).matches(0));
+        assert!(!Check::OneOf(&[]).matches(1));
+        assert!(!Check::OneOf(&[]).matches(2));
+    }
+
+    #[test]
+    fn check_credentials_error() {
+        let mut meta = MetadataMap::new();
+        assert!(matches!(
+            check_credentials(&meta, Check::Single(0)).unwrap_err(),
+            AuthError::MissingCredentials,
+        ));
+        meta.insert(METADATA_KEY_USER_ID, MetadataValue::from_str("a").unwrap());
+        assert!(matches!(
+            check_credentials(&meta, Check::Single(0)).unwrap_err(),
+            AuthError::InvalidCredentials(_),
+        ));
+        meta.insert(METADATA_KEY_USER_ID, MetadataValue::from_str("1").unwrap());
+        assert!(matches!(
+            check_credentials(&meta, Check::Single(0)).unwrap_err(),
+            AuthError::WrongCredentials { found: 1, .. },
+        ));
+    }
+
+    #[test]
+    fn check_credentials_success() {
+        let mut meta = MetadataMap::new();
+        meta.insert(METADATA_KEY_USER_ID, MetadataValue::from_str("1").unwrap());
+        check_credentials(&meta, Check::Single(1)).unwrap();
+        check_credentials(&meta, Check::OneOf(&[3, 2, 1])).unwrap();
+    }
+}

@@ -66,3 +66,17 @@ impl JWTValidator {
         Ok(decoded.claims)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn encode_decode() {
+        let validator = JWTValidator::new(b"test".to_vec());
+        let test_sub = "0";
+        let encoded = validator.encode_from_sub("0").unwrap();
+        let decoded = validator.decode(&encoded).unwrap();
+        assert_eq!(decoded.sub, test_sub);
+    }
+}
