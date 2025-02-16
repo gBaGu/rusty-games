@@ -5,32 +5,32 @@ use bevy::tasks::futures_lite::future;
 use bevy::tasks::IoTaskPool;
 use game_server::core::ToProtobuf as _;
 use game_server::{core, proto};
-use tonic::transport;
 
 use super::components::{
     CallTask, ConnectClientTask, ConnectingGameSession, ReceiveConnectionStatusTask,
     ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer, SendActionTask,
 };
 use super::events::{RpcResultReady, SessionErrorReceived, SessionUpdateReceived};
-use super::resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
+use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use super::{
     CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
     OpenSession, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed, SessionOpened,
-    DEFAULT_GRPC_SERVER_ADDRESS,
 };
 use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
 
-pub fn connect(mut commands: Commands, mut timer: ResMut<ConnectTimer>, time: Res<Time>) {
+/// Spawn task that connects to endpoint from [`ServerEndpoint`] resource.
+pub fn connect(
+    mut commands: Commands,
+    mut timer: ResMut<ConnectTimer>,
+    time: Res<Time>,
+    endpoint: Res<ServerEndpoint>,
+) {
     if timer.tick(time.delta()).just_finished() {
         debug!("trying to connect to grpc server...");
-        let task = IoTaskPool::get().spawn(async move {
-            transport::Endpoint::new(DEFAULT_GRPC_SERVER_ADDRESS)?
-                .connect()
-                .compat()
-                .await
-        });
+        let endpoint = endpoint.clone();
+        let task = IoTaskPool::get().spawn(async move { endpoint.connect().compat().await });
         commands.spawn(ConnectClientTask::from(task));
     }
 }
