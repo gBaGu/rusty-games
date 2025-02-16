@@ -5,6 +5,7 @@ use bevy::tasks::IoTaskPool;
 use game_server::core::{self, FromProtobuf as _, ToProtobuf as _};
 use game_server::proto;
 use tonic::codegen::tokio_stream::{self, StreamExt};
+use tonic::transport::Endpoint;
 use tonic::{Code, Request};
 use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
@@ -14,6 +15,16 @@ use super::{
     CallTask, GameClient, GameSession, GameSessionUpdate, GrpcResult, HealthClient,
     CONNECT_INTERVAL_SEC, GAME_SESSION_CHECK_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC,
 };
+
+/// Endpoint of grpc server.
+#[derive(Clone, Debug, Deref, Resource)]
+pub struct ServerEndpoint(Endpoint);
+
+impl ServerEndpoint {
+    pub fn new(endpoint: Endpoint) -> Self {
+        Self(endpoint)
+    }
+}
 
 #[derive(Debug, Resource)]
 pub struct GrpcClient {

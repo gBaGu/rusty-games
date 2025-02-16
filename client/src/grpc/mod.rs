@@ -7,11 +7,11 @@ mod systems;
 use bevy::prelude::*;
 use game_server::core;
 use game_server::proto;
-use tonic::transport;
+use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Uri};
 use tonic_health::pb::health_client;
 
 use components::{CallTask, ConnectClientTask, GameSession, ReceiveConnectionStatusTask};
-use resources::{ConnectTimer, ConnectionStatusWatcher, SessionCheckTimer};
+use resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use systems::*;
 
 pub use events::{
@@ -21,14 +21,14 @@ pub use events::{
 };
 pub use resources::GrpcClient;
 
-pub const DEFAULT_GRPC_SERVER_ADDRESS: &str = "http://localhost:50051";
+pub const DEFAULT_GRPC_SERVER_ADDRESS: &str = "https://localhost:50051";
 pub const CONNECT_INTERVAL_SEC: f32 = 5.0;
 pub const GAME_SESSION_CHECK_INTERVAL_SEC: f32 = 1.0;
 pub const GAME_SESSION_RECONNECT_INTERVAL_SEC: f32 = 1.0;
 pub const HEALTH_RETRY_INTERVAL_SEC: f32 = 5.0;
 
-pub type GameClient = proto::game_client::GameClient<transport::Channel>;
-pub type HealthClient = health_client::HealthClient<transport::Channel>;
+pub type GameClient = proto::game_client::GameClient<Channel>;
+pub type HealthClient = health_client::HealthClient<Channel>;
 
 pub fn client_exists_and_connected(client: Option<Res<GrpcClient>>) -> bool {
     matches!(client, Some(c) if c.connected())
@@ -60,13 +60,29 @@ impl<T> GameSessionUpdate<T> {
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NetworkSystems;
 
-pub struct GrpcPlugin;
+pub struct GrpcPlugin {
+    address: Uri,
+    ca_cert: Certificate,
+}
+
+impl GrpcPlugin {
+    pub fn new(ca_cert: &str) -> Self {
+        let address = Uri::from_static(DEFAULT_GRPC_SERVER_ADDRESS);
+        let ca_cert = Certificate::from_pem(ca_cert);
+        Self { address, ca_cert }
+    }
+}
 
 impl Plugin for GrpcPlugin {
     fn build(&self, app: &mut App) {
+        let tls_cfg = ClientTlsConfig::new().ca_certificate(self.ca_cert.clone());
+        let endpoint = Endpoint::from(self.address.clone())
+            .tls_config(tls_cfg)
+            .expect("unable to create tonic endpoint");
         app.configure_sets(Update, NetworkSystems.run_if(client_exists_and_connected))
             .init_resource::<ConnectTimer>()
             .init_resource::<SessionCheckTimer>()
+            .insert_resource(ServerEndpoint::new(endpoint))
             .add_event::<Connected>()
             .add_event::<Disconnected>()
             .add_event::<RpcResultReady<proto::CreateGameReply>>()

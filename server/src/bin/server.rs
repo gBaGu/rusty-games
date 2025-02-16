@@ -6,11 +6,15 @@ use std::{fs, io, path};
 use clap::Parser;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
+use tonic::transport::{Identity, ServerTlsConfig};
 use tonic_health::ServingStatus;
 
 use server::proto::auth_server::AuthServer;
 use server::proto::game_server::GameServer;
 use server::{db, rpc_server};
+
+const TLS_CERT_FILENAME: &str = "cert.pem";
+const TLS_KEY_FILENAME: &str = "key.pem";
 
 async fn listen_ctrl_c(ct: CancellationToken) {
     if let Err(err) = signal::ctrl_c().await {
@@ -27,6 +31,9 @@ struct Args {
     /// Path to OAuth2.0 configuration file
     #[arg(long)]
     oauth2_settings_path: path::PathBuf,
+    /// Path to a directory containing TLS certificate and private key
+    #[arg(long)]
+    tls_path: path::PathBuf,
     /// PostgreSQL connection string
     #[arg(long, env)]
     database_url: String,
@@ -49,6 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
     let redirect_addr = format!("[::1]:{}", redirect_port).parse()?;
+    let cert = fs::read_to_string(args.tls_path.join(TLS_CERT_FILENAME))?;
+    let key = fs::read_to_string(args.tls_path.join(TLS_KEY_FILENAME))?;
+    let identity = Identity::from_pem(cert, key);
     let db = db::Connection::new(&args.database_url);
 
     let ct = CancellationToken::new();
@@ -73,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     println!("listening for connections on {}", rpc_addr);
     tonic::transport::Server::builder()
+        .tls_config(ServerTlsConfig::new().identity(identity))?
         .add_service(rpc_server::spec_service()?)
         .add_service(health_service)
         .add_service(GameServer::with_interceptor(
