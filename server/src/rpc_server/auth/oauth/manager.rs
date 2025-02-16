@@ -103,6 +103,9 @@ pub struct OAuth2Manager {
 
 impl OAuth2Manager {
     pub fn new(settings: OAuth2Settings) -> Self {
+        if !settings.token_url.starts_with("https://") {
+            println!("token url is not secure, this is a potential attack point!");
+        }
         let client = BasicClient::new(settings.client_id)
             .set_client_secret(settings.client_secret)
             .set_auth_uri(settings.auth_url)
