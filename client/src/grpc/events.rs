@@ -187,3 +187,31 @@ impl SessionErrorReceived {
         &self.error
     }
 }
+
+#[derive(Debug, Deref, Event)]
+pub struct AuthLinkReceived(String);
+
+impl AuthLinkReceived {
+    pub fn new(link: String) -> Self {
+        Self(link)
+    }
+}
+
+#[derive(Debug, Deref, Event)]
+pub struct AuthTokenReceived(String);
+
+impl AuthTokenReceived {
+    pub fn new(link: String) -> Self {
+        Self(link)
+    }
+}
+
+#[derive(Debug, Deref, Event)]
+pub struct AuthFailed(GrpcError);
+
+impl AuthFailed {
+
+    pub fn new(error: GrpcError) -> Self {
+        Self(error)
+    }
+}

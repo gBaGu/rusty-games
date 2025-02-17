@@ -7,5 +7,7 @@ pub enum GrpcError {
     #[error("game session update request returned with error: {0}")]
     GameSessionUpdateFailed(String),
     #[error(transparent)]
+    ChannelRecv(#[from] async_channel::RecvError),
+    #[error(transparent)]
     ProtobufConversion(#[from] ProtobufError),
 }

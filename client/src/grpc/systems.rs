@@ -10,6 +10,7 @@ use super::components::{
     CallTask, ConnectClientTask, ConnectingGameSession, ReceiveConnectionStatusTask,
     ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer, SendActionTask,
 };
+use super::error::GrpcError;
 use super::events::{RpcResultReady, SessionErrorReceived, SessionUpdateReceived};
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use super::{
@@ -50,10 +51,10 @@ pub fn handle_connect(
             return;
         }
         match res {
-            Ok(c) => {
-                let client = GrpcClient::new(GameClient::new(c.clone()));
+            Ok(channel) => {
+                let client = GrpcClient::new(GameClient::new(channel.clone()));
                 debug!("server connection established, creating health watcher");
-                let watcher = ConnectionStatusWatcher::start(HealthClient::new(c));
+                let watcher = ConnectionStatusWatcher::start(HealthClient::new(channel));
                 commands.insert_resource(client);
                 commands.insert_resource(watcher);
                 connected.send(Connected);
@@ -368,7 +369,7 @@ pub fn init_session_update_receive_task<T>(
         let receiver = session.update_receiver();
         if !receiver.is_closed() {
             trace!("create receive session update task");
-            let task = IoTaskPool::get().spawn(async move { receiver.recv().await });
+            let task = IoTaskPool::get().spawn(async move { receiver.recv().await? });
             commands
                 .entity(session_entity)
                 .insert(ReceiveSessionUpdateTask::from(task));
@@ -391,19 +392,20 @@ pub fn handle_session_update_receive<T>(
     for (session_entity, mut task) in session.iter_mut() {
         if let Some(res) = task.poll_once(commands.entity(session_entity)) {
             match res {
-                Ok(Ok(update)) => {
+                Ok(update) => {
                     update_received.send(SessionUpdateReceived::<T>::new(
                         session_entity,
                         update.player(),
                         *update.action(),
                     ));
                 }
-                Ok(Err(err)) => {
-                    error_received.send(SessionErrorReceived::new(session_entity, err));
-                }
                 Err(err) => {
-                    // channel is closed, print and do nothing
-                    warn!("failed to read from session update channel: {}", err);
+                    if let GrpcError::ChannelRecv(err) = err {
+                        // channel is closed, print and do nothing
+                        warn!("failed to read from session update channel: {}", err);
+                    } else {
+                        error_received.send(SessionErrorReceived::new(session_entity, err));
+                    }
                 }
             };
         }

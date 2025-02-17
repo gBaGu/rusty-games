@@ -68,23 +68,78 @@ impl PollOnce for SendActionTask {
 
 /// Task component for receiving actions of type `T` from the game session output channel.
 #[derive(Component, Deref, DerefMut)]
-pub struct ReceiveSessionUpdateTask<T>(
-    Task<Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>>,
-);
+pub struct ReceiveSessionUpdateTask<T>(Task<GrpcResult<GameSessionUpdate<T>>>);
 
-impl<T> From<Task<Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>>>
-    for ReceiveSessionUpdateTask<T>
-{
-    fn from(
-        value: Task<Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>>,
-    ) -> Self {
+impl<T> From<Task<GrpcResult<GameSessionUpdate<T>>>> for ReceiveSessionUpdateTask<T> {
+    fn from(value: Task<GrpcResult<GameSessionUpdate<T>>>) -> Self {
         Self(value)
     }
 }
 
 impl<T: Send + 'static> PollOnce for ReceiveSessionUpdateTask<T> {
-    type Output = Result<GrpcResult<GameSessionUpdate<T>>, async_channel::RecvError>;
+    type Output = GrpcResult<GameSessionUpdate<T>>;
     const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
+}
+
+#[derive(Component, Deref, DerefMut)]
+pub struct ReceiveLogInLinkTask(Task<GrpcResult<String>>);
+
+impl From<Task<GrpcResult<String>>> for ReceiveLogInLinkTask {
+    fn from(value: Task<GrpcResult<String>>) -> Self {
+        Self(value)
+    }
+}
+
+impl PollOnce for ReceiveLogInLinkTask {
+    type Output = GrpcResult<String>;
+    const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
+}
+
+#[derive(Component, Deref, DerefMut)]
+pub struct ReceiveLogInTokenTask(Task<GrpcResult<String>>);
+
+impl From<Task<GrpcResult<String>>> for ReceiveLogInTokenTask {
+    fn from(value: Task<GrpcResult<String>>) -> Self {
+        Self(value)
+    }
+}
+
+impl PollOnce for ReceiveLogInTokenTask {
+    type Output = GrpcResult<String>;
+    const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
+}
+
+#[derive(Debug, Component)]
+pub struct LogIn {
+    task: Task<GrpcResult<()>>,
+    link_receiver: async_channel::Receiver<String>,
+    token_receiver: async_channel::Receiver<String>,
+}
+
+impl LogIn {
+    pub fn new(
+        task: Task<GrpcResult<()>>,
+        link_receiver: async_channel::Receiver<String>,
+        token_receiver: async_channel::Receiver<String>,
+    ) -> Self {
+        Self {
+            task,
+            link_receiver,
+            token_receiver,
+        }
+    }
+
+    pub fn link_receiver(&self) -> async_channel::Receiver<String> {
+        self.link_receiver.clone()
+    }
+
+    pub fn token_receiver(&self) -> async_channel::Receiver<String> {
+        self.token_receiver.clone()
+    }
+
+    pub fn task_mut(&mut self) -> &mut Task<GrpcResult<()>> {
+        &mut self.task
+    }
 }
 
 /// Component that contains task with `GameSession` streaming call and
