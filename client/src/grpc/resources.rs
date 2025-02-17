@@ -10,10 +10,11 @@ use tonic::{Code, Request};
 use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
 
+use super::components::{CallTask, GameSession, LogIn};
 use super::error::GrpcError;
 use super::{
-    CallTask, GameClient, GameSession, GameSessionUpdate, GrpcResult, HealthClient,
-    CONNECT_INTERVAL_SEC, GAME_SESSION_CHECK_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC,
+    AuthClient, GameClient, GameSessionUpdate, GrpcResult, HealthClient, CONNECT_INTERVAL_SEC,
+    GAME_SESSION_CHECK_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC,
 };
 
 /// Endpoint of grpc server.
@@ -26,16 +27,27 @@ impl ServerEndpoint {
     }
 }
 
+#[derive(Debug, Deref, Resource)]
+pub struct AuthToken(String);
+
+impl AuthToken {
+    pub fn new(token: String) -> Self {
+        Self(token)
+    }
+}
+
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
     game: GameClient,
+    auth: AuthClient,
     connected: bool,
 }
 
 impl GrpcClient {
-    pub fn new(game: GameClient) -> Self {
+    pub fn new(game: GameClient, auth: AuthClient) -> Self {
         Self {
             game,
+            auth,
             connected: true,
         }
     }
@@ -46,6 +58,34 @@ impl GrpcClient {
 
     pub fn set_connected(&mut self, connected: bool) {
         self.connected = connected;
+    }
+
+    pub fn log_in(&self) -> GrpcResult<LogIn> {
+        if !self.connected {
+            return Err(GrpcError::NotConnected);
+        }
+        let mut client = self.auth.clone();
+        let (link_s, link_r) = async_channel::unbounded();
+        let (token_s, token_r) = async_channel::unbounded();
+        let task = IoTaskPool::get().spawn(async move {
+            let mut reply = client.log_in(proto::LogInRequest {}).await?.into_inner();
+            let link = reply.next().await.ok_or(GrpcError::ReplyStreamFinished)??;
+            let Some(proto::log_in_reply::Reply::Link(link)) = link.reply else {
+                return Err(GrpcError::InvalidReply(
+                    "auth link is missing from reply".into(),
+                ));
+            };
+            link_s.send(link).await?;
+            let token = reply.next().await.ok_or(GrpcError::ReplyStreamFinished)??;
+            let Some(proto::log_in_reply::Reply::Token(token)) = token.reply else {
+                return Err(GrpcError::InvalidReply(
+                    "token is missing from reply".into(),
+                ));
+            };
+            token_s.send(token).await?;
+            Ok(())
+        });
+        Ok(LogIn::new(task, link_r, token_r))
     }
 
     pub fn create_game<T: proto::GetGameType>(

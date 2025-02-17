@@ -11,12 +11,13 @@ use super::components::{
     ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer, SendActionTask,
 };
 use super::error::GrpcError;
-use super::events::{RpcResultReady, SessionErrorReceived, SessionUpdateReceived};
-use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
-use super::{
-    CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
-    OpenSession, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed, SessionOpened,
+use super::events::{
+    CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
+    SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,
+    SessionUpdateReceived,
 };
+use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
+use super::{AuthClient, GameClient, GameSession, GrpcClient, HealthClient};
 use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
@@ -52,7 +53,9 @@ pub fn handle_connect(
         }
         match res {
             Ok(channel) => {
-                let client = GrpcClient::new(GameClient::new(channel.clone()));
+                let game = GameClient::new(channel.clone());
+                let auth = AuthClient::new(channel.clone());
+                let client = GrpcClient::new(game, auth);
                 debug!("server connection established, creating health watcher");
                 let watcher = ConnectionStatusWatcher::start(HealthClient::new(channel));
                 commands.insert_resource(client);

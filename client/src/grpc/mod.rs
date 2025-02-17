@@ -29,6 +29,7 @@ pub const HEALTH_RETRY_INTERVAL_SEC: f32 = 5.0;
 
 pub type GameClient = proto::game_client::GameClient<Channel>;
 pub type HealthClient = health_client::HealthClient<Channel>;
+pub type AuthClient = proto::auth_client::AuthClient<Channel>;
 
 pub fn client_exists_and_connected(client: Option<Res<GrpcClient>>) -> bool {
     matches!(client, Some(c) if c.connected())
