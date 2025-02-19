@@ -10,7 +10,7 @@ use tonic::{Code, Request};
 use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
 
-use super::components::{CallTask, GameSession, LogIn};
+use super::components::{CallTask, GameSession, LogInTask};
 use super::error::GrpcError;
 use super::{
     AuthClient, GameClient, GameSessionUpdate, GrpcResult, HealthClient, CONNECT_INTERVAL_SEC,
@@ -60,7 +60,7 @@ impl GrpcClient {
         self.connected = connected;
     }
 
-    pub fn log_in(&self) -> GrpcResult<LogIn> {
+    pub fn log_in(&self) -> GrpcResult<LogInTask> {
         if !self.connected {
             return Err(GrpcError::NotConnected);
         }
@@ -85,7 +85,7 @@ impl GrpcClient {
             token_s.send(token).await?;
             Ok(())
         });
-        Ok(LogIn::new(task, link_r, token_r))
+        Ok(LogInTask::new(task, link_r, token_r))
     }
 
     pub fn create_game<T: proto::GetGameType>(

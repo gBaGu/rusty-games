@@ -109,14 +109,17 @@ impl PollOnce for ReceiveLogInTokenTask {
     const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
 }
 
+#[derive(Component)]
+pub struct LogIn;
+
 #[derive(Debug, Component)]
-pub struct LogIn {
+pub struct LogInTask {
     task: Task<GrpcResult<()>>,
     link_receiver: async_channel::Receiver<String>,
     token_receiver: async_channel::Receiver<String>,
 }
 
-impl LogIn {
+impl LogInTask {
     pub fn new(
         task: Task<GrpcResult<()>>,
         link_receiver: async_channel::Receiver<String>,

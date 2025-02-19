@@ -207,9 +207,9 @@ impl AuthTokenReceived {
 }
 
 #[derive(Debug, Deref, Event)]
-pub struct AuthFailed(GrpcError);
+pub struct LogInFailed(GrpcError);
 
-impl AuthFailed {
+impl LogInFailed {
 
     pub fn new(error: GrpcError) -> Self {
         Self(error)

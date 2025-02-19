@@ -7,16 +7,19 @@ use game_server::core::ToProtobuf as _;
 use game_server::{core, proto};
 
 use super::components::{
-    CallTask, ConnectClientTask, ConnectingGameSession, ReceiveConnectionStatusTask,
-    ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer, SendActionTask,
+    CallTask, ConnectClientTask, ConnectingGameSession, LogIn, ReceiveConnectionStatusTask,
+    ReceiveLogInLinkTask, ReceiveLogInTokenTask, ReceiveSessionUpdateTask, ReconnectSessionBundle,
+    ReconnectSessionTimer, SendActionTask,
 };
 use super::error::GrpcError;
 use super::events::{
-    CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
-    SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,
-    SessionUpdateReceived,
+    AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed, OpenSession,
+    RpcResultReady, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
+    SessionErrorReceived, SessionOpened, SessionUpdateReceived,
 };
-use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
+use super::resources::{
+    AuthToken, ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer,
+};
 use super::{AuthClient, GameClient, GameSession, GrpcClient, HealthClient};
 use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
@@ -423,6 +426,55 @@ pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) 
             event.session_entity(),
             event.error(),
         );
+    }
+}
+
+pub fn start_login(
+    mut commands: Commands,
+    log_in: Query<Entity, Added<LogIn>>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+    client: Option<Res<GrpcClient>>,
+) {
+    for log_in_entity in log_in.iter() {
+        let Some(ref client) = client else {
+            log_in_failed.send(LogInFailed::new(GrpcError::NotConnected));
+            continue;
+        };
+        let log_in_task = match client.log_in() {
+            Ok(task) => task,
+            Err(err) => {
+                log_in_failed.send(LogInFailed::new(err));
+                continue;
+            }
+        };
+        let link_receiver = log_in_task.link_receiver();
+        let link_task = ReceiveLogInLinkTask::from(
+            IoTaskPool::get().spawn(async move { Ok(link_receiver.recv().await?) }),
+        );
+        let token_receiver = log_in_task.token_receiver();
+        let token_task = ReceiveLogInTokenTask::from(
+            IoTaskPool::get().spawn(async move { Ok(token_receiver.recv().await?) }),
+        );
+        commands
+            .entity(log_in_entity)
+            .insert((log_in_task, link_task, token_task));
+    }
+}
+
+pub fn despawn_log_in(
+    mut commands: Commands,
+    log_in: Query<Entity, With<LogIn>>,
+    mut token_received: EventReader<AuthTokenReceived>,
+    mut log_in_failed: EventReader<LogInFailed>,
+) {
+    if token_received.read().next().is_some() || log_in_failed.read().next().is_some() {
+        log_in.iter().for_each(|e| commands.entity(e).despawn());
+    }
+}
+
+pub fn store_token(mut commands: Commands, mut token_received: EventReader<AuthTokenReceived>) {
+    for event in token_received.read() {
+        commands.insert_resource(AuthToken::new((*event).clone()));
     }
 }
 
