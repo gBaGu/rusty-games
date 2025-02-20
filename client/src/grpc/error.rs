@@ -17,6 +17,8 @@ pub enum GrpcError {
         code: Code,
         message: String,
     },
+    #[error("internal error: {0}")]
+    Internal(String),
     #[error(transparent)]
     ChannelRecv(#[from] async_channel::RecvError),
     #[error("{0}")]

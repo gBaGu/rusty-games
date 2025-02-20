@@ -7,19 +7,17 @@ use game_server::core::ToProtobuf as _;
 use game_server::{core, proto};
 
 use super::components::{
-    CallTask, ConnectClientTask, ConnectingGameSession, LogIn, ReceiveConnectionStatusTask,
-    ReceiveLogInLinkTask, ReceiveLogInTokenTask, ReceiveSessionUpdateTask, ReconnectSessionBundle,
-    ReconnectSessionTimer, SendActionTask,
+    CallTask, ConnectClientTask, ConnectingGameSession, LogInRequest, LogInTask,
+    ReceiveConnectionStatusTask, ReceiveLogInLinkTask, ReceiveLogInTokenTask,
+    ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer, SendActionTask,
 };
 use super::error::GrpcError;
 use super::events::{
-    AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed, OpenSession,
-    RpcResultReady, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
+    AuthLinkReceived, AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed,
+    OpenSession, RpcResultReady, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
     SessionErrorReceived, SessionOpened, SessionUpdateReceived,
 };
-use super::resources::{
-    AuthToken, ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer,
-};
+use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use super::{AuthClient, GameClient, GameSession, GrpcClient, HealthClient};
 use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
@@ -429,9 +427,9 @@ pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) 
     }
 }
 
-pub fn start_login(
+pub fn log_in_request(
     mut commands: Commands,
-    log_in: Query<Entity, Added<LogIn>>,
+    log_in: Query<Entity, Added<LogInRequest>>,
     mut log_in_failed: EventWriter<LogInFailed>,
     client: Option<Res<GrpcClient>>,
 ) {
@@ -461,9 +459,25 @@ pub fn start_login(
     }
 }
 
+pub fn handle_log_in_task(
+    mut commands: Commands,
+    mut log_in_task: Query<(Entity, &mut LogInTask)>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for (task_entity, mut task) in log_in_task.iter_mut() {
+        let Some(res) = tasks::block_on(future::poll_once(task.task_mut())) else {
+            continue;
+        };
+        commands.entity(task_entity).despawn();
+        if let Err(err) = res {
+            log_in_failed.send(LogInFailed::new(err));
+        }
+    }
+}
+
 pub fn despawn_log_in(
     mut commands: Commands,
-    log_in: Query<Entity, With<LogIn>>,
+    log_in: Query<Entity, With<LogInRequest>>,
     mut token_received: EventReader<AuthTokenReceived>,
     mut log_in_failed: EventReader<LogInFailed>,
 ) {
@@ -472,9 +486,55 @@ pub fn despawn_log_in(
     }
 }
 
-pub fn store_token(mut commands: Commands, mut token_received: EventReader<AuthTokenReceived>) {
+pub fn receive_auth_link(
+    mut commands: Commands,
+    mut receive_link_task: Query<(Entity, &mut ReceiveLogInLinkTask)>,
+    mut link_received: EventWriter<AuthLinkReceived>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for (task_entity, mut task) in receive_link_task.iter_mut() {
+        match task.poll_once(commands.entity(task_entity)) {
+            Some(Ok(link)) => _ = link_received.send(AuthLinkReceived::new(link)),
+            Some(Err(err)) => _ = log_in_failed.send(LogInFailed::new(err)),
+            None => {}
+        }
+    }
+}
+
+pub fn receive_auth_token(
+    mut commands: Commands,
+    mut receive_token_task: Query<(Entity, &mut ReceiveLogInTokenTask)>,
+    mut token_received: EventWriter<AuthTokenReceived>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for (task_entity, mut task) in receive_token_task.iter_mut() {
+        match task.poll_once(commands.entity(task_entity)) {
+            Some(Ok(link)) => _ = token_received.send(AuthTokenReceived::new(link)),
+            Some(Err(err)) => _ = log_in_failed.send(LogInFailed::new(err)),
+            None => {}
+        }
+    }
+}
+
+pub fn open_auth_link(
+    mut link_received: EventReader<AuthLinkReceived>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for event in link_received.read() {
+        if let Err(err) = webbrowser::open(&**event) {
+            log_in_failed.send(LogInFailed::new(GrpcError::Internal(err.to_string())));
+        }
+    }
+}
+
+pub fn store_token(
+    mut token_received: EventReader<AuthTokenReceived>,
+    mut client: ResMut<GrpcClient>,
+) {
     for event in token_received.read() {
-        commands.insert_resource(AuthToken::new((*event).clone()));
+        if let Err(err) = client.store_token(&**event) {
+            println!("failed to create metadata value from token: {}", err);
+        }
     }
 }
 

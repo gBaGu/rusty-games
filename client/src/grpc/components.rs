@@ -110,7 +110,7 @@ impl PollOnce for ReceiveLogInTokenTask {
 }
 
 #[derive(Component)]
-pub struct LogIn;
+pub struct LogInRequest;
 
 #[derive(Debug, Component)]
 pub struct LogInTask {

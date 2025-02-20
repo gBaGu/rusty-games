@@ -5,6 +5,8 @@ use bevy::tasks::IoTaskPool;
 use game_server::core::{self, FromProtobuf as _, ToProtobuf as _};
 use game_server::proto;
 use tonic::codegen::tokio_stream::{self, StreamExt};
+use tonic::metadata::errors::InvalidMetadataValue;
+use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::Endpoint;
 use tonic::{Code, Request};
 use tonic_health::pb::health_check_response::ServingStatus;
@@ -27,19 +29,11 @@ impl ServerEndpoint {
     }
 }
 
-#[derive(Debug, Deref, Resource)]
-pub struct AuthToken(String);
-
-impl AuthToken {
-    pub fn new(token: String) -> Self {
-        Self(token)
-    }
-}
-
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
     game: GameClient,
     auth: AuthClient,
+    auth_metadata: Option<MetadataValue<Ascii>>,
     connected: bool,
 }
 
@@ -48,6 +42,7 @@ impl GrpcClient {
         Self {
             game,
             auth,
+            auth_metadata: None,
             connected: true,
         }
     }
@@ -58,6 +53,12 @@ impl GrpcClient {
 
     pub fn set_connected(&mut self, connected: bool) {
         self.connected = connected;
+    }
+
+    pub fn store_token(&mut self, token: &str) -> Result<(), InvalidMetadataValue> {
+        let new_meta = format!("Bearer {}", token).parse()?;
+        let _ = self.auth_metadata.insert(new_meta);
+        Ok(())
     }
 
     pub fn log_in(&self) -> GrpcResult<LogInTask> {

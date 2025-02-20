@@ -14,6 +14,7 @@ use components::{CallTask, ConnectClientTask, GameSession, ReceiveConnectionStat
 use resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use systems::*;
 
+use crate::grpc::events::{AuthLinkReceived, AuthTokenReceived, LogInFailed};
 pub use events::{
     CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
     SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,
@@ -98,6 +99,9 @@ impl Plugin for GrpcPlugin {
             .add_event::<SessionActionReadyToSend<core::GridIndex>>()
             .add_event::<SessionUpdateReceived<core::GridIndex>>()
             .add_event::<SessionErrorReceived>()
+            .add_event::<AuthLinkReceived>()
+            .add_event::<AuthTokenReceived>()
+            .add_event::<LogInFailed>()
             .add_systems(
                 Update,
                 (
@@ -132,6 +136,18 @@ impl Plugin for GrpcPlugin {
                     handle_session_action_send::<core::GridIndex>,
                     handle_session_update_receive::<core::GridIndex>,
                     log_session_error,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    log_in_request,
+                    despawn_log_in,
+                    open_auth_link,
+                    store_token,
+                    handle_log_in_task,
+                    receive_auth_link,
+                    receive_auth_token,
                 ),
             );
     }
