@@ -4,6 +4,7 @@ use bevy::tasks;
 use bevy::tasks::futures_lite::future;
 use bevy::tasks::IoTaskPool;
 use game_server::core::ToProtobuf as _;
+use game_server::rpc_server::JWTClaims;
 use game_server::{core, proto};
 
 use super::components::{
@@ -475,17 +476,6 @@ pub fn handle_log_in_task(
     }
 }
 
-pub fn despawn_log_in(
-    mut commands: Commands,
-    log_in: Query<Entity, With<LogInRequest>>,
-    mut token_received: EventReader<AuthTokenReceived>,
-    mut log_in_failed: EventReader<LogInFailed>,
-) {
-    if token_received.read().next().is_some() || log_in_failed.read().next().is_some() {
-        log_in.iter().for_each(|e| commands.entity(e).despawn());
-    }
-}
-
 pub fn receive_auth_link(
     mut commands: Commands,
     mut receive_link_task: Query<(Entity, &mut ReceiveLogInLinkTask)>,
@@ -529,12 +519,35 @@ pub fn open_auth_link(
 
 pub fn store_token(
     mut token_received: EventReader<AuthTokenReceived>,
-    mut client: ResMut<GrpcClient>,
+    mut client: Option<ResMut<GrpcClient>>,
 ) {
     for event in token_received.read() {
+        let Some(ref mut client) = client else {
+            continue;
+        };
         if let Err(err) = client.store_token(&**event) {
-            println!("failed to create metadata value from token: {}", err);
+            error!("failed to create metadata value from token: {}", err);
         }
+    }
+}
+
+pub fn update_user(
+    mut token_received: EventReader<AuthTokenReceived>,
+    mut settings: ResMut<Settings>,
+) {
+    for event in token_received.read() {
+        let Some(claims) = JWTClaims::from_token_unchecked(&**event) else {
+            error!("unable to parse claims from token: {}", **event);
+            continue;
+        };
+        let user_id = match claims.sub().parse() {
+            Ok(user) => user,
+            Err(err) => {
+                error!("unable to parse user id from token: {}", err);
+                continue;
+            }
+        };
+        settings.set_user_id(user_id);
     }
 }
 

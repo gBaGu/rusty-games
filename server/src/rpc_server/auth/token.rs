@@ -1,6 +1,7 @@
 use std::ops::Deref;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::engine::{general_purpose::URL_SAFE_NO_PAD, Engine};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +24,12 @@ impl JWTClaims {
             iat,
             exp: iat + JWT_LIFETIME_SECS,
         }
+    }
+
+    pub fn from_token_unchecked(token: &str) -> Option<Self> {
+        let claims_str = token.split('.').nth(1)?;
+        let claims_bytes = URL_SAFE_NO_PAD.decode(claims_str).ok()?;
+        serde_json::from_slice(&claims_bytes).ok()
     }
 
     pub fn sub(&self) -> &String {

@@ -11,6 +11,7 @@ pub use error::AuthError;
 pub use interceptor::ValidateJWT;
 pub use oauth::OAuth2Settings;
 pub use rpc::AuthImpl;
+pub use token::JWTClaims;
 
 pub const METADATA_KEY_USER_ID: &str = "user-id";
 

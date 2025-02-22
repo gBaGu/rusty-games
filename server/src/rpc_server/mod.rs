@@ -10,7 +10,7 @@ use tonic_reflection::server::{Builder, Error, ServerReflection, ServerReflectio
 
 use crate::proto::FILE_DESCRIPTOR_SET;
 
-pub use auth::{AuthImpl, OAuth2Settings, ValidateJWT};
+pub use auth::{AuthImpl, JWTClaims, OAuth2Settings, ValidateJWT};
 pub use rpc::{GameId, GameImpl};
 
 pub type RpcResult<T> = Result<Response<T>, Status>;

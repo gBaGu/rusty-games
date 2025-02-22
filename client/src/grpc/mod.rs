@@ -11,10 +11,11 @@ use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Uri};
 use tonic_health::pb::health_client;
 
 use components::{CallTask, ConnectClientTask, GameSession, ReceiveConnectionStatusTask};
+use events::{AuthLinkReceived, AuthTokenReceived, LogInFailed};
 use resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use systems::*;
 
-use crate::grpc::events::{AuthLinkReceived, AuthTokenReceived, LogInFailed};
+pub use components::LogInRequest;
 pub use events::{
     CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
     SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,
@@ -142,9 +143,9 @@ impl Plugin for GrpcPlugin {
                 Update,
                 (
                     log_in_request,
-                    despawn_log_in,
                     open_auth_link,
                     store_token,
+                    update_user,
                     handle_log_in_task,
                     receive_auth_link,
                     receive_auth_token,
