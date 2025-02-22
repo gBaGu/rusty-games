@@ -19,7 +19,7 @@ use super::events::{
     SessionErrorReceived, SessionOpened, SessionUpdateReceived,
 };
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
-use super::{AuthClient, GameClient, GameSession, GrpcClient, HealthClient};
+use super::{AuthClient, GameClient, GameSession, GrpcClient, HealthClient, LogInSuccess};
 use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
@@ -517,25 +517,16 @@ pub fn open_auth_link(
     }
 }
 
+/// Receive jwt token, decode user id from its claims, store token and send [`LogInSuccess`] event.
 pub fn store_token(
     mut token_received: EventReader<AuthTokenReceived>,
+    mut log_in_success: EventWriter<LogInSuccess>,
     mut client: Option<ResMut<GrpcClient>>,
 ) {
     for event in token_received.read() {
         let Some(ref mut client) = client else {
             continue;
         };
-        if let Err(err) = client.store_token(&**event) {
-            error!("failed to create metadata value from token: {}", err);
-        }
-    }
-}
-
-pub fn update_user(
-    mut token_received: EventReader<AuthTokenReceived>,
-    mut settings: ResMut<Settings>,
-) {
-    for event in token_received.read() {
         let Some(claims) = JWTClaims::from_token_unchecked(&**event) else {
             error!("unable to parse claims from token: {}", **event);
             continue;
@@ -547,7 +538,10 @@ pub fn update_user(
                 continue;
             }
         };
-        settings.set_user_id(user_id);
+        if let Err(err) = client.store_token(&**event) {
+            error!("failed to create metadata value from token: {}", err);
+        }
+        log_in_success.send(LogInSuccess::new(user_id));
     }
 }
 

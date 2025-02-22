@@ -206,6 +206,16 @@ impl AuthTokenReceived {
     }
 }
 
+/// Event that contains the id of a user that has just logged in.
+#[derive(Debug, Deref, Event)]
+pub struct LogInSuccess(u64);
+
+impl LogInSuccess {
+    pub fn new(user_id: u64) -> Self {
+        Self(user_id)
+    }
+}
+
 #[derive(Debug, Deref, Event)]
 pub struct LogInFailed(GrpcError);
 
