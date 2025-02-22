@@ -17,6 +17,10 @@ impl Settings {
     pub fn set_user_id(&mut self, value: u64) {
         self.user_id = Some(value);
     }
+
+    pub fn reset_user_id(&mut self) {
+        self.user_id = None;
+    }
 }
 
 #[derive(Default)]

@@ -225,3 +225,7 @@ impl LogInFailed {
         Self(error)
     }
 }
+
+/// An event that is used to trigger jwt token drop.
+#[derive(Debug, Event)]
+pub struct LogOut;

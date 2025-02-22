@@ -14,7 +14,7 @@ use super::components::{
 };
 use super::error::GrpcError;
 use super::events::{
-    AuthLinkReceived, AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed,
+    AuthLinkReceived, AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed, LogOut,
     OpenSession, RpcResultReady, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
     SessionErrorReceived, SessionOpened, SessionUpdateReceived,
 };
@@ -542,6 +542,15 @@ pub fn store_token(
             error!("failed to create metadata value from token: {}", err);
         }
         log_in_success.send(LogInSuccess::new(user_id));
+    }
+}
+
+/// Receive [`LogOut`] event and drop authentication token from [`GrpcClient`].
+pub fn log_out(mut log_out: EventReader<LogOut>, client: Option<ResMut<GrpcClient>>) {
+    if log_out.read().next().is_some() {
+        if let Some(mut client) = client {
+            client.drop_token();
+        }
     }
 }
 

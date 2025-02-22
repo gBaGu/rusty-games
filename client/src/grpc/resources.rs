@@ -61,6 +61,10 @@ impl GrpcClient {
         Ok(())
     }
 
+    pub fn drop_token(&mut self) {
+        self.auth_metadata.take();
+    }
+
     pub fn log_in(&self) -> GrpcResult<LogInTask> {
         if !self.connected {
             return Err(GrpcError::NotConnected);

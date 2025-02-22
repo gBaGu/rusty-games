@@ -17,7 +17,7 @@ use systems::*;
 
 pub use components::LogInRequest;
 pub use events::{
-    CloseSession, Connected, Disconnected, LogInSuccess, OpenSession, RpcResultReady,
+    CloseSession, Connected, Disconnected, LogInSuccess, LogOut, OpenSession, RpcResultReady,
     SessionActionReadyToSend, SessionActionSendFailed, SessionClosed, SessionErrorReceived,
     SessionOpened, SessionUpdateReceived,
 };
@@ -104,6 +104,7 @@ impl Plugin for GrpcPlugin {
             .add_event::<AuthTokenReceived>()
             .add_event::<LogInSuccess>()
             .add_event::<LogInFailed>()
+            .add_event::<LogOut>()
             .add_systems(
                 Update,
                 (
@@ -146,6 +147,7 @@ impl Plugin for GrpcPlugin {
                     log_in_request,
                     open_auth_link,
                     store_token,
+                    log_out,
                     handle_log_in_task,
                     receive_auth_link,
                     receive_auth_token,

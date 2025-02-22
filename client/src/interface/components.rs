@@ -57,15 +57,17 @@ pub struct SubmitButton {
     pub source: Entity,
 }
 
-/// Tag type to mark input components that they are used to set setting
-#[derive(Debug, Component)]
-pub enum Setting {
-    UserId,
-}
-
 /// Tag type to mark input components that they are used to create game
 #[derive(Debug, Component)]
 pub struct CreateGame;
+
+/// Tag type to mark input components that they are used to log into the server.
+#[derive(Debug, Component)]
+pub struct LogIn;
+
+/// Tag type to mark input components that they are used to log out current user.
+#[derive(Debug, Component)]
+pub struct LogOut;
 
 /// Component that indicates that the entity should be drawn on top of everything else.
 #[derive(Component)]
@@ -215,6 +217,44 @@ impl JoinGameButtonBundle {
 }
 
 #[derive(Bundle)]
+pub struct LogInButtonBundle {
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    log_in: LogIn,
+}
+
+impl LogInButtonBundle {
+    pub fn new(node: Node) -> Self {
+        Self {
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
+            log_in: LogIn,
+        }
+    }
+}
+
+#[derive(Bundle)]
+pub struct LogOutButtonBundle {
+    node: Node,
+    background_color: BackgroundColor,
+    button: Button,
+    log_out: LogOut,
+}
+
+impl LogOutButtonBundle {
+    pub fn new(node: Node) -> Self {
+        Self {
+            node,
+            background_color: PRIMARY_COLOR.into(),
+            button: Button,
+            log_out: LogOut,
+        }
+    }
+}
+
+#[derive(Bundle)]
 pub struct SubmitButtonBundle {
     node: Node,
     background_color: BackgroundColor,
@@ -229,27 +269,6 @@ impl SubmitButtonBundle {
             background_color: PRIMARY_COLOR.into(),
             button: Button,
             submit: SubmitButton { source },
-        }
-    }
-}
-
-#[derive(Bundle)]
-pub struct SettingTextInputBundle {
-    node: Node,
-    text_font: TextInputTextFont,
-    text_color: TextInputTextColor,
-    text_input: TextInput,
-    setting: Setting,
-}
-
-impl SettingTextInputBundle {
-    pub fn new(node: Node, text_font: TextFont, setting: Setting) -> Self {
-        Self {
-            node,
-            text_font: TextInputTextFont(text_font),
-            text_color: TextInputTextColor(SECONDARY_COLOR.into()),
-            text_input: TextInput,
-            setting,
         }
     }
 }
