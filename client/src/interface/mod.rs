@@ -106,6 +106,9 @@ impl Plugin for InterfacePlugin {
                     deactivate_game,
                     log_in,
                     log_out,
+                    update_user_id,
+                    show_log_in_button,
+                    show_log_out_button,
                 ),
             );
     }

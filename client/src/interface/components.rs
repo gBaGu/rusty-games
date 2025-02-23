@@ -69,6 +69,10 @@ pub struct LogIn;
 #[derive(Debug, Component)]
 pub struct LogOut;
 
+/// Tag type to mark components that hold information about current user id.
+#[derive(Debug, Component)]
+pub struct UserId;
+
 /// Component that indicates that the entity should be drawn on top of everything else.
 #[derive(Component)]
 pub struct Overlay;
@@ -358,6 +362,21 @@ impl TextBundle {
             text_layout: TextLayout::new_with_justify(JustifyText::Center),
             text_font,
             text_color: TextColor(SECONDARY_COLOR.into()),
+        }
+    }
+}
+
+#[derive(Bundle)]
+pub struct UserIdTextBundle {
+    text_bundle: TextBundle,
+    user_id: UserId,
+}
+
+impl UserIdTextBundle {
+    pub fn new(text: impl Into<String>, text_font: TextFont) -> Self {
+        Self {
+            text_bundle: TextBundle::new(text, text_font),
+            user_id: UserId,
         }
     }
 }

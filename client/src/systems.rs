@@ -40,6 +40,6 @@ pub fn update_user_id(
         let user_id = **event;
         info!("new user id: {}", user_id);
         settings.set_user_id(user_id);
-        user_id_changed.send(UserIdChanged::new(user_id));
+        user_id_changed.send(UserIdChanged::new(Some(user_id)));
     }
 }

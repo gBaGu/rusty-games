@@ -13,7 +13,7 @@ use super::components::{
     CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, ImageBundle, JoinGame, LogIn,
     LogInButtonBundle, LogOut, LogOutButtonBundle, MenuNavigationButtonBundle, Overlay,
     OverlayNodeBundle, Playground, PlaygroundBundle, SettingOption, StorageLink, SubmitButton,
-    TextBundle,
+    TextBundle, UserId, UserIdTextBundle,
 };
 use super::events::{GameLeft, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
 use super::game_list::{GameList, GameListBundle};
@@ -22,8 +22,8 @@ use super::{GameReady, GameReadyToExit, GameTag, JoinPressed};
 use crate::app_state::{AppState, AppStateTransition, MenuState};
 use crate::commands::CommandsExt;
 use crate::game::{ActiveGame, Board, CurrentUser, GameInfo, GameLink, GameMenuContext, Winner};
-use crate::Settings;
 use crate::{grpc, util::watched_value};
+use crate::{Settings, UserIdChanged};
 
 /// Whenever game page button is pressed create [`GameMenuContext`] resource and
 /// set next state to `AppState::Menu(MenuState::Game)`.
@@ -267,7 +267,7 @@ pub fn setup_settings_menu(
             builder.spawn(common::row_node()).with_children(|builder| {
                 if connected {
                     builder.spawn(TextBundle::new("User id: ", text_font.clone()));
-                    builder.spawn(TextBundle::new(user_id_str, text_font.clone()));
+                    builder.spawn(UserIdTextBundle::new(user_id_str, text_font.clone()));
                     let mut flex_row = common::flex_row();
                     flex_row.flex_grow = 1.;
                     flex_row.justify_content = JustifyContent::End;
@@ -517,16 +517,77 @@ pub fn log_in(
     }
 }
 
-/// Whenever log out button is pressed send [`grpc::LogOut`] event and clear user id from settings.
+/// Whenever log out button is pressed send [`grpc::LogOut`] event, clear user id from settings
+/// and send [`UserIdChanged`] event.
 pub fn log_out(
     log_out_button: Query<&Interaction, (With<Button>, Changed<Interaction>, With<LogOut>)>,
     mut log_out: EventWriter<grpc::LogOut>,
+    mut user_id_changed: EventWriter<UserIdChanged>,
     mut settings: ResMut<Settings>,
 ) {
     for interaction in log_out_button.iter() {
         if *interaction == Interaction::Pressed {
             log_out.send(grpc::LogOut);
             settings.reset_user_id();
+            user_id_changed.send(UserIdChanged::new(None));
+        }
+    }
+}
+
+/// Receive [`UserIdChanged`] event and update text component that is showing current user id.
+pub fn update_user_id(
+    mut user_id: Query<&mut Text, With<UserId>>,
+    mut user_id_changed: EventReader<UserIdChanged>,
+) {
+    if let Some(event) = user_id_changed.read().last() {
+        for mut text in user_id.iter_mut() {
+            **text = event
+                .new_user_id()
+                .map_or_else(String::new, |id| id.to_string());
+        }
+    }
+}
+
+/// Receive [`UserIdChanged`] event and if user was reset swap log out button for log in.
+pub fn show_log_in_button(
+    mut commands: Commands,
+    log_out: Query<Entity, (With<Button>, With<LogOut>)>,
+    mut user_id_changed: EventReader<UserIdChanged>,
+    asset_server: Res<AssetServer>,
+) {
+    for event in user_id_changed.read() {
+        if event.new_user_id().is_none() {
+            let text_font = common::load_text_font(&asset_server);
+            for log_out_entity in log_out.iter() {
+                commands
+                    .entity(log_out_entity)
+                    .remove::<LogOut>()
+                    .insert(LogIn)
+                    .despawn_descendants()
+                    .with_child(TextBundle::new("Log In", text_font.clone()));
+            }
+        }
+    }
+}
+
+/// Receive [`UserIdChanged`] event and if user was set swap log in button for log out.
+pub fn show_log_out_button(
+    mut commands: Commands,
+    log_in: Query<Entity, (With<Button>, With<LogIn>)>,
+    mut user_id_changed: EventReader<UserIdChanged>,
+    asset_server: Res<AssetServer>,
+) {
+    for event in user_id_changed.read() {
+        if event.new_user_id().is_some() {
+            let text_font = common::load_text_font(&asset_server);
+            for log_in_entity in log_in.iter() {
+                commands
+                    .entity(log_in_entity)
+                    .remove::<LogIn>()
+                    .insert(LogOut)
+                    .despawn_descendants()
+                    .with_child(TextBundle::new("Log Out", text_font.clone()));
+            }
         }
     }
 }
