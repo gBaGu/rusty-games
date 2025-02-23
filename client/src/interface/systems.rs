@@ -266,18 +266,22 @@ pub fn setup_settings_menu(
         .with_children(|builder| {
             builder.spawn(common::row_node()).with_children(|builder| {
                 if connected {
-                    // TODO: fix styles
-                    builder.spawn(TextBundle::new("User id:", text_font.clone()));
+                    builder.spawn(TextBundle::new("User id: ", text_font.clone()));
                     builder.spawn(TextBundle::new(user_id_str, text_font.clone()));
-                    if user_id.is_none() {
-                        builder
-                            .spawn(LogInButtonBundle::new(item_node.clone()))
-                            .with_child(TextBundle::new("Log In", text_font.clone()));
-                    } else {
-                        builder
-                            .spawn(LogOutButtonBundle::new(item_node.clone()))
-                            .with_child(TextBundle::new("Log Out", text_font.clone()));
-                    }
+                    let mut flex_row = common::flex_row();
+                    flex_row.flex_grow = 1.;
+                    flex_row.justify_content = JustifyContent::End;
+                    builder.spawn(flex_row).with_children(|builder| {
+                        if user_id.is_none() {
+                            builder
+                                .spawn(LogInButtonBundle::new(item_node.clone()))
+                                .with_child(TextBundle::new("Log In", text_font.clone()));
+                        } else {
+                            builder
+                                .spawn(LogOutButtonBundle::new(item_node.clone()))
+                                .with_child(TextBundle::new("Log Out", text_font.clone()));
+                        }
+                    });
                 } else {
                     builder.spawn(TextBundle::new("Offline", text_font.clone()));
                 }
