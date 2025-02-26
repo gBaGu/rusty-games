@@ -7,14 +7,13 @@ use game_server::core::tic_tac_toe::TicTacToe;
 use game_server::{core, proto};
 
 use super::common::{
-    self, CONFIRMATION_SOUND_PATH, ERROR_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, MENU_LIST_MIN_HEIGHT,
-    SECONDARY_COLOR,
+    self, CONFIRMATION_SOUND_PATH, LOGO_HEIGHT, LOGO_WIDTH, MENU_LIST_MIN_HEIGHT, SECONDARY_COLOR,
 };
 use super::components::{
-    CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, ImageBundle, JoinGame,
-    MenuNavigationButtonBundle, Overlay, OverlayNodeBundle, Playground, PlaygroundBundle, Setting,
-    SettingOption, SettingTextInputBundle, StorageLink, SubmitButton, SubmitButtonBundle,
-    TextBundle,
+    CreateGameButtonBundle, GamePageButtonBundle, GameSettingsBundle, ImageBundle, JoinGame, LogIn,
+    LogInButtonBundle, LogOut, LogOutButtonBundle, MenuNavigationButtonBundle, Overlay,
+    OverlayNodeBundle, Playground, PlaygroundBundle, SettingOption, StorageLink, SubmitButton,
+    TextBundle, UserId, UserIdTextBundle,
 };
 use super::events::{GameLeft, PlayerGamesReady, SettingOptionPressed, SubmitPressed};
 use super::game_list::{GameList, GameListBundle};
@@ -212,43 +211,6 @@ pub fn update_option_buttons_border<T: PartialEq + Component>(
     }
 }
 
-pub fn submit_setting(
-    text_input: Query<(Entity, &TextInputValue, &Setting)>,
-    mut commands: Commands,
-    mut submit_pressed: EventReader<SubmitPressed>,
-    mut text_input_submit: EventReader<TextInputSubmitEvent>,
-    mut user_id_changed: EventWriter<UserIdChanged>,
-    mut settings: ResMut<Settings>,
-    asset_server: Res<AssetServer>,
-) {
-    let mut submit = |input: &str, setting: &Setting| match setting {
-        Setting::UserId => {
-            if let Ok(val) = input.parse::<u64>() {
-                if !matches!(settings.user_id(), Some(user_id) if user_id == val) {
-                    settings.set_user_id(val);
-                    commands.play_sound(&asset_server, CONFIRMATION_SOUND_PATH);
-                    user_id_changed.send(UserIdChanged::new(val));
-                }
-            } else {
-                commands.play_sound(&asset_server, ERROR_SOUND_PATH);
-            }
-        }
-    };
-    for event in submit_pressed.read() {
-        let Some((_, input, setting)) = text_input.iter().find(|(e, _, _)| *e == event.get())
-        else {
-            continue;
-        };
-        submit(&input.0, setting);
-    }
-    for event in text_input_submit.read() {
-        let Some((_, _, setting)) = text_input.iter().find(|(e, _, _)| *e == event.entity) else {
-            continue;
-        };
-        submit(&event.value, setting);
-    }
-}
-
 pub fn cleanup_ui(mut commands: Commands, ui_nodes: Query<Entity, With<Node>>) {
     for entity in ui_nodes.iter() {
         commands.entity(entity).despawn();
@@ -287,26 +249,45 @@ pub fn setup_main_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
         });
 }
 
-pub fn setup_settings_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_settings_menu(
+    mut commands: Commands,
+    settings: Res<Settings>,
+    asset_server: Res<AssetServer>,
+    client: Option<Res<grpc::GrpcClient>>,
+) {
     let text_font = common::load_text_font(&asset_server);
     let item_node = common::menu_item_node();
 
+    let connected = client.map_or(false, |c| c.connected());
+    let user_id = settings.user_id();
+    let user_id_str = user_id.map(|user| user.to_string()).unwrap_or_default();
     commands
         .spawn(common::root_node())
         .with_children(|builder| {
-            builder.spawn(common::row_node()).with_children(|builder| {
-                builder.spawn(TextBundle::new("Set user id:", text_font.clone()));
-                let input = builder
-                    .spawn(SettingTextInputBundle::new(
-                        item_node.clone(),
-                        text_font.clone(),
-                        Setting::UserId,
-                    ))
-                    .id();
-                builder
-                    .spawn(SubmitButtonBundle::new(item_node.clone(), input))
-                    .with_child(TextBundle::new("Save", text_font.clone()));
-            });
+            builder
+                .spawn(common::row_node(Val::Percent(80.)))
+                .with_children(|builder| {
+                    if connected {
+                        builder.spawn(TextBundle::new("User id: ", text_font.clone()));
+                        builder.spawn(UserIdTextBundle::new(user_id_str, text_font.clone()));
+                        let mut flex_row = common::flex_row();
+                        flex_row.flex_grow = 1.;
+                        flex_row.justify_content = JustifyContent::End;
+                        builder.spawn(flex_row).with_children(|builder| {
+                            if user_id.is_none() {
+                                builder
+                                    .spawn(LogInButtonBundle::new(item_node.clone()))
+                                    .with_child(TextBundle::new("Log In", text_font.clone()));
+                            } else {
+                                builder
+                                    .spawn(LogOutButtonBundle::new(item_node.clone()))
+                                    .with_child(TextBundle::new("Log Out", text_font.clone()));
+                            }
+                        });
+                    } else {
+                        builder.spawn(TextBundle::new("Offline", text_font.clone()));
+                    }
+                });
             builder
                 .spawn(MenuNavigationButtonBundle::new(
                     item_node,
@@ -523,5 +504,92 @@ pub fn clear_game_visuals(
 pub fn deactivate_game(mut commands: Commands, mut game_left: EventReader<GameLeft>) {
     for event in game_left.read() {
         commands.entity(event.get()).remove::<ActiveGame>();
+    }
+}
+
+/// Whenever log in button is pressed spawn [`grpc::LogInRequest`].
+pub fn log_in(
+    mut commands: Commands,
+    log_in_button: Query<&Interaction, (With<Button>, Changed<Interaction>, With<LogIn>)>,
+) {
+    for interaction in log_in_button.iter() {
+        if *interaction == Interaction::Pressed {
+            commands.spawn(grpc::LogInRequest);
+        }
+    }
+}
+
+/// Whenever log out button is pressed send [`grpc::LogOut`] event, clear user id from settings
+/// and send [`UserIdChanged`] event.
+pub fn log_out(
+    log_out_button: Query<&Interaction, (With<Button>, Changed<Interaction>, With<LogOut>)>,
+    mut log_out: EventWriter<grpc::LogOut>,
+    mut user_id_changed: EventWriter<UserIdChanged>,
+    mut settings: ResMut<Settings>,
+) {
+    for interaction in log_out_button.iter() {
+        if *interaction == Interaction::Pressed {
+            log_out.send(grpc::LogOut);
+            settings.reset_user_id();
+            user_id_changed.send(UserIdChanged::new(None));
+        }
+    }
+}
+
+/// Receive [`UserIdChanged`] event and update text component that is showing current user id.
+pub fn update_user_id(
+    mut user_id: Query<&mut Text, With<UserId>>,
+    mut user_id_changed: EventReader<UserIdChanged>,
+) {
+    if let Some(event) = user_id_changed.read().last() {
+        for mut text in user_id.iter_mut() {
+            **text = event
+                .new_user_id()
+                .map_or_else(String::new, |id| id.to_string());
+        }
+    }
+}
+
+/// Receive [`UserIdChanged`] event and if user was reset swap log out button for log in.
+pub fn show_log_in_button(
+    mut commands: Commands,
+    log_out: Query<Entity, (With<Button>, With<LogOut>)>,
+    mut user_id_changed: EventReader<UserIdChanged>,
+    asset_server: Res<AssetServer>,
+) {
+    for event in user_id_changed.read() {
+        if event.new_user_id().is_none() {
+            let text_font = common::load_text_font(&asset_server);
+            for log_out_entity in log_out.iter() {
+                commands
+                    .entity(log_out_entity)
+                    .remove::<LogOut>()
+                    .insert(LogIn)
+                    .despawn_descendants()
+                    .with_child(TextBundle::new("Log In", text_font.clone()));
+            }
+        }
+    }
+}
+
+/// Receive [`UserIdChanged`] event and if user was set swap log in button for log out.
+pub fn show_log_out_button(
+    mut commands: Commands,
+    log_in: Query<Entity, (With<Button>, With<LogIn>)>,
+    mut user_id_changed: EventReader<UserIdChanged>,
+    asset_server: Res<AssetServer>,
+) {
+    for event in user_id_changed.read() {
+        if event.new_user_id().is_some() {
+            let text_font = common::load_text_font(&asset_server);
+            for log_in_entity in log_in.iter() {
+                commands
+                    .entity(log_in_entity)
+                    .remove::<LogIn>()
+                    .insert(LogOut)
+                    .despawn_descendants()
+                    .with_child(TextBundle::new("Log Out", text_font.clone()));
+            }
+        }
     }
 }

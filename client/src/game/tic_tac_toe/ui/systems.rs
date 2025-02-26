@@ -80,7 +80,7 @@ pub fn create(
         let player2_info =
             create_player_info_bundle(game_link.get(), **enemy.1, enemy_color, enemy.5.is_some());
         commands.entity(playground_entity).with_children(|builder| {
-            let mut row_node = interface::common::row_node();
+            let mut row_node = interface::common::row_node(Val::Percent(100.));
             row_node.margin = UiRect::bottom(Val::Auto);
             builder.spawn(row_node).with_children(|builder| {
                 builder.spawn(player1_info).with_children(|builder| {

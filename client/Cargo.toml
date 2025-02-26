@@ -19,6 +19,7 @@ thiserror = "2.0"
 tic-tac-toe-ai = { package = "tic_tac_toe_ai", path = "../tic_tac_toe_ai" }
 tonic = { version = "0.12", features = ["tls"] }
 tonic-health = "0.12"
+webbrowser = "1.0"
 
 [build-dependencies]
 tonic-build = "0.12"

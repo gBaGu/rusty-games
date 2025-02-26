@@ -24,9 +24,6 @@ pub use resources::Settings;
 #[command(version)]
 #[command(about = "Set of board games", long_about = None)]
 struct Cli {
-    /// ID of a logged-in user
-    #[arg(long)]
-    user_id: Option<u64>,
     /// Path to a file containing CA certificate
     #[arg(long)]
     ca_cert_path: Option<std::path::PathBuf>,
@@ -37,10 +34,7 @@ pub struct Background;
 
 fn main() {
     let cli = Cli::parse();
-    let mut settings = Settings::default();
-    if let Some(user_id) = cli.user_id {
-        settings.set_user_id(user_id);
-    }
+    let settings = Settings::default();
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins);
@@ -56,6 +50,6 @@ fn main() {
         .insert_resource(settings)
         .add_event::<UserIdChanged>()
         .add_systems(Startup, systems::init_app)
-        .add_systems(Update, systems::on_resize)
+        .add_systems(Update, (systems::on_resize, systems::update_user_id))
         .run();
 }

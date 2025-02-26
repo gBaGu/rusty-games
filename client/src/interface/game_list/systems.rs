@@ -50,7 +50,7 @@ pub fn update(
                                 }
                             };
                             builder
-                                .spawn(interface::common::row_node())
+                                .spawn(interface::common::row_node(Val::Percent(80.)))
                                 .with_children(|builder| {
                                     let mut item_node = interface::common::menu_item_node();
                                     item_node.width = Val::Auto;

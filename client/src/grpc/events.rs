@@ -187,3 +187,45 @@ impl SessionErrorReceived {
         &self.error
     }
 }
+
+#[derive(Debug, Deref, Event)]
+pub struct AuthLinkReceived(String);
+
+impl AuthLinkReceived {
+    pub fn new(link: String) -> Self {
+        Self(link)
+    }
+}
+
+#[derive(Debug, Deref, Event)]
+pub struct AuthTokenReceived(String);
+
+impl AuthTokenReceived {
+    pub fn new(link: String) -> Self {
+        Self(link)
+    }
+}
+
+/// Event that contains the id of a user that has just logged in.
+#[derive(Debug, Deref, Event)]
+pub struct LogInSuccess(u64);
+
+impl LogInSuccess {
+    pub fn new(user_id: u64) -> Self {
+        Self(user_id)
+    }
+}
+
+#[derive(Debug, Deref, Event)]
+pub struct LogInFailed(GrpcError);
+
+impl LogInFailed {
+
+    pub fn new(error: GrpcError) -> Self {
+        Self(error)
+    }
+}
+
+/// An event that is used to trigger jwt token drop.
+#[derive(Debug, Event)]
+pub struct LogOut;

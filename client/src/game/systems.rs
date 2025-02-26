@@ -479,7 +479,7 @@ pub fn update_current_user(
     if let Some(event) = user_id_changed.read().last() {
         for (player_entity, &user_authority) in player.iter() {
             let mut player_cmds = commands.entity(player_entity);
-            if *user_authority == event.new_user_id() {
+            if matches!(event.new_user_id(), Some(id) if id == *user_authority) {
                 player_cmds.insert(CurrentUser);
             } else {
                 player_cmds.remove::<CurrentUser>();
@@ -501,7 +501,7 @@ pub fn clear_foreign_network_games(
             if player
                 .iter()
                 .filter(|(_, p)| p.get() == game_entity)
-                .all(|(&user, _)| *user != event.new_user_id())
+                .all(|(&user, _)| !matches!(event.new_user_id(), Some(id) if id == *user))
             {
                 commands.entity(game_entity).despawn_recursive();
             }

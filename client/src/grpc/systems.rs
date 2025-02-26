@@ -4,18 +4,22 @@ use bevy::tasks;
 use bevy::tasks::futures_lite::future;
 use bevy::tasks::IoTaskPool;
 use game_server::core::ToProtobuf as _;
+use game_server::rpc_server::JWTClaims;
 use game_server::{core, proto};
 
 use super::components::{
-    CallTask, ConnectClientTask, ConnectingGameSession, ReceiveConnectionStatusTask,
+    CallTask, ConnectClientTask, ConnectingGameSession, LogInRequest, LogInTask,
+    ReceiveConnectionStatusTask, ReceiveLogInLinkTask, ReceiveLogInTokenTask,
     ReceiveSessionUpdateTask, ReconnectSessionBundle, ReconnectSessionTimer, SendActionTask,
 };
-use super::events::{RpcResultReady, SessionErrorReceived, SessionUpdateReceived};
-use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
-use super::{
-    CloseSession, Connected, Disconnected, GameClient, GameSession, GrpcClient, HealthClient,
-    OpenSession, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed, SessionOpened,
+use super::error::GrpcError;
+use super::events::{
+    AuthLinkReceived, AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed, LogOut,
+    OpenSession, RpcResultReady, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
+    SessionErrorReceived, SessionOpened, SessionUpdateReceived,
 };
+use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
+use super::{AuthClient, GameClient, GameSession, GrpcClient, HealthClient, LogInSuccess};
 use crate::common::PollOnce;
 use crate::game::{ActiveGame, NetworkGame};
 use crate::Settings;
@@ -50,10 +54,12 @@ pub fn handle_connect(
             return;
         }
         match res {
-            Ok(c) => {
-                let client = GrpcClient::new(GameClient::new(c.clone()));
+            Ok(channel) => {
+                let game = GameClient::new(channel.clone());
+                let auth = AuthClient::new(channel.clone());
+                let client = GrpcClient::new(game, auth);
                 debug!("server connection established, creating health watcher");
-                let watcher = ConnectionStatusWatcher::start(HealthClient::new(c));
+                let watcher = ConnectionStatusWatcher::start(HealthClient::new(channel));
                 commands.insert_resource(client);
                 commands.insert_resource(watcher);
                 connected.send(Connected);
@@ -368,7 +374,7 @@ pub fn init_session_update_receive_task<T>(
         let receiver = session.update_receiver();
         if !receiver.is_closed() {
             trace!("create receive session update task");
-            let task = IoTaskPool::get().spawn(async move { receiver.recv().await });
+            let task = IoTaskPool::get().spawn(async move { receiver.recv().await? });
             commands
                 .entity(session_entity)
                 .insert(ReceiveSessionUpdateTask::from(task));
@@ -391,19 +397,20 @@ pub fn handle_session_update_receive<T>(
     for (session_entity, mut task) in session.iter_mut() {
         if let Some(res) = task.poll_once(commands.entity(session_entity)) {
             match res {
-                Ok(Ok(update)) => {
+                Ok(update) => {
                     update_received.send(SessionUpdateReceived::<T>::new(
                         session_entity,
                         update.player(),
                         *update.action(),
                     ));
                 }
-                Ok(Err(err)) => {
-                    error_received.send(SessionErrorReceived::new(session_entity, err));
-                }
                 Err(err) => {
-                    // channel is closed, print and do nothing
-                    warn!("failed to read from session update channel: {}", err);
+                    if let GrpcError::ChannelRecv(err) = err {
+                        // channel is closed, print and do nothing
+                        warn!("failed to read from session update channel: {}", err);
+                    } else {
+                        error_received.send(SessionErrorReceived::new(session_entity, err));
+                    }
                 }
             };
         }
@@ -418,6 +425,132 @@ pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) 
             event.session_entity(),
             event.error(),
         );
+    }
+}
+
+pub fn log_in_request(
+    mut commands: Commands,
+    log_in: Query<Entity, Added<LogInRequest>>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+    client: Option<Res<GrpcClient>>,
+) {
+    for log_in_entity in log_in.iter() {
+        let Some(ref client) = client else {
+            log_in_failed.send(LogInFailed::new(GrpcError::NotConnected));
+            continue;
+        };
+        let log_in_task = match client.log_in() {
+            Ok(task) => task,
+            Err(err) => {
+                log_in_failed.send(LogInFailed::new(err));
+                continue;
+            }
+        };
+        let link_receiver = log_in_task.link_receiver();
+        let link_task = ReceiveLogInLinkTask::from(
+            IoTaskPool::get().spawn(async move { Ok(link_receiver.recv().await?) }),
+        );
+        let token_receiver = log_in_task.token_receiver();
+        let token_task = ReceiveLogInTokenTask::from(
+            IoTaskPool::get().spawn(async move { Ok(token_receiver.recv().await?) }),
+        );
+        commands
+            .entity(log_in_entity)
+            .insert((log_in_task, link_task, token_task));
+    }
+}
+
+pub fn handle_log_in_task(
+    mut commands: Commands,
+    mut log_in_task: Query<(Entity, &mut LogInTask)>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for (task_entity, mut task) in log_in_task.iter_mut() {
+        let Some(res) = tasks::block_on(future::poll_once(task.task_mut())) else {
+            continue;
+        };
+        commands.entity(task_entity).despawn();
+        if let Err(err) = res {
+            log_in_failed.send(LogInFailed::new(err));
+        }
+    }
+}
+
+pub fn receive_auth_link(
+    mut commands: Commands,
+    mut receive_link_task: Query<(Entity, &mut ReceiveLogInLinkTask)>,
+    mut link_received: EventWriter<AuthLinkReceived>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for (task_entity, mut task) in receive_link_task.iter_mut() {
+        match task.poll_once(commands.entity(task_entity)) {
+            Some(Ok(link)) => _ = link_received.send(AuthLinkReceived::new(link)),
+            Some(Err(err)) => _ = log_in_failed.send(LogInFailed::new(err)),
+            None => {}
+        }
+    }
+}
+
+pub fn receive_auth_token(
+    mut commands: Commands,
+    mut receive_token_task: Query<(Entity, &mut ReceiveLogInTokenTask)>,
+    mut token_received: EventWriter<AuthTokenReceived>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for (task_entity, mut task) in receive_token_task.iter_mut() {
+        match task.poll_once(commands.entity(task_entity)) {
+            Some(Ok(link)) => _ = token_received.send(AuthTokenReceived::new(link)),
+            Some(Err(err)) => _ = log_in_failed.send(LogInFailed::new(err)),
+            None => {}
+        }
+    }
+}
+
+pub fn open_auth_link(
+    mut link_received: EventReader<AuthLinkReceived>,
+    mut log_in_failed: EventWriter<LogInFailed>,
+) {
+    for event in link_received.read() {
+        if let Err(err) = webbrowser::open(&**event) {
+            log_in_failed.send(LogInFailed::new(GrpcError::Internal(err.to_string())));
+        }
+    }
+}
+
+/// Receive jwt token, decode user id from its claims, store token and send [`LogInSuccess`] event.
+pub fn store_token(
+    mut token_received: EventReader<AuthTokenReceived>,
+    mut log_in_success: EventWriter<LogInSuccess>,
+    mut client: Option<ResMut<GrpcClient>>,
+) {
+    for event in token_received.read() {
+        let Some(ref mut client) = client else {
+            continue;
+        };
+        let Some(claims) = JWTClaims::from_token_unchecked(&**event) else {
+            error!("unable to parse claims from token: {}", **event);
+            continue;
+        };
+        let user_id = match claims.sub().parse() {
+            Ok(user) => user,
+            Err(err) => {
+                error!("unable to parse user id from token: {}", err);
+                continue;
+            }
+        };
+        if let Err(err) = client.store_token(&**event) {
+            error!("failed to create metadata value from token: {}", err);
+        }
+        log_in_success.send(LogInSuccess::new(user_id));
+    }
+}
+
+/// Receive [`LogOut`] event and drop authentication token from [`GrpcClient`].
+pub fn log_out(mut log_out: EventReader<LogOut>, client: Option<ResMut<GrpcClient>>) {
+    if log_out.read().next().is_some() {
+        if let Some(mut client) = client {
+            client.drop_token();
+        }
     }
 }
 
