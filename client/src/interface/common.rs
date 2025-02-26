@@ -53,9 +53,9 @@ pub fn column_node() -> Node {
     }
 }
 
-pub fn row_node() -> Node {
+pub fn row_node(width: Val) -> Node {
     Node {
-        width: Val::Percent(80.0),
+        width,
         ..flex_row()
     }
 }
