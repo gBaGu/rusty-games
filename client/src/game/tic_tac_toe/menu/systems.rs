@@ -36,7 +36,7 @@ pub fn init_bot_settings_menu(
         commands.entity(settings_entity).with_children(|builder| {
             builder.spawn(interface::TextBundle::new("Bot", text_font.clone()));
             builder
-                .spawn(interface::common::row_node())
+                .spawn(interface::common::row_node(Val::Percent(80.)))
                 .with_children(|builder| {
                     [bot::Strategy::Random, bot::Strategy::QLearning]
                         .into_iter()
@@ -56,7 +56,7 @@ pub fn init_bot_settings_menu(
                         });
                 });
             builder
-                .spawn(interface::common::row_node())
+                .spawn(interface::common::row_node(Val::Percent(80.)))
                 .with_children(|builder| {
                     [
                         BotDifficulty::Easy,
@@ -102,7 +102,7 @@ pub fn init_network_settings_menu(
         let item_node = interface::common::menu_item_node();
         commands.entity(settings_entity).with_children(|builder| {
             builder
-                .spawn(interface::common::row_node())
+                .spawn(interface::common::row_node(Val::Percent(80.)))
                 .with_children(|builder| {
                     let text = interface::TextBundle::new("Opponent id:", text_font.clone());
                     builder.spawn(item_node.clone()).with_child(text);
@@ -270,13 +270,9 @@ pub fn create_bot_game(
     strategy_setting: Query<(Entity, &WatchedValue<bot::Strategy>)>,
     difficulty_setting: Query<(Entity, &WatchedValue<BotDifficulty>)>,
     mut game_data_ready: EventWriter<GameDataReady>,
-    settings: Res<Settings>,
 ) {
     for interaction in button.iter() {
         if *interaction == Interaction::Pressed {
-            let Some(user) = settings.user_id() else {
-                continue;
-            };
             let Ok(settings) = bot_settings.get_single() else {
                 continue;
             };
@@ -303,6 +299,7 @@ pub fn create_bot_game(
                 }
             }
 
+            info!("create game against {} bot", strategy);
             let ctx = CreateGameContext::new(
                 EnemyType::Bot {
                     strategy,
@@ -312,7 +309,7 @@ pub fn create_bot_game(
                 None,
             );
             let context_entity = commands.spawn(ctx).id();
-            game_data_ready.send(GameDataReady::new_local(user, context_entity));
+            game_data_ready.send(GameDataReady::new_local(0, context_entity));
         }
     }
 }

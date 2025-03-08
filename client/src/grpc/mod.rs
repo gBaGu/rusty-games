@@ -11,13 +11,15 @@ use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Uri};
 use tonic_health::pb::health_client;
 
 use components::{CallTask, ConnectClientTask, GameSession, ReceiveConnectionStatusTask};
+use events::{AuthLinkReceived, AuthTokenReceived, LogInFailed};
 use resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use systems::*;
 
+pub use components::LogInRequest;
 pub use events::{
-    CloseSession, Connected, Disconnected, OpenSession, RpcResultReady, SessionActionReadyToSend,
-    SessionActionSendFailed, SessionClosed, SessionErrorReceived, SessionOpened,
-    SessionUpdateReceived,
+    CloseSession, Connected, Disconnected, LogInSuccess, LogOut, OpenSession, RpcResultReady,
+    SessionActionReadyToSend, SessionActionSendFailed, SessionClosed, SessionErrorReceived,
+    SessionOpened, SessionUpdateReceived,
 };
 pub use resources::GrpcClient;
 
@@ -29,6 +31,7 @@ pub const HEALTH_RETRY_INTERVAL_SEC: f32 = 5.0;
 
 pub type GameClient = proto::game_client::GameClient<Channel>;
 pub type HealthClient = health_client::HealthClient<Channel>;
+pub type AuthClient = proto::auth_client::AuthClient<Channel>;
 
 pub fn client_exists_and_connected(client: Option<Res<GrpcClient>>) -> bool {
     matches!(client, Some(c) if c.connected())
@@ -97,6 +100,11 @@ impl Plugin for GrpcPlugin {
             .add_event::<SessionActionReadyToSend<core::GridIndex>>()
             .add_event::<SessionUpdateReceived<core::GridIndex>>()
             .add_event::<SessionErrorReceived>()
+            .add_event::<AuthLinkReceived>()
+            .add_event::<AuthTokenReceived>()
+            .add_event::<LogInSuccess>()
+            .add_event::<LogInFailed>()
+            .add_event::<LogOut>()
             .add_systems(
                 Update,
                 (
@@ -131,6 +139,19 @@ impl Plugin for GrpcPlugin {
                     handle_session_action_send::<core::GridIndex>,
                     handle_session_update_receive::<core::GridIndex>,
                     log_session_error,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    log_in_request,
+                    open_auth_link,
+                    store_token,
+                    log_out,
+                    handle_log_in_task,
+                    receive_auth_link,
+                    receive_auth_token,
+                    log_log_in_error,
                 ),
             );
     }

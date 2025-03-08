@@ -96,7 +96,6 @@ impl Plugin for InterfacePlugin {
                     setting_option_pressed,
                     set_local_text_input_setting::<u64>,
                     text_input_focus,
-                    submit_setting.run_if(in_state(AppState::Menu(MenuState::Settings))),
                     (
                         join_press.in_set(grpc::NetworkSystems),
                         handle_get_player_games,
@@ -105,6 +104,11 @@ impl Plugin for InterfacePlugin {
                         .run_if(in_state(AppState::Menu(MenuState::PlayOverNetwork))),
                     create_game_over_overlay,
                     deactivate_game,
+                    log_in,
+                    log_out,
+                    update_user_id,
+                    show_log_in_button,
+                    show_log_out_button,
                 ),
             );
     }

@@ -48,13 +48,14 @@ pub fn column_node() -> Node {
         flex_direction: FlexDirection::Column,
         align_items: AlignItems::Center,
         justify_content: JustifyContent::Center,
+        width: Val::Percent(100.),
         ..default()
     }
 }
 
-pub fn row_node() -> Node {
+pub fn row_node(width: Val) -> Node {
     Node {
-        width: Val::Percent(100.0),
+        width,
         ..flex_row()
     }
 }

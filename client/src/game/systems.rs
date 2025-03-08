@@ -479,7 +479,7 @@ pub fn update_current_user(
     if let Some(event) = user_id_changed.read().last() {
         for (player_entity, &user_authority) in player.iter() {
             let mut player_cmds = commands.entity(player_entity);
-            if *user_authority == event.new_user_id() {
+            if matches!(event.new_user_id(), Some(id) if id == *user_authority) {
                 player_cmds.insert(CurrentUser);
             } else {
                 player_cmds.remove::<CurrentUser>();
@@ -501,7 +501,7 @@ pub fn clear_foreign_network_games(
             if player
                 .iter()
                 .filter(|(_, p)| p.get() == game_entity)
-                .all(|(&user, _)| *user != event.new_user_id())
+                .all(|(&user, _)| !matches!(event.new_user_id(), Some(id) if id == *user))
             {
                 commands.entity(game_entity).despawn_recursive();
             }
@@ -673,7 +673,7 @@ mod test {
         // simulate user id change
         app.world_mut()
             .resource_mut::<Events<UserIdChanged>>()
-            .send(UserIdChanged::new(1));
+            .send(UserIdChanged::new(Some(1)));
         app.update();
 
         // game that doesn't have user 1 is despawned
@@ -683,7 +683,7 @@ mod test {
         app.world_mut().resource_mut::<Settings>().set_user_id(4);
         app.world_mut()
             .resource_mut::<Events<UserIdChanged>>()
-            .send(UserIdChanged::new(4));
+            .send(UserIdChanged::new(Some(4)));
         app.update();
 
         // all games are cleared

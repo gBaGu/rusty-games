@@ -5,15 +5,18 @@ use bevy::tasks::IoTaskPool;
 use game_server::core::{self, FromProtobuf as _, ToProtobuf as _};
 use game_server::proto;
 use tonic::codegen::tokio_stream::{self, StreamExt};
+use tonic::metadata::errors::InvalidMetadataValue;
+use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::Endpoint;
 use tonic::{Code, Request};
 use tonic_health::pb::health_check_response::ServingStatus;
 use tonic_health::pb::HealthCheckRequest;
 
+use super::components::{CallTask, GameSession, LogInTask};
 use super::error::GrpcError;
 use super::{
-    CallTask, GameClient, GameSession, GameSessionUpdate, GrpcResult, HealthClient,
-    CONNECT_INTERVAL_SEC, GAME_SESSION_CHECK_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC,
+    AuthClient, GameClient, GameSessionUpdate, GrpcResult, HealthClient, CONNECT_INTERVAL_SEC,
+    GAME_SESSION_CHECK_INTERVAL_SEC, HEALTH_RETRY_INTERVAL_SEC,
 };
 
 /// Endpoint of grpc server.
@@ -26,16 +29,22 @@ impl ServerEndpoint {
     }
 }
 
+/// Resource that communicates with server's `Game` and `Auth` services.
+/// `auth_metadata` contains JWT token received upon authentication.
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
     game: GameClient,
+    auth: AuthClient,
+    auth_metadata: Option<MetadataValue<Ascii>>,
     connected: bool,
 }
 
 impl GrpcClient {
-    pub fn new(game: GameClient) -> Self {
+    pub fn new(game: GameClient, auth: AuthClient) -> Self {
         Self {
             game,
+            auth,
+            auth_metadata: None,
             connected: true,
         }
     }
@@ -48,6 +57,44 @@ impl GrpcClient {
         self.connected = connected;
     }
 
+    pub fn store_token(&mut self, token: &str) -> Result<(), InvalidMetadataValue> {
+        let new_meta = format!("Bearer {}", token).parse()?;
+        let _ = self.auth_metadata.insert(new_meta);
+        Ok(())
+    }
+
+    pub fn drop_token(&mut self) {
+        self.auth_metadata.take();
+    }
+
+    pub fn log_in(&self) -> GrpcResult<LogInTask> {
+        if !self.connected {
+            return Err(GrpcError::NotConnected);
+        }
+        let mut client = self.auth.clone();
+        let (link_s, link_r) = async_channel::unbounded();
+        let (token_s, token_r) = async_channel::unbounded();
+        let task = IoTaskPool::get().spawn(async move {
+            let mut reply = client.log_in(proto::LogInRequest {}).await?.into_inner();
+            let link = reply.next().await.ok_or(GrpcError::ReplyStreamFinished)??;
+            let Some(proto::log_in_reply::Reply::Link(link)) = link.reply else {
+                return Err(GrpcError::InvalidReply(
+                    "auth link is missing from reply".into(),
+                ));
+            };
+            link_s.send(link).await?;
+            let token = reply.next().await.ok_or(GrpcError::ReplyStreamFinished)??;
+            let Some(proto::log_in_reply::Reply::Token(token)) = token.reply else {
+                return Err(GrpcError::InvalidReply(
+                    "token is missing from reply".into(),
+                ));
+            };
+            token_s.send(token).await?;
+            Ok(())
+        });
+        Ok(LogInTask::new(task, link_r, token_r))
+    }
+
     pub fn create_game<T: proto::GetGameType>(
         &self,
         player_id: u64,
@@ -57,11 +104,15 @@ impl GrpcClient {
             return Err(GrpcError::NotConnected);
         }
         let mut client = self.game.clone();
+        let auth_metadata = self.auth_metadata.clone();
         let task = IoTaskPool::get().spawn(async move {
-            let request = Request::new(proto::CreateGameRequest::new(
+            let mut request = Request::new(proto::CreateGameRequest::new(
                 T::get_game_type().into(),
                 vec![player_id, opponent_id],
             ));
+            if let Some(meta) = auth_metadata {
+                request.metadata_mut().insert("authorization", meta);
+            }
             client.create_game(request).await
         });
         Ok(task.into())
@@ -106,6 +157,7 @@ impl GrpcClient {
             return Err(GrpcError::NotConnected);
         }
         let mut client = self.game.clone();
+        let auth_metadata = self.auth_metadata.clone();
         let (action_s, action_r) = async_channel::unbounded::<Vec<u8>>();
         let (update_s, update_r) = async_channel::unbounded();
         let task = IoTaskPool::get().spawn(async move {
@@ -115,7 +167,10 @@ impl GrpcClient {
                 player_id,
             ))
             .chain(action_r.map(|data| proto::GameSessionRequest::turn_data(data)));
-            let request = Request::new(request_stream);
+            let mut request = Request::new(request_stream);
+            if let Some(meta) = auth_metadata {
+                request.metadata_mut().insert("authorization", meta);
+            }
             let mut reply_stream = match client.game_session(request).await {
                 Ok(resp) => resp.into_inner(),
                 Err(err) => {

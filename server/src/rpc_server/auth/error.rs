@@ -17,6 +17,10 @@ pub enum AuthError {
     InvalidCredentials(String),
     #[error("expected credentials: {}, found: {}", .expected, .found)]
     WrongCredentials { expected: String, found: UserId },
+    #[error("unable to parse claims from token: {0}")]
+    ParseClaimsFailed(String),
+    #[error("invalid token format")]
+    InvalidToken,
     #[error("jwt error: {0}")]
     JWT(#[from] JWTError),
     #[error("failed to exchange authorization code: {0}")]
@@ -59,6 +63,8 @@ impl From<AuthError> for Status {
         match value {
             AuthError::InvalidCredentials(_)
             | AuthError::MissingCredentials
+            | AuthError::ParseClaimsFailed(_)
+            | AuthError::InvalidToken
             | AuthError::JWT(_)
             | AuthError::ExchangeAuthCodeFailed(_) => Status::unauthenticated(value.to_string()),
             AuthError::WrongCredentials { .. } => Status::permission_denied(value.to_string()),
