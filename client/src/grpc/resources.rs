@@ -29,6 +29,8 @@ impl ServerEndpoint {
     }
 }
 
+/// Resource that communicates with server's `Game` and `Auth` services.
+/// `auth_metadata` contains JWT token received upon authentication.
 #[derive(Debug, Resource)]
 pub struct GrpcClient {
     game: GameClient,

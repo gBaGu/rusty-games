@@ -14,9 +14,9 @@ use super::components::{
 };
 use super::error::GrpcError;
 use super::events::{
-    AuthLinkReceived, AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed, LogOut,
-    OpenSession, RpcResultReady, SessionActionReadyToSend, SessionActionSendFailed, SessionClosed,
-    SessionErrorReceived, SessionOpened, SessionUpdateReceived,
+    AuthLinkReceived, AuthTokenReceived, CloseSession, Connected, Disconnected, LogInFailed,
+    LogOut, OpenSession, RpcResultReady, SessionActionReadyToSend, SessionActionSendFailed,
+    SessionClosed, SessionErrorReceived, SessionOpened, SessionUpdateReceived,
 };
 use super::resources::{ConnectTimer, ConnectionStatusWatcher, ServerEndpoint, SessionCheckTimer};
 use super::{AuthClient, GameClient, GameSession, GrpcClient, HealthClient, LogInSuccess};
@@ -428,6 +428,8 @@ pub fn log_session_error(mut error_received: EventReader<SessionErrorReceived>) 
     }
 }
 
+/// Perform `LogIn` call whenever [`LogInRequest`] is spawned.
+/// Insert the call task component and task components for receiving the data from the call task.
 pub fn log_in_request(
     mut commands: Commands,
     log_in: Query<Entity, Added<LogInRequest>>,
@@ -460,6 +462,8 @@ pub fn log_in_request(
     }
 }
 
+/// Check if log in task is finished and if it is, despawn it.
+/// Send [`LogInFailed`] event in case of an error.
 pub fn handle_log_in_task(
     mut commands: Commands,
     mut log_in_task: Query<(Entity, &mut LogInTask)>,
@@ -476,6 +480,8 @@ pub fn handle_log_in_task(
     }
 }
 
+/// Check if channel receive task is finished and if it is, send [`AuthLinkReceived`] event.
+/// Send [`LogInFailed`] event in case of an error.
 pub fn receive_auth_link(
     mut commands: Commands,
     mut receive_link_task: Query<(Entity, &mut ReceiveLogInLinkTask)>,
@@ -491,6 +497,8 @@ pub fn receive_auth_link(
     }
 }
 
+/// Check if channel receive task is finished and if it is, send [`AuthTokenReceived`] event.
+/// Send [`LogInFailed`] event in case of an error.
 pub fn receive_auth_token(
     mut commands: Commands,
     mut receive_token_task: Query<(Entity, &mut ReceiveLogInTokenTask)>,
@@ -506,6 +514,8 @@ pub fn receive_auth_token(
     }
 }
 
+/// Receive [`AuthLinkReceived`] event and the link in browser.
+/// Send [`LogInFailed`] event in case of an error.
 pub fn open_auth_link(
     mut link_received: EventReader<AuthLinkReceived>,
     mut log_in_failed: EventWriter<LogInFailed>,
@@ -517,31 +527,45 @@ pub fn open_auth_link(
     }
 }
 
-/// Receive jwt token, decode user id from its claims, store token and send [`LogInSuccess`] event.
+/// Receive [`AuthTokenReceived`] event, decode user id from jwt claims,
+/// store token and send [`LogInSuccess`] event.  
+/// Send [`LogInFailed`] event in case of an error.
 pub fn store_token(
     mut token_received: EventReader<AuthTokenReceived>,
     mut log_in_success: EventWriter<LogInSuccess>,
+    mut log_in_failed: EventWriter<LogInFailed>,
     mut client: Option<ResMut<GrpcClient>>,
 ) {
     for event in token_received.read() {
         let Some(ref mut client) = client else {
+            log_in_failed.send(LogInFailed::new(GrpcError::ClientMissing));
             continue;
         };
-        let Some(claims) = JWTClaims::from_token_unchecked(&**event) else {
-            error!("unable to parse claims from token: {}", **event);
-            continue;
-        };
-        let user_id = match claims.sub().parse() {
-            Ok(user) => user,
+        let claims = match JWTClaims::from_token_unchecked(event.get()) {
+            Ok(claims) => claims,
             Err(err) => {
-                error!("unable to parse user id from token: {}", err);
+                log_in_failed.send(LogInFailed::new(GrpcError::invalid_jwt(
+                    event.get(),
+                    err.to_string(),
+                )));
                 continue;
             }
         };
-        if let Err(err) = client.store_token(&**event) {
-            error!("failed to create metadata value from token: {}", err);
+        let user_id: u64 = match claims.sub().parse() {
+            Ok(user) => user,
+            Err(err) => {
+                log_in_failed.send(LogInFailed::new(GrpcError::invalid_jwt(
+                    event.get(),
+                    err.to_string(),
+                )));
+                continue;
+            }
+        };
+        if let Err(err) = client.store_token(event.get()) {
+            log_in_failed.send(LogInFailed::new(GrpcError::Internal(err.to_string())));
+        } else {
+            log_in_success.send(LogInSuccess::new(user_id));
         }
-        log_in_success.send(LogInSuccess::new(user_id));
     }
 }
 
@@ -551,6 +575,13 @@ pub fn log_out(mut log_out: EventReader<LogOut>, client: Option<ResMut<GrpcClien
         if let Some(mut client) = client {
             client.drop_token();
         }
+    }
+}
+
+/// Receive [`LogInFailed`] and log the error.
+pub fn log_log_in_error(mut log_in_failed: EventReader<LogInFailed>) {
+    for event in log_in_failed.read() {
+        error!("{}", event);
     }
 }
 

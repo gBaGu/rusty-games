@@ -673,7 +673,7 @@ mod test {
         // simulate user id change
         app.world_mut()
             .resource_mut::<Events<UserIdChanged>>()
-            .send(UserIdChanged::new(1));
+            .send(UserIdChanged::new(Some(1)));
         app.update();
 
         // game that doesn't have user 1 is despawned
@@ -683,7 +683,7 @@ mod test {
         app.world_mut().resource_mut::<Settings>().set_user_id(4);
         app.world_mut()
             .resource_mut::<Events<UserIdChanged>>()
-            .send(UserIdChanged::new(4));
+            .send(UserIdChanged::new(Some(4)));
         app.update();
 
         // all games are cleared

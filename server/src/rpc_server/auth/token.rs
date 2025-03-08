@@ -5,7 +5,7 @@ use base64::engine::{general_purpose::URL_SAFE_NO_PAD, Engine};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
-use super::AuthResult;
+use super::{AuthError, AuthResult};
 
 const JWT_LIFETIME_SECS: u64 = 60 * 60;
 
@@ -26,10 +26,14 @@ impl JWTClaims {
         }
     }
 
-    pub fn from_token_unchecked(token: &str) -> Option<Self> {
-        let claims_str = token.split('.').nth(1)?;
-        let claims_bytes = URL_SAFE_NO_PAD.decode(claims_str).ok()?;
-        serde_json::from_slice(&claims_bytes).ok()
+    /// Decode claims without signature validation.
+    pub fn from_token_unchecked(token: &str) -> AuthResult<Self> {
+        let claims_str = token.split('.').nth(1).ok_or(AuthError::InvalidToken)?;
+        let claims_bytes = URL_SAFE_NO_PAD
+            .decode(claims_str)
+            .map_err(|err| AuthError::ParseClaimsFailed(err.to_string()))?;
+        serde_json::from_slice(&claims_bytes)
+            .map_err(|err| AuthError::ParseClaimsFailed(err.to_string()))
     }
 
     pub fn sub(&self) -> &String {

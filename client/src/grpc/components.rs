@@ -81,6 +81,7 @@ impl<T: Send + 'static> PollOnce for ReceiveSessionUpdateTask<T> {
     const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
 }
 
+/// Task component for receiving log in link from `LogIn` grpc request.
 #[derive(Component, Deref, DerefMut)]
 pub struct ReceiveLogInLinkTask(Task<GrpcResult<String>>);
 
@@ -95,6 +96,7 @@ impl PollOnce for ReceiveLogInLinkTask {
     const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
 }
 
+/// Task component for receiving jwt token from `LogIn` grpc request.
 #[derive(Component, Deref, DerefMut)]
 pub struct ReceiveLogInTokenTask(Task<GrpcResult<String>>);
 
@@ -109,9 +111,13 @@ impl PollOnce for ReceiveLogInTokenTask {
     const STRATEGY: TaskCleaningStrategy = TaskCleaningStrategy::RemoveComponent;
 }
 
+/// Component to indicate that the entity is a `LogIn` request.
+/// In order to make `LogIn` call this component needs to be spawned.
 #[derive(Component)]
 pub struct LogInRequest;
 
+/// Component that contains task with `LogIn` server-streaming call and
+/// channels to receive log in link and token from the server.
 #[derive(Debug, Component)]
 pub struct LogInTask {
     task: Task<GrpcResult<()>>,

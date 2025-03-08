@@ -151,6 +151,7 @@ impl Plugin for GrpcPlugin {
                     handle_log_in_task,
                     receive_auth_link,
                     receive_auth_token,
+                    log_log_in_error,
                 ),
             );
     }

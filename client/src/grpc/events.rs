@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy::prelude::*;
 use game_server::core;
 use game_server::rpc_server::RpcResult;
@@ -188,6 +190,7 @@ impl SessionErrorReceived {
     }
 }
 
+/// OAuth 2.0 authentication link is received from server.
 #[derive(Debug, Deref, Event)]
 pub struct AuthLinkReceived(String);
 
@@ -197,12 +200,17 @@ impl AuthLinkReceived {
     }
 }
 
+/// OAuth 2.0 JWT token is received from server.
 #[derive(Debug, Deref, Event)]
 pub struct AuthTokenReceived(String);
 
 impl AuthTokenReceived {
     pub fn new(link: String) -> Self {
         Self(link)
+    }
+
+    pub fn get(&self) -> &String {
+        &self.0
     }
 }
 
@@ -216,8 +224,15 @@ impl LogInSuccess {
     }
 }
 
+/// `LogIn` request failed.
 #[derive(Debug, Deref, Event)]
 pub struct LogInFailed(GrpcError);
+
+impl fmt::Display for LogInFailed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "failed to log in: {}", self.0)
+    }
+}
 
 impl LogInFailed {
 
