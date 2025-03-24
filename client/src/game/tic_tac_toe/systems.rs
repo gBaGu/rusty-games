@@ -12,8 +12,8 @@ use crate::game::components::PendingGame;
 use crate::game::resources::RefreshGameTimer;
 use crate::game::tic_tac_toe::components::{CreateGameContext, EnemyType};
 use crate::game::{
-    ActiveGame, CurrentPlayer, CurrentUserPlayerBundle, FullGameInfo, GameDataReady, GameInfo,
-    NetworkGame, NetworkPlayerBundle, StateUpdated, Winner,
+    ActiveGame, CurrentPlayer, CurrentUserPlayerBundle, GameDataReady, GameInfo, NetworkGame,
+    NetworkPlayerBundle, StateUpdated, Winner,
 };
 use crate::grpc;
 use crate::Settings;
@@ -56,6 +56,7 @@ pub fn handle_create_game_reply(
                     }
                 };
                 let game_id = info.id;
+                info!("successfully created game {} on a server", game_id);
                 if let Some(ctx) = CreateGameContext::new_from_game_info(user, info) {
                     let context_entity = commands.spawn(ctx).id();
                     game_data_ready.send(GameDataReady::new_over_network(
@@ -95,15 +96,15 @@ pub fn handle_get_game_reply_on_join(
                     error!("received empty CreateGame reply from server");
                     return;
                 };
-                let info = match FullGameInfo::try_from(game_info.clone()) {
+                let info = match GameInfo::try_from(game_info.clone()) {
                     Ok(info) => info,
                     Err(err) => {
                         error!("failed to decode game info: {}", err);
                         continue;
                     }
                 };
-                if info.info.id == *network_game {
-                    if let Some(ctx) = CreateGameContext::new_from_full_game_info(user, info) {
+                if info.id == *network_game {
+                    if let Some(ctx) = CreateGameContext::new_from_game_info(user, info) {
                         let context_entity = commands.spawn(ctx).id();
                         game_data_ready.send(GameDataReady::new_over_network(
                             *network_game,
@@ -144,34 +145,36 @@ pub fn handle_get_game(
                     error!("received game info for other game, dropping");
                     continue;
                 }
-                let full_info = match FullGameInfo::try_from(info.clone()) {
+                let info = match GameInfo::try_from(info.clone()) {
                     Ok(info) => info,
                     Err(err) => {
-                        error!("failed to decode full game info: {}", err);
+                        error!("failed to decode game info: {}", err);
                         continue;
                     }
                 };
                 let mut update_count = 0;
-                for (i, row) in full_info.board.iter().enumerate() {
-                    for (j, cell) in row.iter().enumerate() {
-                        if let core::BoardCell(Some(player)) = cell {
-                            let pos = core::GridIndex::new(i, j);
-                            let local_cell = &mut local_game.board_mut()[pos];
-                            if local_cell.is_none() {
-                                *local_cell = *cell;
-                                action_applied.send(PlayerActionApplied::new(
-                                    event.entity(),
-                                    *player,
-                                    pos,
-                                ));
-                                update_count += 1;
+                if let Some(board) = info.board {
+                    for (i, row) in board.iter().enumerate() {
+                        for (j, cell) in row.iter().enumerate() {
+                            if let core::BoardCell(Some(player)) = cell {
+                                let pos = core::GridIndex::new(i, j);
+                                let local_cell = &mut local_game.board_mut()[pos];
+                                if local_cell.is_none() {
+                                    *local_cell = *cell;
+                                    action_applied.send(PlayerActionApplied::new(
+                                        event.entity(),
+                                        *player,
+                                        pos,
+                                    ));
+                                    update_count += 1;
+                                }
                             }
                         }
                     }
                 }
                 if update_count > 0 {
-                    local_game.set_state(full_info.info.state);
-                    state_updated.send(StateUpdated::new(event.entity(), full_info.info.state));
+                    local_game.set_state(info.state);
+                    state_updated.send(StateUpdated::new(event.entity(), info.state));
                 }
             }
             Err(err) => {

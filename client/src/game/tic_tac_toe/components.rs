@@ -3,7 +3,7 @@ use game_server::core::tic_tac_toe::TicTacToe;
 use game_server::core::Game as _;
 
 use super::bot::Strategy;
-use crate::game::{BotDifficulty, FullGameInfo, GameInfo};
+use crate::game::{BotDifficulty, GameInfo};
 
 /// This enum is used to specify if the opponent is a bot or another user.
 #[derive(Clone, Copy, Debug)]
@@ -41,22 +41,12 @@ impl CreateGameContext {
         } else {
             return None;
         };
-        Some(Self {
-            enemy: EnemyType::User(enemy),
-            user_first,
-            game: None,
-        })
-    }
-
-    pub fn new_from_full_game_info(user: u64, game_info: FullGameInfo) -> Option<Self> {
-        let FullGameInfo { info, board } = game_info;
         let mut ttt = TicTacToe::default();
-        ttt.set_state(info.state);
-        ttt.set_board(board);
-        Self::new_from_game_info(user, info).and_then(|mut ctx| {
-            ctx.game = Some(ttt);
-            Some(ctx)
-        })
+        ttt.set_state(game_info.state);
+        if let Some(board) = game_info.board {
+            ttt.set_board(board);
+        }
+        Some(Self::new(EnemyType::User(enemy), user_first, Some(ttt)))
     }
 
     pub fn enemy(&self) -> EnemyType {

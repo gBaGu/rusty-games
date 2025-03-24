@@ -31,7 +31,7 @@ pub use components::{
 pub use events::{
     BotReady, Draw, GameDataReady, GameEntityReady, PlayerWon, StateUpdated, TurnStart,
 };
-pub use game_info::{FullGameInfo, GameInfo};
+pub use game_info::GameInfo;
 pub use resources::GameMenuContext;
 
 pub const ACTION_RESEND_INTERVAL_SEC: f32 = 1.0;

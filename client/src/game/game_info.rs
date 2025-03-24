@@ -9,6 +9,7 @@ pub struct GameInfo {
     pub id: u64,
     pub players: [u64; PLAYERS_SIZE],
     pub state: core::GameState,
+    pub board: Option<TTTBoard>,
 }
 
 impl GameInfo {
@@ -35,45 +36,28 @@ impl TryFrom<proto::GameInfo> for GameInfo {
                     expected: PLAYERS_SIZE,
                     found: players_len,
                 })?;
-        Ok(Self {
+        let mut info = Self {
             id: value.game_id,
             players,
             state: state.try_into()?,
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct FullGameInfo {
-    pub info: GameInfo,
-    pub board: TTTBoard,
-}
-
-impl TryFrom<proto::GameInfo> for FullGameInfo {
-    type Error = core::ProtobufError;
-
-    fn try_from(value: proto::GameInfo) -> Result<Self, Self::Error> {
-        let mut full_info = Self {
-            info: GameInfo::try_from(value.clone())?,
-            board: Default::default(),
+            board: None,
         };
-        if value.board.is_empty() {
-            return Err(core::ProtobufError::MessageDataMissing {
-                missing_field: "board".to_string(),
-            });
-        }
-        if value.board.len() != BOARD_PROTO_SIZE {
-            return Err(core::ProtobufError::InvalidBoardLength {
-                expected: BOARD_PROTO_SIZE,
-                found: value.board.len(),
-            });
-        }
-        for (i, row) in value.board.chunks(BOARD_SIZE).enumerate() {
-            for (j, val) in row.iter().enumerate() {
-                let cell = core::BoardCell::from_protobuf(&val)?;
-                full_info.board[(i, j).into()] = cell;
+        if !value.board.is_empty() {
+            let mut board = TTTBoard::default();
+            if value.board.len() != BOARD_PROTO_SIZE {
+                return Err(core::ProtobufError::InvalidBoardLength {
+                    expected: BOARD_PROTO_SIZE,
+                    found: value.board.len(),
+                });
             }
+            for (i, row) in value.board.chunks(BOARD_SIZE).enumerate() {
+                for (j, val) in row.iter().enumerate() {
+                    let cell = core::BoardCell::from_protobuf(&val)?;
+                    board[(i, j).into()] = cell;
+                }
+            }
+            info.board = Some(board);
         }
-        Ok(full_info)
+        Ok(info)
     }
 }
